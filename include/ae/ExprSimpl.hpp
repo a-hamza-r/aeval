@@ -1775,9 +1775,11 @@ namespace ufo
     else if (isBoolConst(var))
       return boolConst(new_name);
     else if (isConst<ARRAY_TY> (var))
-      return mkConst(new_name, mk<ARRAY_TY> (
-             mk<INT_TY> (new_name->getFactory()),
-             mk<INT_TY> (new_name->getFactory()))); // GF: currently, only Arrays over Ints
+    {
+      return bind::mkConst(new_name, typeOf(var));
+    }
+    else if (bv::is_bvconst(var))
+      return bv::bvConst(new_name, bv::width(var->first()->arg(1)));
 
     else return NULL;
   }

@@ -144,9 +144,9 @@ namespace ufo
       }
     }
 
-    void addDecl (Expr a)
+    void addDecl (Expr a, bool notInit = true)
     {
-      if (a->arity() == 2)
+      if (a->arity() == 2 && notInit)
       {
         addFailDecl(a->arg(0));
       }
@@ -156,18 +156,18 @@ namespace ufo
         for (int i = 1; i < a->arity()-1; i++)
         {
           Expr new_name = mkTerm<string> (varname + to_string(i - 1), m_efac);
-          Expr var;
-          if (isOpX<INT_TY> (a->arg(i)))
+          Expr var = a->arg(i);
+          if (isOpX<INT_TY> (var))
             var = bind::intConst(new_name);
-          else if (isOpX<REAL_TY> (a->arg(i)))
+          else if (isOpX<REAL_TY> (var))
             var = bind::realConst(new_name);
-          else if (isOpX<BOOL_TY> (a->arg(i)))
+          else if (isOpX<BOOL_TY> (var))
             var = bind::boolConst(new_name);
-          else if (isOpX<ARRAY_TY> (a->arg(i))) // GF: currently support only arrays over Ints
-          {
-            var = bind::mkConst(new_name, mk<ARRAY_TY>
-                  (mk<INT_TY> (m_efac), mk<INT_TY> (m_efac)));
-          }
+          else if (isOpX<ARRAY_TY> (var))
+            var = bind::mkConst(new_name, sort::arrayTy(var->left(), var->right()));
+          else if (isOpX<BVSORT> (var))
+            var = bv::bvConst(new_name, bv::width(var));
+          else assert(0);
           invVars[a->arg(0)].push_back(var);
         }
       }
@@ -257,6 +257,8 @@ namespace ufo
           hr.srcRelation = mk<TRUE>(m_efac);
         }
 
+        hr.isFact = isOpX<TRUE>(hr.srcRelation);
+
         if (isOpX<FAPP>(head))
         {
           if (head->arg(0)->arity() == 2 && !hr.isFact)
@@ -265,7 +267,7 @@ namespace ufo
           }
           else
           {
-            addDecl(head->arg(0));
+            addDecl(head->arg(0), !hr.isFact);
           }
           hr.head = head->arg(0);
           hr.dstRelation = hr.head->arg(0);
@@ -278,7 +280,6 @@ namespace ufo
           hr.dstRelation = mk<FALSE>(m_efac);
         }
 
-        hr.isFact = isOpX<TRUE>(hr.srcRelation);
         hr.isQuery = (hr.dstRelation == failDecl);
         hr.isInductive = (hr.srcRelation == hr.dstRelation);
 
@@ -294,24 +295,26 @@ namespace ufo
         hr.body = conjoin(lin, m_efac);
         hr.assignVarsAndRewrite (origSrcSymbs, invVars[hr.srcRelation],
                                  origDstSymbs, invVars[hr.dstRelation]);
-        hr.body = simpleQE(hr.body, hr.locVars);
+        if (!hr.isQuery) hr.body = simpleQE(hr.body, hr.locVars);
+        print(hr);
       }
 
       // remove useless rules
-      if (failShrink(failDecl))
-        for (auto rit = indeces.rbegin(); rit != indeces.rend(); ++rit)
-          chcs.erase(chcs.begin() + *rit);
+//      if (failShrink(failDecl))
+//        for (auto rit = indeces.rbegin(); rit != indeces.rend(); ++rit)
+//          chcs.erase(chcs.begin() + *rit);
 
-      indeces.clear();
-      chcSliceBwd(failDecl);
-      vector<HornRuleExt> tmpChcs;
-      for (auto i : indeces) tmpChcs.push_back(chcs[i]);
-      chcs = tmpChcs;
+//      indeces.clear();
+//      chcSliceBwd(failDecl);
+//      vector<HornRuleExt> tmpChcs;
+//      for (auto i : indeces) tmpChcs.push_back(chcs[i]);
+//      chcs = tmpChcs;
       for (int i = 0; i < chcs.size(); i++)
         outgs[chcs[i].srcRelation].push_back(i);
 
       // sort rules
-      wtoSort();
+//      wtoSort();
+//      print();
     }
 
     bool failShrink (Expr dstRel)
@@ -520,8 +523,10 @@ namespace ufo
       else
       {
         if (failDecl != decl)
-        outs () << "Multiple queries are unsupported\n";
-        exit(0);
+        {
+          outs () << "Multiple queries are unsupported\n";
+          exit(0);
+        }
       }
     }
 
@@ -796,26 +801,35 @@ namespace ufo
     {
       outs() << "CHCs:\n";
       for (auto &hr: chcs){
-        if (hr.isFact) outs() << "  INIT:\n";
-        if (hr.isInductive) outs() << "  TRANSITION RELATION:\n";
-        if (hr.isQuery) outs() << "  BAD:\n";
+        print(hr);
+      }
+    }
+
+    void print(HornRuleExt& hr)
+    {
+//      outs() << "CHCs:\n";
+//      for (auto &hr: chcs)
+      {
+//        if (hr.isFact) outs() << "  INIT:\n";
+//        if (hr.isInductive) outs() << "  LOOP:\n";
+//        if (hr.isQuery) outs() << "  BAD:\n";
 
         outs () << "    " << * hr.srcRelation;
-        if (hr.srcVars.size() > 0)
-        {
-          outs () << " (";
-          for(auto &a: hr.srcVars) outs() << *a << ", ";
-          outs () << "\b\b)";
-        }
-        outs () << " -> " << * hr.dstRelation;
+//        if (hr.srcVars.size() > 0)
+//        {
+//          outs () << " (";
+//          for(auto &a: hr.srcVars) outs() << *a << ", ";
+//          outs () << "\b\b)";
+//        }
+        outs () << " -> " << * hr.dstRelation << "\n";
 
-        if (hr.dstVars.size() > 0)
-        {
-          outs () << " (";
-          for(auto &a: hr.dstVars) outs() << *a << ", ";
-          outs () << "\b\b)";
-        }
-        outs() << "\n    body: " << * hr.body << "\n";
+//        if (hr.dstVars.size() > 0)
+//        {
+//          outs () << " (";
+//          for(auto &a: hr.dstVars) outs() << *a << ", ";
+//          outs () << "\b\b)";
+//        }
+//        outs() << "\n    body: " << * hr.body << "\n";
       }
     }
   };

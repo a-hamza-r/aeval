@@ -138,12 +138,15 @@ namespace ufo
           body = replaceAll(body, hr.dstVars[i], bindVars2[i]);
         }
 
-        for (int i = 0; i < hr.locVars.size(); i++)
+        if (!hr.isQuery)
         {
-          Expr new_name = mkTerm<string> ("__loc_var_" + to_string(locVar_index++), m_efac);
-          Expr var = cloneVar(hr.locVars[i], new_name);
+          for (int i = 0; i < hr.locVars.size(); i++)
+          {
+            Expr new_name = mkTerm<string> ("__loc_var_" + to_string(locVar_index++), m_efac);
+            Expr var = cloneVar(hr.locVars[i], new_name);
 
-          body = replaceAll(body, hr.locVars[i], var);
+            body = replaceAll(body, hr.locVars[i], var);
+          }
         }
 
         ssa.push_back(body);
@@ -179,6 +182,70 @@ namespace ufo
               << (unsat ? "UNSAT for all traces up to " : "SAT for a trace with ")
               << (cur_bnd - 1) << " steps\n";
       return unsat;
+    }
+
+    void exploreTracesCost(string init_cost, string final_cost)
+    {
+      Expr init_cost_var, final_cost_var;
+      // find var:
+      for (auto & hr : ruleManager.chcs)
+      {
+        if (hr.isQuery)
+        {
+          for (int i = 0; i < hr.locVars.size(); i++)
+          {
+            if (lexical_cast<string>(hr.locVars[i]) == init_cost)
+            {
+              init_cost_var = hr.locVars[i];
+            }
+            if (lexical_cast<string>(hr.locVars[i]) == final_cost)
+            {
+              final_cost_var = hr.locVars[i];
+            }
+          }
+        }
+      }
+      if (init_cost_var == NULL)
+      {
+        outs () << "Unable to locate cost var (" << init_cost << ")\n";
+        exit(0);
+      }
+
+      if (final_cost_var == NULL)
+      {
+        outs () << "Unable to locate cost var (" << final_cost << ")\n";
+        exit(0);
+      }
+
+      Expr init_assm = mk<EQ>(init_cost_var, bv::bvnum(0, bv::width(init_cost_var->first()->arg(1)), m_efac));
+      outs () << " init_assm = " << *init_assm << "\n";
+
+      int bnd = 1;
+      while (true)
+      {
+        vector<vector<int>> traces;
+        vector<int> empttrace;
+
+        getAllTraces(mk<TRUE>(m_efac), ruleManager.failDecl, bnd, vector<int>(), traces);
+
+        for (auto &a : traces)
+        {
+          outs () << "unrolling [ true";
+          for (int i = 1; i < a.size(); i++) outs () << " -> " << *ruleManager.chcs[a[i]].srcRelation;
+          outs () << " -> " << *ruleManager.chcs[a.back()].dstRelation << "]: ";
+
+          if (!u.isSat(toExpr(a), init_assm))
+          {
+            outs () << "UNSAT -- exiting\n";
+            return;
+          }
+          else
+          {
+            outs () << "final_cost = " << *u.getMaxModel(final_cost_var) << "\n";
+          }
+        }
+        bnd++;
+      }
     }
 
     bool kIndIter(int bnd1, int bnd2)
@@ -535,6 +602,16 @@ namespace ufo
     ruleManager.parse(smt);
     BndExpl ds(ruleManager);
     ds.exploreTraces(bnd1, bnd2, true);
+  };
+
+  inline void getCost(string smt, string init_cost, string final_cost)
+  {
+    ExprFactory m_efac;
+    EZ3 z3(m_efac);
+    CHCs ruleManager(m_efac, z3);
+    ruleManager.parse(smt);
+    BndExpl ds(ruleManager);
+    ds.exploreTracesCost(init_cost, final_cost);
   };
 
   inline bool kInduction(CHCs& ruleManager, int bnd)

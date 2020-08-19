@@ -27,9 +27,20 @@ namespace ufo
 
     Expr getModel(Expr v)
     {
-      ExprVector eqs;
       ZSolver<EZ3>::Model m = smt.getModel();
       return m.eval(v);
+    }
+
+    Expr getMaxModel(Expr v)
+    {
+      while (true)
+      {
+        Expr tmp;
+        ZSolver<EZ3>::Model m = smt.getModel();
+        tmp = m.eval(v);
+        smt.assertExpr(mk<BSGT>(v, tmp));
+        if (smt.solve() == false) return tmp;
+      }
     }
 
     template <typename T> Expr getModel(T& vars)

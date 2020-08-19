@@ -428,28 +428,27 @@ namespace ufo
           res = Z3_mk_bvnor (ctx, t1, t2);
         else if (isOpX<BXNOR> (e))
           res = Z3_mk_bvxnor (ctx, t1, t2);
-        else if (isOpX<BCONCAT> (e))
-          res = Z3_mk_concat (ctx, t1, t2);
         else if (isOpX<BSHL> (e))
           res = Z3_mk_bvshl (ctx, t1, t2);
         else if (isOpX<BLSHR> (e))
           res = Z3_mk_bvlshr (ctx, t1, t2);
         else if (isOpX<BASHR> (e))
           res = Z3_mk_bvashr (ctx, t1, t2);
-      
+        else if (isOpX<BCONCAT> (e))
+          res = Z3_mk_concat (ctx, t1, t2);
         else
           return M::marshal (e, ctx, cache, seen);
       }
       else if (isOpX<BEXTRACT> (e))
       {
-        assert (bv::high (e) > bv::low (e));
+//        assert (bv::high (e) > bv::low (e));
         z3::ast a (ctx, marshal (bv::earg (e), ctx, cache, seen));
         res = Z3_mk_extract (ctx, bv::high (e), bv::low (e), a);
       }
       else if (isOpX<AND> (e) || isOpX<OR> (e) ||
                isOpX<ITE> (e) || isOpX<XOR> (e) ||
                isOpX<PLUS> (e) || isOpX<MINUS> (e) ||
-               isOpX<MULT> (e) ||
+               isOpX<MULT> (e) || isOpX<BCONCAT> (e) || isOpX<BADD> (e) ||
                isOpX<STORE> (e) || isOpX<ARRAY_MAP> (e))
       {
         std::vector<z3::ast> pinned;
@@ -479,6 +478,18 @@ namespace ufo
           res = Z3_mk_sub (ctx, args.size (), &args[0]);
         else if (isOp<MULT>(e))
           res = Z3_mk_mul (ctx, args.size (), &args[0]);
+        else if (isOp<BCONCAT>(e))
+        {
+          res = Z3_mk_concat (ctx, args[0], args[1]);
+          for (unsigned i = 2; i < args.size(); i++)
+            res = Z3_mk_concat (ctx, res, args[i]);
+        }
+        else if (isOp<BADD>(e))
+        {
+          res = Z3_mk_bvadd (ctx, args[0], args[1]);
+          for (unsigned i = 2; i < args.size(); i++)
+            res = Z3_mk_bvadd (ctx, res, args[i]);
+        }
         else if (isOp<STORE>(e))
         {
           assert (e->arity () == 3);
@@ -829,16 +840,31 @@ namespace ufo
         case Z3_OP_BSDIV:
           e = mknary<BSDIV> (args.begin (), args.end ());
           break;
+        case Z3_OP_BSDIV_I:   // to revisit
+          e = mknary<BSDIV> (args.begin (), args.end ());
+          break;
         case Z3_OP_BUDIV:
+          e = mknary<BUDIV> (args.begin (), args.end ());
+          break;
+        case Z3_OP_BUDIV_I:  // to revisit
           e = mknary<BUDIV> (args.begin (), args.end ());
           break;
         case Z3_OP_BSREM:
           e = mknary<BSREM> (args.begin (), args.end ());
           break;
+        case Z3_OP_BSREM_I:  // to revisit
+          e = mknary<BSREM> (args.begin (), args.end ());
+          break;
         case Z3_OP_BUREM:
           e = mknary<BUREM> (args.begin (), args.end ());
           break;
+        case Z3_OP_BUREM_I:  // to revisit
+          e = mknary<BUREM> (args.begin (), args.end ());
+          break;
         case Z3_OP_BSMOD:
+          e = mknary<BSMOD> (args.begin (), args.end ());
+          break;
+        case Z3_OP_BSMOD_I:  // to revisit
           e = mknary<BSMOD> (args.begin (), args.end ());
           break;
         case Z3_OP_ULEQ:
@@ -891,6 +917,9 @@ namespace ufo
           break;
         case Z3_OP_BASHR:
           e = mknary<BASHR> (args.begin (), args.end ());
+          break;
+        case Z3_OP_CONCAT:
+          e = mknary<BCONCAT> (args.begin (), args.end ());
           break;
         default:
 	  return U::unmarshal (z, efac, cache, seen);
