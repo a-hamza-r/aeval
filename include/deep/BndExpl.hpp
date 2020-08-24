@@ -184,7 +184,7 @@ namespace ufo
       return unsat;
     }
 
-    void exploreTracesCost(string init_cost, string final_cost)
+    void exploreTracesCost(string init_cost, string final_cost, int unrolling)
     {
       Expr init_cost_var, final_cost_var;
       // find var:
@@ -221,13 +221,14 @@ namespace ufo
       outs () << " init_assm = " << *init_assm << "\n";
 
       int bnd = 1;
-      while (true)
+      // unrolling: number of unrollings of the loops 
+      while (bnd < unrolling)
       {
         vector<vector<int>> traces;
         vector<int> empttrace;
 
         getAllTraces(mk<TRUE>(m_efac), ruleManager.failDecl, bnd, vector<int>(), traces);
-
+        
         for (auto &a : traces)
         {
           outs () << "unrolling [ true";
@@ -604,14 +605,14 @@ namespace ufo
     ds.exploreTraces(bnd1, bnd2, true);
   };
 
-  inline void getCost(string smt, string init_cost, string final_cost)
+  inline void getCost(string smt, string init_cost, string final_cost, int unrolling)
   {
     ExprFactory m_efac;
     EZ3 z3(m_efac);
     CHCs ruleManager(m_efac, z3);
     ruleManager.parse(smt);
     BndExpl ds(ruleManager);
-    ds.exploreTracesCost(init_cost, final_cost);
+    ds.exploreTracesCost(init_cost, final_cost, unrolling);
   };
 
   inline bool kInduction(CHCs& ruleManager, int bnd)
