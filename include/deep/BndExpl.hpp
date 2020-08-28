@@ -237,6 +237,10 @@ namespace ufo
 
           if (!u.isSat(toExpr(a), init_assm))
           {
+            errs() << "\n\n\nfailed expression: " << *toExpr(a) << "\n";
+            errs() << "\n\n";
+            u.print(toExpr(a));
+            errs() << "\n";
             outs () << "UNSAT -- exiting\n";
             return;
           }
