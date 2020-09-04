@@ -68,7 +68,7 @@ namespace ufo
   {
     private:
     set<int> indeces;
-    string varname = "_FH_";
+    string varname;
 
     public:
 
@@ -87,7 +87,8 @@ namespace ufo
     map<Expr, bool> hasArrays;
     map<Expr, int> iterator;
 
-    CHCs(ExprFactory &efac, EZ3 &z3) : m_efac(efac), m_z3(z3)  {};
+    CHCs(ExprFactory &efac, EZ3 &z3) : m_efac(efac), m_z3(z3), varname("_FH_") {};
+    CHCs(ExprFactory &efac, EZ3 &z3, string n) : m_efac(efac), m_z3(z3), varname(n) {};
 
     bool isFapp (Expr e)
     {
@@ -315,6 +316,7 @@ namespace ufo
       // sort rules
 //      wtoSort();
 //      print();
+      outs () << " = = = parsing done\n";
     }
 
     bool failShrink (Expr dstRel)
@@ -815,20 +817,21 @@ namespace ufo
 //        if (hr.isQuery) outs() << "  BAD:\n";
 
         outs () << "    " << * hr.srcRelation;
-//        if (hr.srcVars.size() > 0)
-//        {
-//          outs () << " (";
-//          for(auto &a: hr.srcVars) outs() << *a << ", ";
-//          outs () << "\b\b)";
-//        }
-        outs () << " -> " << * hr.dstRelation << "\n";
+        if (hr.srcVars.size() > 0)
+        {
+          outs () << " (";
+          for(auto &a: hr.srcVars) outs() << *a << ", ";
+          outs () << "\b\b)";
+        }
+        outs () << " -> " << * hr.dstRelation ;
 
-//        if (hr.dstVars.size() > 0)
-//        {
-//          outs () << " (";
-//          for(auto &a: hr.dstVars) outs() << *a << ", ";
-//          outs () << "\b\b)";
-//        }
+        if (hr.dstVars.size() > 0)
+        {
+          outs () << " (";
+          for(auto &a: hr.dstVars) outs() << *a << ", ";
+          outs () << "\b\b)";
+        }
+        outs () << "\n";
 //        outs() << "\n    body: " << * hr.body << "\n";
       }
     }
