@@ -40,6 +40,9 @@ namespace ufo
     Expr srcRelation;
     Expr dstRelation;
 
+    Expr srcRelationFdecl; // temporarily added for equivalence checking tasks
+    Expr dstRelationFdecl; // temporarily added for equivalence checking tasks
+
     bool isFact;
     bool isQuery;
     bool isInductive;
@@ -51,6 +54,7 @@ namespace ufo
       {
         srcVars.push_back(invVarsSrc[i]);
         body = mk<AND>(body, mk<EQ>(_srcVars[i], srcVars[i]));
+        // errs() << "body 2: " << *body << "\n\n\n";
       }
 
       for (int i = 0; i < _dstVars.size(); i++)
@@ -60,7 +64,36 @@ namespace ufo
         Expr var = cloneVar(invVarsDst[i], new_name);
         dstVars.push_back(var);
         body = mk<AND>(body, mk<EQ>(_dstVars[i], dstVars[i]));
+        // errs() << "body 3: " << *body << "\n\n\n";
       }
+    }
+
+    void printMemberVars()
+    {
+      errs() << "\nStarting to print a HornRuleExt: \n";
+      errs() << "body: " << *body << "\n";
+      errs() << "head: " << *head << "\n";
+
+      errs() << "srcVars: ";
+      for (auto it = srcVars.begin(); it != srcVars.end(); it++)
+        errs() << **it << " ";
+      errs() << "\n";
+
+      errs() << "dstVars: ";
+      for (auto it = dstVars.begin(); it != dstVars.end(); it++)
+        errs() << **it << " ";
+      errs() << "\n";
+
+      errs() << "locVars: ";
+      for (auto it = locVars.begin(); it != locVars.end(); it++)
+        errs() << **it << " ";
+      errs() << "\n";
+
+      errs() << "srcRelation: " << *srcRelation << "\n";
+      errs() << "dstRelation: " << *dstRelation << "\n";
+      errs() << "isFact: " << isFact << "\n";
+      errs() << "isQuery: " << isQuery << "\n";
+      errs() << "isInductive: " << isInductive << "\n";
     }
   };
 
@@ -100,13 +133,13 @@ namespace ufo
       return false;
     }
 
-    void preprocess (Expr term, ExprVector& srcVars, Expr &srcRelation, ExprSet& lin)
+    void preprocess (Expr term, ExprVector& srcVars, Expr &srcRelation, Expr &srcRelationFdecl, ExprSet& lin)
     {
       if (isOpX<AND>(term))
       {
         for (auto it = term->args_begin(), end = term->args_end(); it != end; ++it)
         {
-          preprocess(*it, srcVars, srcRelation, lin);
+          preprocess(*it, srcVars, srcRelation, srcRelationFdecl, lin);
         }
       }
       else
@@ -132,6 +165,7 @@ namespace ufo
                   exit(0);
                 }
                 srcRelation = rel->arg(0);
+                srcRelationFdecl = rel;
                 for (auto it = term->args_begin()+1, end = term->args_end(); it != end; ++it)
                   srcVars.push_back(*it);
               }
@@ -232,6 +266,7 @@ namespace ufo
 
       for (auto &r: fp.m_rules)
       {
+        // errs() << "r: " << *r << "\n";
         chcs.push_back(HornRuleExt());
         HornRuleExt& hr = chcs.back();
 
@@ -241,12 +276,16 @@ namespace ufo
           continue;
         }
 
+        // errs() << "hr: " << *hr << "\n";
         Expr body = r->arg(0);
         Expr head = r->arg(1);
 
+        // errs() << "head: " << *head << "\n";
+        // errs() << "body: " << *body << "\n";
+
         ExprVector origSrcSymbs;
         ExprSet lin;
-        preprocess(body, origSrcSymbs, hr.srcRelation, lin);
+        preprocess(body, origSrcSymbs, hr.srcRelation, hr.srcRelationFdecl, lin);
         if (hr.srcRelation == NULL)
         {
           if (hasUninterp(body))
@@ -258,7 +297,11 @@ namespace ufo
           hr.srcRelation = mk<TRUE>(m_efac);
         }
 
+        // if (hr.srcRelation) errs() << "hr.srcRelation: " << *hr.srcRelation << "\n";
+
         hr.isFact = isOpX<TRUE>(hr.srcRelation);
+
+        // errs() << "hr.isFact: " << hr.isFact << "\n";
 
         if (isOpX<FAPP>(head))
         {
@@ -272,6 +315,7 @@ namespace ufo
           }
           hr.head = head->arg(0);
           hr.dstRelation = hr.head->arg(0);
+          hr.dstRelationFdecl = hr.head;
         }
         else
         {
@@ -280,6 +324,11 @@ namespace ufo
           hr.head = mk<FALSE>(m_efac);
           hr.dstRelation = mk<FALSE>(m_efac);
         }
+        // if (hr.dstRelation) errs() << "hr.dstRelation: " << *hr.dstRelation << "\n";
+
+        // errs() << "hr.head: " << *hr.head << "\n"; 
+
+        // if (failDecl) errs() << "failDecl: " << *failDecl << "\n";
 
         hr.isQuery = (hr.dstRelation == failDecl);
         hr.isInductive = (hr.srcRelation == hr.dstRelation);
@@ -292,8 +341,14 @@ namespace ufo
             origDstSymbs.push_back(*it);
         }
         allOrigSymbs.insert(allOrigSymbs.end(), origDstSymbs.begin(), origDstSymbs.end());
+
+        // errs() << "All original symbols: \n";
+        // for (auto it = allOrigSymbs.begin(); it != allOrigSymbs.end(); it++)
+          // errs() << **it << " ";
+        // errs() << "\n";
         simplBoolReplCnj(allOrigSymbs, lin);
         hr.body = conjoin(lin, m_efac);
+        // errs() << "hr.body: " << *hr.body << "\n";
         hr.assignVarsAndRewrite (origSrcSymbs, invVars[hr.srcRelation],
                                  origDstSymbs, invVars[hr.dstRelation]);
         if (!hr.isQuery) hr.body = simpleQE(hr.body, hr.locVars);
