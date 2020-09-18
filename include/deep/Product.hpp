@@ -124,9 +124,12 @@ namespace ufo
 
     void RTransform(HornRuleExt &chc)
     {
-        if (!chc.isInductive)
+        if (chc.isFact && !chc.isInductive) // !chc.isInductive might be redundant
         {
-
+            chc.srcRelationDecl = chc.head;
+            chc.srcRelation = chc.head->arg(0);
+            chc.srcVars = chc.dstVars; // makes srcVars also primed variables but that might not be an issue
+            // chc.printMemberVars();
         }
     }
 
@@ -148,21 +151,81 @@ namespace ufo
     }
 
 
+    void rulesOfPredicate(vector<HornRuleExt> &allRules, Expr &predicateDecl, vector<HornRuleExt> &rulesOfP)
+    {
+        for (auto it = allRules.begin(); it != allRules.end(); it++)
+        {
+            if (predicateDecl == it->head)
+            {
+                rulesOfP.push_back(*it);
+            }
+        }
+    }
+
+
+    void getNonRecPartsPartitioned(HornRuleExt &chc, vector<HornRuleExt> &partitions)
+    {
+        if (isOpX())
+    }
+
+
+    int getQueryRule(CHCs &rules)
+    {
+        return rules.chcs.size()-1;
+    }
+
+
+    void createProductQuery(HornRuleExt &query1, HornRuleExt &query2, HornRuleExt &queryPr)
+    {
+        
+    }
+
+
     void Product(CHCs &product, CHCs &rules1, CHCs &rules2)
     {
-	    Expr headPr;
-	    Expr bodyPr;
+        int queryInd1 = getQueryRule(rules1);
+        int queryInd2 = getQueryRule(rules2);
 
-        headProduct(rules1.decls, headPr, m_efac);
-        errs() << *headPr << "\n";
+        if (queryInd1 < 0 || queryInd2 < 0)
+        {
+            outs() << "Product can not be found.\n";
+            exit(0);
+        }
 
-        bodyProduct(rules1, bodyPr, m_efac);
-        errs() << *bodyPr << "\n";
+        HornRuleExt queryPr;
+
+        createProductQuery(rules1.chcs[queryInd1], rules2.chcs[queryInd2], queryPr);
+        vector<HornRuleExt> transformedCHCs;
+        vector<HornRuleExt> worklist, partitions;
+        HornRuleExt C_a;
+
+        worklist.push_back(queryPr);
+
+        while (!worklist.empty())
+        {
+            C_a = worklist[0];
+            worklist.erase(worklist.begin());
+
+            getNonRecPartsPartitioned(C_a, partitions);
+        }
+
+	    // Expr headPr;
+	    // Expr bodyPr;
+
+
+
+        // headProduct(rules1.decls, headPr, rules1.m_efac);
+        // errs() << *headPr << "\n";
+
+        // bodyProduct(rules1, bodyPr, rules1.m_efac);
+        // errs() << *bodyPr << "\n";
+
+        // RTransform(rules1.chcs[4]);
 
     }
 
 
-	inline void createProduct(const char * chcfileSrc, const char * chcfileDst)
+	inline void createProduct(const char *chcfileSrc, const char *chcfileDst)
   	{
     	ExprFactory m_efac;
 	    EZ3 z3(m_efac);
