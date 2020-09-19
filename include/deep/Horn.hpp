@@ -192,17 +192,9 @@ namespace ufo
       }
     }
 
-    void addDecl (Expr a, bool notInit = true)
+    void addDecl (Expr a)
     {
-<<<<<<< HEAD
-      if (a->arity() == 2 && notInit)
-      {
-        addFailDecl(a->arg(0));
-      }
-      else if (invVars[a->arg(0)].size() == 0)
-=======
       if (invVars[a->arg(0)].size() == 0)
->>>>>>> 6a81a15de922acc8a892bd0036ba8a90ce777892
       {
         decls.insert(a);
         for (int i = 1; i < a->arity()-1; i++)
@@ -283,7 +275,6 @@ namespace ufo
 
       for (auto &r: fp.m_rules)
       {
-        // errs() << "r: " << *r << "\n";
         chcs.push_back(HornRuleExt());
         HornRuleExt& hr = chcs.back();
 
@@ -311,10 +302,6 @@ namespace ufo
         }
 
         hr.isFact = isOpX<TRUE>(hr.srcRelation);
-<<<<<<< HEAD
-
-=======
->>>>>>> 6a81a15de922acc8a892bd0036ba8a90ce777892
         if (isOpX<FAPP>(head))
         {
           if (head->arg(0)->arity() == 2 && !hr.isFact)
