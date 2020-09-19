@@ -310,7 +310,7 @@ namespace ufo
           }
           else
           {
-            addDecl(head->arg(0), !hr.isFact);
+            addDecl(head->arg(0));
           }
           hr.head = head->arg(0);
           hr.dstRelation = hr.head->arg(0);
