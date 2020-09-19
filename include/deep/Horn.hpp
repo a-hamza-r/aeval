@@ -40,8 +40,6 @@ namespace ufo
     Expr srcRelation;
     Expr dstRelation;
 
-    Expr srcRelationDecl; //temporarily added
-
     bool isFact;
     bool isQuery;
     bool isInductive;
@@ -101,7 +99,6 @@ namespace ufo
       errs() << "\n";
 
       errs() << "srcRelation: " << *srcRelation << "\n";
-      errs() << "srcRelationDecl: " << *srcRelationDecl << "\n";
       errs() << "dstRelation: " << *dstRelation << "\n";
       errs() << "isFact: " << isFact << "\n";
       errs() << "isQuery: " << isQuery << "\n";
@@ -145,13 +142,25 @@ namespace ufo
       return false;
     }
 
-    void preprocess (Expr term, ExprVector& srcVars, Expr &srcRelation, Expr &srcRelationDecl, ExprSet& lin)
+    void getDecl(Expr &relation, Expr &relationDecl)
+    {
+        for (auto it = decls.begin(); it != decls.end(); it++)
+        {
+          if ((*it)->arg(0) == relation)
+          {
+            relationDecl = *it;
+            return;
+          }
+        }
+    }
+
+    void preprocess (Expr term, ExprVector& srcVars, Expr &srcRelation, ExprSet& lin)
     {
       if (isOpX<AND>(term))
       {
         for (auto it = term->args_begin(), end = term->args_end(); it != end; ++it)
         {
-          preprocess(*it, srcVars, srcRelation, srcRelationDecl, lin);
+          preprocess(*it, srcVars, srcRelation, lin);
         }
       }
       else
@@ -177,7 +186,6 @@ namespace ufo
                   exit(0);
                 }
                 srcRelation = rel->arg(0);
-                srcRelationDecl = rel; //temporarily added
                 for (auto it = term->args_begin()+1, end = term->args_end(); it != end; ++it)
                   srcVars.push_back(*it);
               }
@@ -293,7 +301,7 @@ namespace ufo
 
         ExprVector origSrcSymbs;
         ExprSet lin;
-        preprocess(body, origSrcSymbs, hr.srcRelation, hr.srcRelationDecl, lin);
+        preprocess(body, origSrcSymbs, hr.srcRelation, lin);
         if (hr.srcRelation == NULL)
         {
           if (hasUninterp(body))
@@ -303,7 +311,6 @@ namespace ufo
             exit (0);
           }
           hr.srcRelation = mk<TRUE>(m_efac);
-          hr.srcRelationDecl = mk<TRUE>(m_efac); //temporarily added
         }
 
         hr.isFact = isOpX<TRUE>(hr.srcRelation);

@@ -106,15 +106,16 @@ namespace ufo
     }
 
 
-    void nonRecursiveProduct(vector<HornRuleExt> &chcs, Expr &product, ExprFactory &m_efac)
+    void nonRecursiveProduct(CHCs &rules, Expr &product, ExprFactory &m_efac)
     {
-        Expr fapp;
+        Expr fapp, srcRelationDecl;
         product = mk<TRUE>(m_efac);
-        for (auto it = chcs.begin(); it != chcs.end(); it++)
+        for (auto it = rules.chcs.begin(); it != rules.chcs.end(); it++)
         {
             if (!it->isFact && !it->isInductive)
             {
-                fapp = bind::fapp(it->srcRelationDecl, it->srcVars);
+                rules.getDecl(it->srcRelation, srcRelationDecl); // confirm if this does everything properly
+                fapp = bind::fapp(srcRelationDecl, it->srcVars);
                 product = mk<AND>(product, fapp);
             }
         }
@@ -126,7 +127,6 @@ namespace ufo
     {
         if (chc.isFact && !chc.isInductive) // !chc.isInductive might be redundant
         {
-            chc.srcRelationDecl = chc.head;
             chc.srcRelation = chc.head->arg(0);
             chc.srcVars = chc.dstVars; // makes srcVars also primed variables but that might not be an issue
             // chc.printMemberVars();
@@ -144,7 +144,7 @@ namespace ufo
     {
         Expr constraintPr, recursivePr, nonRecursivePr;
         constraintProduct(rules.chcs, constraintPr, m_efac);
-        nonRecursiveProduct(rules.chcs, nonRecursivePr, m_efac);
+        nonRecursiveProduct(rules, nonRecursivePr, m_efac);
         recursiveProduct(rules.chcs, recursivePr, m_efac);
 
         // product = constraintPr;
@@ -165,7 +165,7 @@ namespace ufo
 
     void getNonRecPartsPartitioned(HornRuleExt &chc, vector<HornRuleExt> &partitions)
     {
-        if (isOpX())
+        // if (isOpX())
     }
 
 
@@ -194,20 +194,21 @@ namespace ufo
 
         HornRuleExt queryPr;
 
-        createProductQuery(rules1.chcs[queryInd1], rules2.chcs[queryInd2], queryPr);
-        vector<HornRuleExt> transformedCHCs;
-        vector<HornRuleExt> worklist, partitions;
-        HornRuleExt C_a;
+        // createProductQuery(rules1.chcs[queryInd1], rules2.chcs[queryInd2], queryPr);
+        // vector<HornRuleExt> transformedCHCs;
+        // vector<HornRuleExt> worklist, partitions;
+        // HornRuleExt C_a;
 
-        worklist.push_back(queryPr);
+        // worklist.push_back(queryPr);
 
-        while (!worklist.empty())
-        {
-            C_a = worklist[0];
-            worklist.erase(worklist.begin());
+        // while (!worklist.empty())
+        // {
+        //     C_a = worklist[0];
+        //     worklist.erase(worklist.begin());
 
-            getNonRecPartsPartitioned(C_a, partitions);
-        }
+        //     // getNonRecPartsPartitioned(C_a, partitions);
+        // }
+
 
 	    // Expr headPr;
 	    // Expr bodyPr;
