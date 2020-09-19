@@ -169,28 +169,21 @@ namespace ufo
         {
           lin.insert(term);
         }
-        if (isOpX<FAPP>(term))
+        if (isOpX<FAPP>(term) && isOpX<FDECL>(term->arg(0)) &&
+            find(decls.begin(), decls.end(), term->arg(0)) != decls.end())
+                // GF: the last requirement might be too restrictive: a rule with
+                //     the term->arg(0) in the head should already be encountered
         {
-          if (term->arity() > 0)
+          Expr rel = term->arg(0);
+          if (srcRelation != NULL)
           {
-            if (isOpX<FDECL>(term->arg(0)))
-            {
-              Expr rel = term->arg(0);
-              if (term->arg(0)->arity() > 2)
-              {
-                addDecl(rel);
-                if (srcRelation != NULL)
-                {
-                  outs() << "Nonlinear CHCs are currently unsupported:\n   ";
-                  outs () << *srcRelation << " /\\ " << *rel->arg(0) << "\n";
-                  exit(0);
-                }
-                srcRelation = rel->arg(0);
-                for (auto it = term->args_begin()+1, end = term->args_end(); it != end; ++it)
-                  srcVars.push_back(*it);
-              }
-            }
+            outs() << "Nonlinear CHCs are currently unsupported:\n   ";
+            outs () << *srcRelation << " /\\ " << *rel->arg(0) << "\n";
+            exit(0);
           }
+          srcRelation = rel->arg(0);
+          for (auto it = term->args_begin()+1, end = term->args_end(); it != end; ++it)
+            srcVars.push_back(*it);
         }
         else
         {
@@ -201,11 +194,15 @@ namespace ufo
 
     void addDecl (Expr a, bool notInit = true)
     {
+<<<<<<< HEAD
       if (a->arity() == 2 && notInit)
       {
         addFailDecl(a->arg(0));
       }
       else if (invVars[a->arg(0)].size() == 0)
+=======
+      if (invVars[a->arg(0)].size() == 0)
+>>>>>>> 6a81a15de922acc8a892bd0036ba8a90ce777892
       {
         decls.insert(a);
         for (int i = 1; i < a->arity()-1; i++)
@@ -314,7 +311,10 @@ namespace ufo
         }
 
         hr.isFact = isOpX<TRUE>(hr.srcRelation);
+<<<<<<< HEAD
 
+=======
+>>>>>>> 6a81a15de922acc8a892bd0036ba8a90ce777892
         if (isOpX<FAPP>(head))
         {
           if (head->arg(0)->arity() == 2 && !hr.isFact)
