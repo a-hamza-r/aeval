@@ -85,7 +85,8 @@ namespace ufo
                 return;
             }
 
-            productRel = mkTerm<string> (lexical_cast<string>(productRel)+lexical_cast<string>(rel->arg(0))+"*", m_efac);
+            productRel = mkTerm<string> (lexical_cast<string>(productRel)+lexical_cast<string>(rel->arg(0)) + 
+                "*", m_efac);
             for (int i = 1; i < (rel)->arity()-1; i++) 
                 productTypes.push_back(rel->arg(i));
         }
@@ -171,13 +172,36 @@ namespace ufo
 
     int getQueryRule(CHCs &rules)
     {
+        // a naive implementation. should check for isQuery flag to be true
         return rules.chcs.size()-1;
+    }
+
+
+    void concatenateVectors(ExprVector &result, ExprVector &vec1, ExprVector &vec2)
+    {
+        result.reserve(vec1.size()+vec2.size());
+        result.insert(result.end(), vec1.begin(), vec1.end());
+        result.insert(result.end(), vec2.begin(), vec2.end());
     }
 
 
     void createProductQuery(HornRuleExt &query1, HornRuleExt &query2, HornRuleExt &queryPr)
     {
+        queryPr.body = mk<AND>(query1.body, query2.body);
+
+        queryPr.srcRelation = mk<AND>(query1.srcRelation, query2.srcRelation);
+        queryPr.dstRelation = mkTerm<string>(lexical_cast<string>(query1.dstRelation) + 
+            "*" + lexical_cast<string>(query2.dstRelation), queryPr.body->getFactory());
         
+        queryPr.head = bind::fdecl(queryPr.dstRelation, ExprVector{mk<BOOL_TY>(queryPr.body->getFactory())});
+
+        concatenateVectors(queryPr.srcVars, query1.srcVars, query2.srcVars);
+        concatenateVectors(queryPr.dstVars, query1.dstVars, query2.dstVars);
+        concatenateVectors(queryPr.locVars, query1.locVars, query2.locVars);
+
+        queryPr.isFact = false;
+        queryPr.isQuery = true;
+        queryPr.isInductive = false;
     }
 
 
@@ -194,24 +218,25 @@ namespace ufo
 
         HornRuleExt queryPr;
 
-        // createProductQuery(rules1.chcs[queryInd1], rules2.chcs[queryInd2], queryPr);
-        // vector<HornRuleExt> transformedCHCs;
-        // vector<HornRuleExt> worklist, partitions;
-        // HornRuleExt C_a;
+        createProductQuery(rules1.chcs[queryInd1], rules2.chcs[queryInd2], queryPr);
 
-        // worklist.push_back(queryPr);
+        vector<HornRuleExt> transformedCHCs;
+        vector<HornRuleExt> worklist, partitions;
+        HornRuleExt C_a;
 
-        // while (!worklist.empty())
-        // {
-        //     C_a = worklist[0];
-        //     worklist.erase(worklist.begin());
+        worklist.push_back(queryPr);
 
-        //     // getNonRecPartsPartitioned(C_a, partitions);
-        // }
+        while (!worklist.empty())
+        {
+            C_a = worklist[0];
+            worklist.erase(worklist.begin());
+
+            // getNonRecPartsPartitioned(C_a, partitions);
+        }
 
 
-	    // Expr headPr;
-	    // Expr bodyPr;
+	    Expr headPr;
+	    Expr bodyPr;
 
 
 
