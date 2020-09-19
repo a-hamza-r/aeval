@@ -219,6 +219,7 @@ namespace ufo
 
     bool normalize (Expr& r, HornRuleExt& hr)
     {
+      Expr localVar;
       r = regularizeQF(r);
 
       // TODO: support more syntactic replacements
@@ -226,15 +227,25 @@ namespace ufo
       {
         for (int i = 0; i < r->arity() - 1; i++)
         {
-          hr.locVars.push_back(bind::fapp(r->arg(i)));
+          // AH: modified code to add version name to local vars
+          localVar = mkTerm<string> (varname + lexical_cast<string>(r->arg(i)->arg(0)), m_efac);
+          localVar = bind::fdecl(localVar, ExprVector{r->arg(i)->arg(1)});
+
+          hr.locVars.push_back(bind::fapp(localVar));
         }
         r = r->last();
       }
 
       if (isOpX<NEG>(r) && isOpX<EXISTS>(r->first()))
       {
-        for (int i = 0; i < r->first()->arity() - 1; i++)
-          hr.locVars.push_back(bind::fapp(r->first()->arg(i)));
+        for (int i = 0; i < r->first()->arity() - 1; i++) 
+        {
+          // AH: modified code to add version name to local vars
+          localVar = mkTerm<string> (varname + lexical_cast<string>(r->first()->arg(i)->arg(0)), m_efac);
+          localVar = bind::fdecl(localVar, ExprVector{r->first()->arg(i)->arg(1)});
+          
+          hr.locVars.push_back(bind::fapp(localVar));
+        }
 
         r = mk<IMPL>(r->first()->last(), mk<FALSE>(m_efac));
       }
