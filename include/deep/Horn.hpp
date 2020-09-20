@@ -169,21 +169,28 @@ namespace ufo
         {
           lin.insert(term);
         }
-        if (isOpX<FAPP>(term) && isOpX<FDECL>(term->arg(0)) &&
-            find(decls.begin(), decls.end(), term->arg(0)) != decls.end())
-                // GF: the last requirement might be too restrictive: a rule with
-                //     the term->arg(0) in the head should already be encountered
+        if (isOpX<FAPP>(term) && isOpX<FDECL>(term->arg(0)))
         {
           Expr rel = term->arg(0);
-          if (srcRelation != NULL)
+          renameFdecl(rel);
+          if (find(decls.begin(), decls.end(), rel) != decls.end())
+                // GF: the last requirement might be too restrictive: a rule with
+                //     the term->arg(0) in the head should already be encountered
+                // AH: moved this if-condition separate from previous if-condition
+                //      in order to support renaming fdecls; does the same thing 
+                //      except it renames the rel
           {
-            outs() << "Nonlinear CHCs are currently unsupported:\n   ";
-            outs () << *srcRelation << " /\\ " << *rel->arg(0) << "\n";
-            exit(0);
+            if (srcRelation != NULL)
+            {
+              outs() << "Nonlinear CHCs are currently unsupported:\n   ";
+              outs () << *srcRelation << " /\\ " << *rel->arg(0) << "\n";
+              exit(0);
+            }
+            srcRelation = rel->arg(0);
+            for (auto it = term->args_begin()+1, end = term->args_end(); it != end; ++it)
+              srcVars.push_back(*it);
+
           }
-          srcRelation = rel->arg(0);
-          for (auto it = term->args_begin()+1, end = term->args_end(); it != end; ++it)
-            srcVars.push_back(*it);
         }
         else
         {
@@ -192,8 +199,24 @@ namespace ufo
       }
     }
 
+    void renameFdecl(Expr &fdecl)
+    {
+      Expr name;
+      ExprVector args;
+      if (isOpX<FDECL>(fdecl))
+      {
+        name = mkTerm<string> (varname + lexical_cast<string>(fdecl->arg(0)), m_efac);
+        for (auto it = fdecl->args_begin()+1; it != fdecl->args_end(); it++)
+        {
+          args.push_back(*it);
+        }
+        fdecl = bind::fdecl(name, args);
+      }
+    }
+
     void addDecl (Expr a)
     {
+      renameFdecl(a);
       if (invVars[a->arg(0)].size() == 0)
       {
         decls.insert(a);
@@ -324,6 +347,7 @@ namespace ufo
             addDecl(head->arg(0));
           }
           hr.head = head->arg(0);
+          renameFdecl(hr.head);
           hr.dstRelation = hr.head->arg(0);
         }
         else
@@ -572,6 +596,7 @@ namespace ufo
 
     void addFailDecl(Expr decl)
     {
+      renameFdecl(decl);
       if (failDecl == NULL)
       {
         failDecl = decl;
