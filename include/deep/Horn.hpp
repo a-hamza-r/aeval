@@ -40,6 +40,8 @@ namespace ufo
     Expr srcRelation;
     Expr dstRelation;
 
+    ExprMap repls;
+
     bool isFact;
     bool isQuery;
     bool isInductive;
@@ -172,7 +174,7 @@ namespace ufo
         if (isOpX<FAPP>(term) && isOpX<FDECL>(term->arg(0)))
         {
           Expr rel = term->arg(0);
-          renameFdecl(rel);
+          renameFdecl(rel); // added to rename rel fdecl
           if (find(decls.begin(), decls.end(), rel) != decls.end())
                 // GF: the last requirement might be too restrictive: a rule with
                 //     the term->arg(0) in the head should already be encountered
@@ -216,7 +218,6 @@ namespace ufo
 
     void addDecl (Expr a)
     {
-      renameFdecl(a);
       if (invVars[a->arg(0)].size() == 0)
       {
         decls.insert(a);
@@ -251,9 +252,9 @@ namespace ufo
         for (int i = 0; i < r->arity() - 1; i++)
         {
           // AH: modified code to add version name to local vars
-          localVar = mkTerm<string> (varname + lexical_cast<string>(r->arg(i)->arg(0)), m_efac);
-          localVar = bind::fdecl(localVar, ExprVector{r->arg(i)->arg(1)});
-
+          localVar = r->arg(i);
+          renameFdecl(localVar); // renaming local vars according to version
+          hr.repls[r->arg(i)] = localVar;
           hr.locVars.push_back(bind::fapp(localVar));
         }
         r = r->last();
@@ -264,9 +265,9 @@ namespace ufo
         for (int i = 0; i < r->first()->arity() - 1; i++) 
         {
           // AH: modified code to add version name to local vars
-          localVar = mkTerm<string> (varname + lexical_cast<string>(r->first()->arg(i)->arg(0)), m_efac);
-          localVar = bind::fdecl(localVar, ExprVector{r->first()->arg(i)->arg(1)});
-          
+          localVar = r->first()->arg(i);
+          renameFdecl(localVar); // renaming local vars according to version
+          hr.repls[r->first()->arg(i)] = localVar;
           hr.locVars.push_back(bind::fapp(localVar));
         }
 
@@ -306,6 +307,7 @@ namespace ufo
       m_fp.reset (new ZFixedPoint<EZ3> (m_z3));
       ZFixedPoint<EZ3> &fp = *m_fp;
       fp.loadFPfromFile(smt);
+      Expr decl;
 
       for (auto &r: fp.m_rules)
       {
@@ -338,16 +340,17 @@ namespace ufo
         hr.isFact = isOpX<TRUE>(hr.srcRelation);
         if (isOpX<FAPP>(head))
         {
-          if (head->arg(0)->arity() == 2 && !hr.isFact)
+          decl = head->arg(0);
+          renameFdecl(decl);
+          if (decl->arity() == 2 && !hr.isFact)
           {
-            addFailDecl(head->arg(0)->arg(0));
+            addFailDecl(decl->arg(0));
           }
           else
           {
-            addDecl(head->arg(0));
+            addDecl(decl);
           }
-          hr.head = head->arg(0);
-          renameFdecl(hr.head);
+          hr.head = decl;
           hr.dstRelation = hr.head->arg(0);
         }
         else
@@ -375,6 +378,7 @@ namespace ufo
         hr.assignVarsAndRewrite (origSrcSymbs, invVars[hr.srcRelation],
                                  origDstSymbs, invVars[hr.dstRelation]);
         if (!hr.isQuery) hr.body = simpleQE(hr.body, hr.locVars);
+        hr.body = replaceAll(hr.body, hr.repls); // replaces all variable names in the body
         print(hr);
       }
 
@@ -596,7 +600,6 @@ namespace ufo
 
     void addFailDecl(Expr decl)
     {
-      renameFdecl(decl);
       if (failDecl == NULL)
       {
         failDecl = decl;
