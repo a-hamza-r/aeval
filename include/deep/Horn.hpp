@@ -28,6 +28,28 @@ namespace ufo
     return false;
   }
 
+  template <typename T>
+  void concatenateVectors(vector<T> &result, vector<T> vec1, vector<T> vec2)
+  {
+    result.reserve(vec1.size()+vec2.size());
+    result.insert(result.end(), vec1.begin(), vec1.end());
+    result.insert(result.end(), vec2.begin(), vec2.end());
+  }
+
+  template <typename T>
+  void setUnion(set<T> &result, set<T> set1, set<T> set2)
+  {
+    result = set1;
+    result.insert(set2.begin(), set2.end());
+  }
+
+  template <typename T, typename T1>
+  void concatenateMaps(map<T, T1> &result, map<T, T1> map1, map<T, T1> map2)
+  {
+    result = map1;
+    result.insert(map2.begin(), map2.end());
+  }
+
   struct HornRuleExt
   {
     ExprVector srcVars;
@@ -65,7 +87,8 @@ namespace ufo
       }
     }
 
-    template <typename O> void getTypeVars(ExprVector &srcVarsWithType, ExprVector &dstVarsWithType)
+    template <typename O> 
+    void getTypeVars(ExprVector &srcVarsWithType, ExprVector &dstVarsWithType)
     {
       for (auto it = srcVars.begin(); it != srcVars.end(); it++) {
         if (isOpX<O>(bind::typeOf(*it))) {
@@ -134,6 +157,14 @@ namespace ufo
     CHCs(ExprFactory &efac, EZ3 &z3) : m_efac(efac), m_z3(z3), varname("_FH_") {};
     CHCs(ExprFactory &efac, EZ3 &z3, string n) : m_efac(efac), m_z3(z3), varname(n) {};
 
+    CHCs(const CHCs &rules1, const CHCs &rules2, string n) : m_efac(rules1.m_efac), m_z3(rules1.m_z3), varname(n) 
+    {
+      setUnion(decls, rules1.decls, rules2.decls);
+      concatenateVectors(chcs, rules1.chcs, rules2.chcs);
+      concatenateMaps(invVars, rules1.invVars, rules2.invVars);
+      // join other member variables if required
+    };
+
     bool isFapp (Expr e)
     {
       if (isOpX<FAPP>(e))
@@ -144,7 +175,7 @@ namespace ufo
       return false;
     }
 
-    void getDecl(Expr &relation, Expr &relationDecl)
+    void getDecl(Expr relation, Expr &relationDecl)
     {
         for (auto it = decls.begin(); it != decls.end(); it++)
         {
