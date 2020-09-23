@@ -123,12 +123,12 @@ namespace ufo
     void recursiveProduct(HornRuleExt chc1, HornRuleExt chc2, Expr &product, CHCs &rules)
     {
         Expr transform1, transform2;
-        vector<HornRuleExt> null;
+        vector<HornRuleExt> nullV;
 
         // I am not changing the original system by transforming 
         RTransform(chc1, transform1, rules); RTransform(chc2, transform2, rules);
 
-        productRelationSymbols(ExprVector{transform1, transform2}, product, null, rules, false);
+        productRelationSymbols(ExprVector{transform1, transform2}, product, nullV, rules, false);
 
         if (product) product = product->arg(0);
     }
@@ -155,19 +155,20 @@ namespace ufo
         if (nonRecursivePr && recursivePr) {
             newProductRule.srcRelation = mk<AND>(nonRecursivePr, recursivePr);
             newProductRule.isFact = false;
-            errs() << "nonRecursivePr: " << *nonRecursivePr << "\n";
-            errs() << "recursivePr: " << *recursivePr << "\n";
-            errs() << "head: " << *newProductRule.head << "\n";
+            newProductRule.isQuery = false;
+            // errs() << "nonRecursivePr: " << *nonRecursivePr << "\n";
+            // errs() << "recursivePr: " << *recursivePr << "\n";
+            // errs() << "head: " << *newProductRule.head << "\n";
         }
         else if (nonRecursivePr) {
             newProductRule.srcRelation = nonRecursivePr;
-            errs() << "nonRecursivePr: " << *nonRecursivePr << "\n";
-            errs() << "head: " << *newProductRule.head << "\n";
+            // errs() << "nonRecursivePr: " << *nonRecursivePr << "\n";
+            // errs() << "head: " << *newProductRule.head << "\n";
         }
         else if (recursivePr) {
             newProductRule.srcRelation = recursivePr;
-            errs() << "recursivePr: " << *recursivePr << "\n";
-            errs() << "head: " << *newProductRule.head << "\n";
+            // errs() << "recursivePr: " << *recursivePr << "\n";
+            // errs() << "head: " << *newProductRule.head << "\n";
         }
     }
 
@@ -190,7 +191,7 @@ namespace ufo
         Expr decl;
         if (isOpX<AND>(chc.srcRelation))
         {
-            for (auto it = chc.srcRelation->args_begin(), end = chc.srcRelation->args_end(); it != end; ++it)
+            for (auto it = chc.srcRelation->args_begin(); it != chc.srcRelation->args_end(); it++)
             {
                 rules.getDecl(*it, decl);
                 partitions.push_back(decl);
@@ -248,17 +249,22 @@ namespace ufo
     void productRelationSymbols(ExprVector predicates, Expr &predicateP, vector<HornRuleExt> &rulesP, 
         CHCs &rules, bool calculateRulesOfP)
     {
-        Expr rel, productRel = mkTerm<string>("", rules.m_efac);
+        Expr rel, relDecl, productRel = mkTerm<string>("", rules.m_efac);
         ExprVector productTypes;
         vector<vector<HornRuleExt>> rulesOfPredicates, combinations;
 
         for (auto it = predicates.begin(); it != predicates.end(); it++)
         {
             rel = *it;
-            if (!isFdecl(rel) || rel->arity() < 2) {
-                predicateP = NULL;
-                rulesP = vector<HornRuleExt>();
-                return;
+            if (!isFdecl(rel)) {
+                rules.getDecl(rel, relDecl);
+                if (!isFdecl(relDecl))
+                {
+                    predicateP = NULL;
+                    rulesP = vector<HornRuleExt>();
+                    return;
+                }
+                rel = relDecl;
             }
 
             productRel = mkTerm<string>(lexical_cast<string>(productRel)+lexical_cast<string>(rel->arg(0)) + 
@@ -294,11 +300,11 @@ namespace ufo
     void productOfCHCs(HornRuleExt chc1, HornRuleExt chc2, vector<HornRuleExt> &rulesP, CHCs &rules)
     {
         Expr head, body;
-        vector<HornRuleExt> null;
+        vector<HornRuleExt> nullV;
         HornRuleExt newProductRule;
 
         // head product
-        productRelationSymbols(ExprVector{chc1.head, chc2.head}, head, null, rules, false);
+        productRelationSymbols(ExprVector{chc1.head, chc2.head}, head, nullV, rules, false);
         
         newProductRule.head = head;
         newProductRule.dstRelation = head->arg(0);
@@ -306,6 +312,55 @@ namespace ufo
         // body product
         productBody(chc1, chc2, rules, newProductRule);
 
+    }
+
+
+    void removeCHC(HornRuleExt chc, CHCs &rules)
+    {
+        for (auto it = rules.chcs.begin(); it != rules.chcs.end(); it++)
+        {
+            // errs() << "checking " << *chc.srcRelation << " against " << *it->srcRelation << "\n";
+            if (it->srcRelation == chc.srcRelation && it->dstRelation == chc.dstRelation)
+            {
+                rules.chcs.erase(it);
+            }
+        }
+
+        // might have to remove the chc function relations from invVars and decls
+    }
+
+
+    void transformCHC(HornRuleExt chc, vector<HornRuleExt> rulesP, CHCs &rules)
+    {
+        removeCHC(chc, rules);
+        rules.chcs.insert(rules.chcs.end(), rulesP.begin(), rulesP.end());
+
+        HornRuleExt C_aPrime;
+        Expr predicate;
+        C_aPrime.body = chc.body;
+        C_aPrime.head = chc.head;
+        C_aPrime.dstRelation = chc.dstRelation;
+
+        ExprVector predicates;
+        vector<HornRuleExt> nullV;
+
+        if (isOpX<AND>(chc.srcRelation))
+        {
+            predicates.push_back(chc.srcRelation->arg(0));
+            predicates.push_back(chc.srcRelation->arg(1));
+        }
+        else 
+        {
+            predicates.push_back(chc.srcRelation);
+        }
+
+        productRelationSymbols(predicates, predicate, nullV, rules, false);
+
+        if (predicate) C_aPrime.srcRelation = predicate->arg(0);
+        // errs() << *C_aPrime.srcRelation << "\n";
+
+        // todo: fill remaining member variables of C_aPrime (HornRuleExt), 
+            // also appropriate members in rules (CHCs)
     }
 
 
@@ -347,7 +402,15 @@ namespace ufo
 
             productRelationSymbols(partitions, freshP, rulesP, product, true);
 
+            // errs() << "freshP: " << *freshP << "\n";
+            // for (auto it : rulesP)
+            // {
+            //     product.print(it);
+            // }
 
+            errs() << "transform: \n";
+            product.print(C_a);
+            transformCHC(C_a, rulesP, product);
         }
 
     }
