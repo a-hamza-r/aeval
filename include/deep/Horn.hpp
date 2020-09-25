@@ -68,6 +68,8 @@ namespace ufo
     bool isQuery;
     bool isInductive;
 
+    // possibly, add an option to detect multiple srcRelations
+
     void assignVarsAndRewrite (ExprVector& _srcVars, ExprVector& invVarsSrc,
                                ExprVector& _dstVars, ExprVector& invVarsDst)
     {
@@ -177,15 +179,31 @@ namespace ufo
 
     void getDecl(Expr relation, Expr &relationDecl)
     {
-        for (auto it = decls.begin(); it != decls.end(); it++)
+      for (auto it = decls.begin(); it != decls.end(); it++)
+      {
+        if ((*it)->arg(0) == relation)
         {
-          if ((*it)->arg(0) == relation)
-          {
-            relationDecl = *it;
-            return;
-          }
+          relationDecl = *it;
+          return;
         }
+      }
     }
+
+    void getInvVars(Expr relation, ExprVector &vars)
+    {
+      if (isOpX<AND>(relation))
+      {
+        for (auto it = relation->args_begin(); it != relation->args_end(); it++)
+        {
+          getInvVars(*it, vars);
+        }
+      }
+      else {
+        ExprVector v = invVars[relation];
+        vars.insert(vars.end(), v.begin(), v.end());
+      }
+    }
+
 
     void preprocess (Expr term, ExprVector& srcVars, Expr &srcRelation, ExprSet& lin)
     {
@@ -269,6 +287,15 @@ namespace ufo
           else assert(0);
           invVars[a->arg(0)].push_back(var);
         }
+      }
+    }
+
+    void addDecl2 (Expr a, ExprVector vars)
+    {
+      if (invVars[a->arg(0)].size() == 0)
+      {
+        decls.insert(a);
+        invVars[a->arg(0)] = vars;
       }
     }
 
