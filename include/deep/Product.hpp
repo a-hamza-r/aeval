@@ -213,7 +213,8 @@ namespace ufo
             vars.insert(vars.end(), transformed[0]->args_begin()+1, transformed[0]->args_end());
             vars.insert(vars.end(), transformed[1]->args_begin()+1, transformed[1]->args_end());
 
-            rules.addDecl2(product, vars);
+            // do not need decl here since this decl has already been added in non-recursive part. make sure
+            // rules.addDecl2(product, vars); 
 
             product = product->arg(0);
         }
@@ -297,7 +298,7 @@ namespace ufo
     }
 
 
-    void getQueryRules(vector<HornRuleExt> chcs, vector<HornRuleExt> &queries)
+    void getQueryRules(vector<HornRuleExt> &chcs, vector<HornRuleExt> &queries)
     {
         for (auto it = chcs.begin(); it != chcs.end(); it++)
         {
@@ -306,7 +307,7 @@ namespace ufo
     }
 
 
-    void createProductQuery(vector<HornRuleExt> queries, HornRuleExt &queryPr, CHCs &rules)
+    void createProductQuery(vector<HornRuleExt> &queries, HornRuleExt &queryPr, CHCs &rules)
     {
         HornRuleExt query1 = queries[0];
         HornRuleExt query2 = queries[1];
@@ -330,7 +331,7 @@ namespace ufo
     }
 
 
-    void calculateCombinations(vector<vector<HornRuleExt>> rules, vector<vector<HornRuleExt>> &combinations)
+    void calculateCombinations(vector<vector<HornRuleExt>> &rules, vector<vector<HornRuleExt>> &combinations)
     {
         // assumption: rules has only two vectors, one for rules of each predicate
         vector<HornRuleExt> rulesFirstP = rules[0], rulesSecondP = rules[1];
@@ -373,12 +374,12 @@ namespace ufo
 
             if (calculateRulesOfP) 
             {
-                // errs() << "rules of current p: " << *rel << "\n";
+                errs() << "Rules of relation: " << *rel->arg(0) << "\n";
                 vector<HornRuleExt> rulesOfCurrentP;
                 rulesOfPredicate(rules.chcs, rel, rulesOfCurrentP);
 
-                // for (auto it2 : rulesOfCurrentP)
-                //     rules.print(it2);
+                for (auto it2 : rulesOfCurrentP)
+                    rules.print(it2);
 
                 rulesOfPredicates.push_back(rulesOfCurrentP);
             }
@@ -431,11 +432,12 @@ namespace ufo
         // body product
         productBody(chc1, chc2, rules, newProductRule);
         
-        // errs() << "two systems: \n";
-        // rules.print(chc1);
-        // rules.print(chc2);
-        // errs() << "product is: \n";
-        // rules.print(newProductRule);
+        errs() << "Taking product of two CHCs: \n";
+        rules.print(chc1);
+        rules.print(chc2);
+        errs() << "The product is: \n";
+        rules.print(newProductRule);
+        errs() << "\n";
 
         rulesOfP.push_back(newProductRule);
     }
@@ -454,11 +456,11 @@ namespace ufo
 
         for (auto it = rules.chcs.begin(); it != rules.chcs.end(); it++)
         {
-            // errs() << "checking " << *srcRelation << " against " << *it->srcRelation << "\n";
-            // errs() << "checking " << *dstRelation << " against " << *it->dstRelation << "\n";
+            errs() << "checking " << *srcRelation << " against " << *it->srcRelation << "\n";
+            errs() << "checking " << *dstRelation << " against " << *it->dstRelation << "\n";
             if (it->srcRelation == srcRelation && it->dstRelation == dstRelation)
             {
-                // errs() << "erasing " << *srcRelation << " " << *dstRelation << "\n";
+                errs() << "erasing " << *srcRelation << " " << *dstRelation << "\n";
                 rules.chcs.erase(it);
             }
         }
@@ -467,45 +469,34 @@ namespace ufo
     }
 
 
-    void updateSystem(HornRuleExt chc, vector<HornRuleExt> rulesOfP, CHCs &rules)
-    {
-        removeCHC(chc.srcRelation, chc.dstRelation, rules);
-        
-        rules.chcs.insert(rules.chcs.end(), rulesOfP.begin(), rulesOfP.end());
+    // void updateCHC(HornRuleExt &chc, Expr newP, CHCs &rules)
+    // {   
+    //     errs() << "updating: \n";
+    //     Expr predicate;
+    //     ExprVector vars;
 
-        Expr predicate;
-        ExprVector vars;
+    //     ExprVector predicates;
+    //     vector<HornRuleExt> nullV;
 
-        ExprVector predicates;
-        vector<HornRuleExt> nullV;
+    //     if (isOpX<AND>(chc.srcRelation))
+    //     {
+    //         for (auto it = chc.srcRelation->args_begin(); it != chc.srcRelation->args_end(); it++)
+    //         {
+    //             rules.getInvVars(*it, vars);
+    //         }
 
-        if (isOpX<AND>(chc.srcRelation))
-        {
-            predicates.push_back(chc.srcRelation->arg(0));
-            predicates.push_back(chc.srcRelation->arg(1));
-        }
-        else 
-        {
-            predicates.push_back(chc.srcRelation);
-        }
+    //         chc.srcVars = vars;
+    //         chc.srcRelation = newP;
+            
+    //         errs() << *chc.srcRelation << "\n";
+    //     }
 
-        productRelationSymbols(predicates, predicate, nullV, rules, false);
+    //     // errs() << "modified chc: \n";
+    //     // rules.print(chc); 
 
-        if (predicate) chc.srcRelation = predicate->arg(0);
-        rules.getInvVars(predicates[0], vars);
-        rules.getInvVars(predicates[1], vars);
-
-        chc.srcVars.clear();
-        chc.srcVars = vars;
-
-        rules.chcs.push_back(chc);
-
-        // errs() << "modified chc: \n";
-        // rules.print(chc); 
-
-        // todo: fill remaining member variables of newCHC (HornRuleExt), 
-            // also appropriate members in rules (CHCs)
-    }
+    //     // todo: fill remaining member variables of newCHC (HornRuleExt), 
+    //         // also appropriate members in rules (CHCs)
+    // }
 
 
     // generates the product of two CHC systems
@@ -539,39 +530,48 @@ namespace ufo
 
         worklist.push_back(queryPr);
 
+        errs() << "\nInitial product query is: \n";
+        product.print(queryPr);
+
         while (!worklist.empty())
         {
-            ExprVector partitions;
+            ExprVector partition;
             vector<HornRuleExt> rulesOfP;
             C_a = worklist[0];
             worklist.erase(worklist.begin());
 
-            // errs() << "current worklist item: \n";
-            // product.print(C_a);
+            errs() << "current worklist item popped: \n";
+            product.print(C_a);
 
             // AH: In the original algorithm, the operation PARTITION is used that is defined: 
             // 'operator partition from a set to a set of its disjoint subsets'
             // I just create one partition of two symbols because there are only two relation symbols here 
-            getNonRecParts(C_a.srcRelation, C_a.dstRelation, partitions, product);
+            getNonRecParts(C_a.srcRelation, C_a.dstRelation, partition, product);
 
-            if (partitions.size() < 2)
-                continue;
-            // errs() << "partition: " << *partitions[0] << "\n";
-            // errs() << "partition: " << *partitions[1] << "\n";
-
-            productRelationSymbols(partitions, freshP, rulesOfP, product, true);
-
-            // errs() << "freshP: " << *freshP << "\n";
-
-            updateSystem(C_a, rulesOfP, product);
-
-            // errs() << "pushed to rules p: \n";
-            for (auto it : rulesOfP)
+            if (partition.size() >= 2) 
             {
-                worklist.push_back(it);
-                // product.print(it);
+                errs() << "Non-recursive partition is: " << *partition[0]->arg(0) 
+                    << " and " << *partition[1]->arg(0) << "\n";
+
+                productRelationSymbols(partition, freshP, rulesOfP, product, true);
+
+                // updateCHC(C_a, freshP, product);
+                C_a.srcRelation = freshP->arg(0);
+
+                errs() << "We push rules of p " << *C_a.srcRelation << " to worklist:\n";
+                for (auto it : rulesOfP)
+                {
+                    worklist.push_back(it);
+                    product.print(it);
+                }
             }
-            rulesOfP.clear();
+
+            product.chcs.push_back(C_a);
+            errs() << "Updated CHC added to CHCs: \n";
+            product.print(C_a);
+            errs() << "\n";
+            // removeCHC(C_a.srcRelation, C_a.dstRelation, product);
+
             // errs() << "printing all the rules\n";
             // for (auto it : product.chcs)
             // {
@@ -579,6 +579,11 @@ namespace ufo
             // }
         }
 
+        errs() << "Final system:\n";
+        for (auto it : product.chcs)
+        {
+            product.print(it);
+        }
     }
 
 
