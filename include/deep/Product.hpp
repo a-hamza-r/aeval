@@ -298,36 +298,17 @@ namespace ufo
     }
 
 
-    void getQueryRules(vector<HornRuleExt> &chcs, vector<HornRuleExt> &queries)
+    void getQueries(vector<HornRuleExt> &chcs1, vector<HornRuleExt> &chcs2, vector<vector<HornRuleExt>> &queries)
     {
-        for (auto it = chcs.begin(); it != chcs.end(); it++)
+        for (auto it = chcs1.begin(); it != chcs1.end(); it++)
         {
-            if (it->isQuery) queries.push_back(*it);
+            if (it->isQuery) queries[0].push_back(*it);
         }
-    }
 
-
-    void createProductQuery(vector<HornRuleExt> &queries, HornRuleExt &queryPr, CHCs &rules)
-    {
-        HornRuleExt query1 = queries[0];
-        HornRuleExt query2 = queries[1];
-        queryPr.body = mk<AND>(query1.body, query2.body);
-
-        queryPr.srcRelation = mk<AND>(query1.srcRelation, query2.srcRelation);
-        queryPr.dstRelation = mkTerm<string>(lexical_cast<string>(query1.dstRelation) + 
-            "*" + lexical_cast<string>(query2.dstRelation), queryPr.body->getFactory());
-        
-        queryPr.head = bind::fdecl(queryPr.dstRelation, ExprVector{mk<BOOL_TY>(queryPr.body->getFactory())});
-
-        rules.addFailDecl(queryPr.dstRelation);
-
-        concatenateVectors(queryPr.srcVars, query1.srcVars, query2.srcVars);
-        concatenateVectors(queryPr.dstVars, query1.dstVars, query2.dstVars);
-        concatenateVectors(queryPr.locVars, query1.locVars, query2.locVars);
-
-        queryPr.isFact = false;
-        queryPr.isQuery = true;
-        queryPr.isInductive = false;
+        for (auto it = chcs2.begin(); it != chcs2.end(); it++)
+        {
+            if (it->isQuery) queries[1].push_back(*it);
+        }
     }
 
 
@@ -342,6 +323,40 @@ namespace ufo
             {
                 combinations.push_back(vector<HornRuleExt>{it, it2});
             }
+        }
+    }
+
+    void createProductQueries(vector<vector<HornRuleExt>> &queries, vector<HornRuleExt> &queriesPr, CHCs &rules)
+    {
+        vector<vector<HornRuleExt>> combinations;
+        calculateCombinations(queries, combinations);
+
+        HornRuleExt query1, query2, queryPr;
+
+        for (auto &it : combinations)
+        {
+            query1 = it[0];
+            query2 = it[1];
+            queryPr.body = mk<AND>(query1.body, query2.body);
+
+            queryPr.srcRelation = mk<AND>(query1.srcRelation, query2.srcRelation);
+            queryPr.dstRelation = mkTerm<string>(lexical_cast<string>(query1.dstRelation) + 
+                "*" + lexical_cast<string>(query2.dstRelation), queryPr.body->getFactory());
+            
+            queryPr.head = bind::fdecl(queryPr.dstRelation, ExprVector{mk<BOOL_TY>(rules.m_efac)});
+
+            if (!rules.failDecl)
+                rules.addFailDecl(queryPr.dstRelation);
+
+            concatenateVectors(queryPr.srcVars, query1.srcVars, query2.srcVars);
+            concatenateVectors(queryPr.dstVars, query1.dstVars, query2.dstVars);
+            concatenateVectors(queryPr.locVars, query1.locVars, query2.locVars);
+
+            queryPr.isFact = false;
+            queryPr.isQuery = true;
+            queryPr.isInductive = false;
+
+            queriesPr.push_back(queryPr);
         }
     }
 
@@ -502,36 +517,14 @@ namespace ufo
     // generates the product of two CHC systems
     // At many places, it is assumed that there are only two systems, 
     // hence the operations done are not generic i.e. for product of more than two CHC systems
-    void Product(CHCs &product)
+    void Product(CHCs &product, vector<HornRuleExt> &queries)
     {
-        vector<HornRuleExt> queries;
         Expr freshP;
-
-        // get queries of both systems
-        getQueryRules(product.chcs, queries);
-
-        if (queries.empty())
-        {
-            outs() << "Product can not be found.\n";
-            exit(1);
-        }
-
-        HornRuleExt queryPr;
-
-        // generate product query
-        createProductQuery(queries, queryPr, product);
-
-        // errs() << "Product query: ";
-        // product.print(queryPr);
-
         vector<HornRuleExt> transformedCHCs;
         vector<HornRuleExt> worklist;
         HornRuleExt C_a;
 
-        worklist.push_back(queryPr);
-
-        errs() << "\nInitial product query is: \n";
-        product.print(queryPr);
+        worklist = queries;
 
         while (!worklist.empty())
         {
@@ -608,8 +601,27 @@ namespace ufo
 
         CHCs ruleManagerProduct(ruleManagerSrc, ruleManagerDst, "_pr_");
 
+        vector<vector<HornRuleExt>> queries(2);
+
+        // get queries of both systems
+        getQueries(ruleManagerSrc.chcs, ruleManagerDst.chcs, queries);
+
+        if (queries.empty())
+        {
+            outs() << "Product can not be found.\n";
+            exit(1);
+        }
+
+        vector<HornRuleExt> queriesPr;
+
+        // generate product queries
+        createProductQueries(queries, queriesPr, ruleManagerProduct);
+
+        // errs() << "Product query: ";
+        // product.print(queriesPr);
+
         // product of two CHC systems
-	    Product(ruleManagerProduct);
+	    Product(ruleManagerProduct, queriesPr);
 
 	    // auto chcs1 = ruleManagerSrc.chcs;
 	    // auto chcs2 = ruleManagerDst.chcs;
