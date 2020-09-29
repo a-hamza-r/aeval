@@ -179,6 +179,11 @@ namespace ufo
 
     void getDecl(Expr relation, Expr &relationDecl)
     {
+      if (isFdecl(relation)) 
+      {
+        relationDecl = relation;
+        return;
+      }
       for (auto it = decls.begin(); it != decls.end(); it++)
       {
         if ((*it)->arg(0) == relation)
