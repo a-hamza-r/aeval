@@ -455,6 +455,12 @@ namespace ufo
     // }
 
 
+    void mkPHI(ExprVector &vars, Expr &phi, CHCs &rules)
+    {
+        phi = mk<EQ>(mknary<PLUS>(vars.begin(), vars.end()), bv::bvConst(mkTerm<string>("var", rules.m_efac), 32));
+        errs() << *phi << "\n";
+    }
+
     // generates the product of two CHC systems
     // At many places, it is assumed that there are only two systems, 
     // hence the operations done are not generic i.e. for product of more than two CHC systems
@@ -514,7 +520,17 @@ namespace ufo
                     product.print(it);
             }
 
-            product.chcs.push_back(C_a);
+            if (isOpX<AND>(C_a.srcRelation))
+            {
+                errs() << "Non-linear CHC:\n";
+                product.print(C_a);
+
+                
+            }
+            else 
+            {
+                product.chcs.push_back(C_a);
+            }
             errs() << "Updated CHC added to CHCs: \n";
             product.print(C_a);
             errs() << "\n";
@@ -536,6 +552,10 @@ namespace ufo
         {
             product.print(it);
         }
+
+        // Expr phi;
+        // ExprVector vars{product.chcs[0].srcRelation, product.chcs[1].srcRelation};
+        // mkPHI(vars, phi, product);
     }
 
 
