@@ -685,6 +685,14 @@ namespace ufo
     {
       if (!anyProgress(worklist)) return false;
       map<int, ExprVector> candidatesTmp = candidates;
+      // errs() << "candidates in multiHoudini: \n";
+      // for (auto it : candidates)
+      // {
+      //   errs() << it.first << ": ";
+      //   for (auto it2 : it.second)
+      //     errs() << *it2 << " ";
+      //   errs() << "\n";
+      // }
       bool res1 = true;
       for (auto &h: worklist)
       {
@@ -720,7 +728,7 @@ namespace ufo
                 if (hr.isFact)
                 {
                   Expr failedCand = normalizeDisj(*it, invVars);
-//                outs () << "failed cand for " << *hr.dstRelation << ": " << *failedCand << "\n";
+               outs () << "failed cand for " << *hr.dstRelation << ": " << *failedCand << "\n";
                   Sampl& s = sf.exprToSampl(failedCand);
                   sf.assignPrioritiesForFailed();
                 }
@@ -1063,6 +1071,7 @@ namespace ufo
         for (auto a : tmp)
         {
           // before pushing them to the cand set, we do some small mutations to get rid of specific consts
+          outs () << " >>>> CAND FROM DATA for " << *dcl << ": " << *a << "\n";
           a = simplifyArithm(a);
           if (isOpX<EQ>(a) && isIntConst(a->left()) &&
               isNumericConst(a->right()) && lexical_cast<string>(a->right()) != "0")
@@ -1373,8 +1382,41 @@ namespace ufo
 #endif
     }
 
+    for (auto it : cands)
+    {
+      errs() << "cands for:\n";
+      errs() << *it.first << ": ";
+      for (auto it2 : it.second)
+      {
+        errs() << *it2 << " ";
+      }
+      errs() << "\n";
+    }
+
     for (auto& dcl: ruleManager.wtoDecls) ds.getSeeds(dcl, cands);
+      errs() << "after refreshing:\n";
+  for (auto it : cands)
+    {
+      errs() << "cands for:\n";
+      errs() << *it.first << ": ";
+      for (auto it2 : it.second)
+      {
+        errs() << *it2 << " ";
+      }
+      errs() << "\n";
+    }
     ds.refreshCands(cands);
+  errs() << "after refreshing:\n";
+  for (auto it : cands)
+    {
+      errs() << "cands for:\n";
+      errs() << *it.first << ": ";
+      for (auto it2 : it.second)
+      {
+        errs() << *it2 << " ";
+      }
+      errs() << "\n";
+    }
     for (auto& dcl: ruleManager.decls) ds.doSeedMining(dcl->arg(0), cands[dcl->arg(0)], false);
     ds.calculateStatistics();
     if (ds.bootstrap()) return;
