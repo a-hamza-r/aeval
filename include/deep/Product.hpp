@@ -2,7 +2,7 @@
 #define PRODUCT__HPP__
 
 #include "Horn.hpp"
-#include "RndLearnerV2.hpp"
+#include "RndLearnerV3.hpp"
 
 using namespace std;
 using namespace boost;
@@ -455,12 +455,6 @@ namespace ufo
     // }
 
 
-    void mkPHI(ExprVector &vars, Expr &phi, CHCs &rules)
-    {
-        phi = mk<EQ>(mknary<PLUS>(vars.begin(), vars.end()), bv::bvConst(mkTerm<string>("var", rules.m_efac), 32));
-        errs() << *phi << "\n";
-    }
-
     // generates the product of two CHC systems
     // At many places, it is assumed that there are only two systems, 
     // hence the operations done are not generic i.e. for product of more than two CHC systems
@@ -535,6 +529,7 @@ namespace ufo
             product.print(C_a);
             errs() << "\n";
 
+
             // errs() << "printing all the rules\n";
             // for (auto it : product.chcs)
             // {
@@ -547,15 +542,22 @@ namespace ufo
             removeCHC(it[0], it[1], product);
         }
 
+        for (int i = 0; i < product.chcs.size(); i++)
+            product.outgs[product.chcs[i].srcRelation].push_back(i);
+
         errs() << "Final system:\n";
         for (auto it : product.chcs)
         {
             product.print(it);
         }
 
-        // Expr phi;
-        // ExprVector vars{product.chcs[0].srcRelation, product.chcs[1].srcRelation};
-        // mkPHI(vars, phi, product);
+        errs() << "sorted:\n";
+              // sort rules
+         product.wtoSort();
+         product.print();
+
+
+        // learnInvariants3(product, false, false, true, vector<string>());
     }
 
 
