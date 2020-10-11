@@ -518,8 +518,6 @@ namespace ufo
             {
                 errs() << "Non-linear CHC:\n";
                 product.print(C_a);
-
-                
             }
             else 
             {
@@ -546,18 +544,7 @@ namespace ufo
             product.outgs[product.chcs[i].srcRelation].push_back(i);
 
         errs() << "Final system:\n";
-        for (auto it : product.chcs)
-        {
-            product.print(it);
-        }
-
-        errs() << "sorted:\n";
-              // sort rules
-         product.wtoSort();
-         product.print();
-
-
-        // learnInvariants3(product, false, false, true, vector<string>());
+        product.print();
     }
 
 
@@ -587,6 +574,8 @@ namespace ufo
 
         // product of two CHC systems
 	    Product(ruleManagerProduct, queries);
+
+        learnInvariants3(ruleManagerProduct, false, false, true, vector<string>());
   };
 }
 

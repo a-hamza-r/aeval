@@ -1,7 +1,7 @@
 #ifndef RNDLEARNERV3__HPP__
 #define RNDLEARNERV3__HPP__
 
-#include "RndLearner.hpp"
+#include "RndLearnerV2.hpp"
 
 #ifdef HAVE_ARMADILLO
 #include "DataLearner.hpp"
@@ -1338,13 +1338,11 @@ namespace ufo
     }
   };
 
-  inline void learnInvariants3(string smt, char * outfile, int maxAttempts, bool freqs, bool aggp, bool enableDataLearning, const vector<string> & behaviorfiles)
+  inline void learnInvariants3(CHCs &ruleManager, /*char * outfile, int maxAttempts,*/ bool freqs, bool aggp, bool enableDataLearning, const vector<string> & behaviorfiles)
   {
     ExprFactory m_efac;
     EZ3 z3(m_efac);
 
-    CHCs ruleManager(m_efac, z3);
-    ruleManager.parse(smt);
     BndExpl bnd(ruleManager);
 
     if (!ruleManager.hasCycles())
@@ -1367,7 +1365,7 @@ namespace ufo
 
     if (enableDataLearning) {
 #ifdef HAVE_ARMADILLO
-      ds.getDataCandidates(cands, behaviorfiles);
+      // ds.getDataCandidates(cands, behaviorfiles);
 #else
       outs() << "Skipping learning from data as required library (armadillo) not found\n";
 #endif
@@ -1378,8 +1376,8 @@ namespace ufo
     for (auto& dcl: ruleManager.decls) ds.doSeedMining(dcl->arg(0), cands[dcl->arg(0)], false);
     ds.calculateStatistics();
     if (ds.bootstrap()) return;
-    std::srand(std::time(0));
-    ds.synthesize(maxAttempts, outfile);
+    // std::srand(std::time(0));
+    // ds.synthesize(maxAttempts, outfile);
   }
 }
 
