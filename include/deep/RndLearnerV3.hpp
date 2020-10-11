@@ -1384,7 +1384,7 @@ namespace ufo
 
     for (auto it : cands)
     {
-      errs() << "cands for:\n";
+      errs() << "\ncands for:\n";
       errs() << *it.first << ": ";
       for (auto it2 : it.second)
       {
@@ -1394,19 +1394,8 @@ namespace ufo
     }
 
     for (auto& dcl: ruleManager.wtoDecls) ds.getSeeds(dcl, cands);
-      errs() << "after refreshing:\n";
-  for (auto it : cands)
-    {
-      errs() << "cands for:\n";
-      errs() << *it.first << ": ";
-      for (auto it2 : it.second)
-      {
-        errs() << *it2 << " ";
-      }
-      errs() << "\n";
-    }
     ds.refreshCands(cands);
-  errs() << "after refreshing:\n";
+  errs() << "\nafter refreshing:\n";
   for (auto it : cands)
     {
       errs() << "cands for:\n";
@@ -1415,7 +1404,7 @@ namespace ufo
       {
         errs() << *it2 << " ";
       }
-      errs() << "\n";
+      errs() << "\n\n";
     }
     for (auto& dcl: ruleManager.decls) ds.doSeedMining(dcl->arg(0), cands[dcl->arg(0)], false);
     ds.calculateStatistics();
