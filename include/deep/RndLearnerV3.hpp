@@ -1062,6 +1062,7 @@ namespace ufo
         (void)dl.computePolynomials(tmp);
         for (auto a : tmp)
         {
+          errs() << " >>>> CAND FROM DATA for " << *dcl << ": " << *a << "\n";
           // before pushing them to the cand set, we do some small mutations to get rid of specific consts
           a = simplifyArithm(a);
           if (isOpX<EQ>(a) && isIntConst(a->left()) &&
@@ -1371,10 +1372,21 @@ namespace ufo
 #endif
     }
 
+    for (auto it : cands)
+    {
+      errs() << "cand: " << *it.first << "\n";
+      for (auto it2 : it.second)
+        errs() << *it2 << " ";
+      errs() << "\n";
+    }
+
     for (auto& dcl: ruleManager.wtoDecls) ds.getSeeds(dcl, cands);
     ds.refreshCands(cands);
     for (auto& dcl: ruleManager.decls) ds.doSeedMining(dcl->arg(0), cands[dcl->arg(0)], false);
-    ds.calculateStatistics();
+
+    // todo: this line throws an error, investigate later
+    // ds.calculateStatistics();
+    
     if (ds.bootstrap()) return;
     // std::srand(std::time(0));
     // ds.synthesize(maxAttempts, outfile);

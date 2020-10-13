@@ -83,6 +83,10 @@ namespace ufo
             if (it->srcRelation == srcRelation && it->dstRelation == dstRelation)
             {
                 rules.chcs.erase(it);
+
+                // this might not be the best location to remove decls; recheck
+                rules.removeDecl(srcRelation);
+                rules.removeDecl(dstRelation);
             }
         }
     }
@@ -542,6 +546,9 @@ namespace ufo
 
         for (int i = 0; i < product.chcs.size(); i++)
             product.outgs[product.chcs[i].srcRelation].push_back(i);
+
+        product.wtoSort();
+        // product.print();
 
         errs() << "Final system:\n";
         product.print();

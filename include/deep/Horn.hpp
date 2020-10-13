@@ -194,6 +194,19 @@ namespace ufo
       }
     }
 
+    void removeDecl(Expr relation)
+    {
+      Expr decl;
+      ExprSet::iterator it;
+      if (!isOpX<TRUE>(relation))
+      {
+        getDecl(relation, decl);
+        it = decls.find(decl);
+        if (it != decls.end()) 
+          decls.erase(it);
+      }
+    }
+
     void getInvVars(Expr relation, ExprVector &vars)
     {
       if (isOpX<AND>(relation))
