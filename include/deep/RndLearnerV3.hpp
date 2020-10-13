@@ -1382,30 +1382,8 @@ namespace ufo
 #endif
     }
 
-    for (auto it : cands)
-    {
-      errs() << "\ncands for:\n";
-      errs() << *it.first << ": ";
-      for (auto it2 : it.second)
-      {
-        errs() << *it2 << " ";
-      }
-      errs() << "\n";
-    }
-
     for (auto& dcl: ruleManager.wtoDecls) ds.getSeeds(dcl, cands);
     ds.refreshCands(cands);
-  errs() << "\nafter refreshing:\n";
-  for (auto it : cands)
-    {
-      errs() << "cands for:\n";
-      errs() << *it.first << ": ";
-      for (auto it2 : it.second)
-      {
-        errs() << *it2 << " ";
-      }
-      errs() << "\n\n";
-    }
     for (auto& dcl: ruleManager.decls) ds.doSeedMining(dcl->arg(0), cands[dcl->arg(0)], false);
     ds.calculateStatistics();
     if (ds.bootstrap()) return;
