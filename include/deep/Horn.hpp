@@ -472,8 +472,8 @@ namespace ufo
         outgs[chcs[i].srcRelation].push_back(i);
 
       // sort rules
-//      wtoSort();
-//      print();
+     wtoSort();
+     print();
       outs () << " = = = parsing done\n";
     }
 

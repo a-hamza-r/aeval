@@ -18,7 +18,6 @@ namespace ufo
     {
         // getInductiveRules(chcs1, chcs2);
 
-        // learnInvariants2(ruleManagerDst, NULL, 2000000, 0, 3, 3, false, false);
         ExprVector candidates;
         
         ExprVector srcArrayVars1, dstArrayVars1, srcArrayVars2, dstArrayVars2;
@@ -582,7 +581,7 @@ namespace ufo
         // product of two CHC systems
 	    Product(ruleManagerProduct, queries);
 
-        learnInvariants3(ruleManagerProduct, false, false, true, vector<string>());
+        learnInvariantsPr(ruleManagerProduct, false, false, true, vector<string>());
   };
 }
 

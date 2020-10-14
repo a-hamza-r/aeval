@@ -836,7 +836,7 @@ namespace ufo
     }
 
     // adapted from doSeedMining
-    void getSeeds(Expr invRel, map<Expr, ExprSet>& cands, bool analizeCode = true)
+    void getSeeds(Expr invRel, map<Expr, ExprSet>& cands, ExprSet& candsForPhi, bool analizeCode = true)
     {
       int ind = getVarIndex(invRel, decls);
       SamplFactory& sf = sfs[ind].back();
@@ -940,9 +940,14 @@ namespace ufo
                       iterators[ind], *arrAccessVars[ind].begin()));
         }
 
+        // inserting all tmpArrCands into candsForPhi
+        candsForPhi.insert(tmpArrCands.begin(), tmpArrCands.end());
+
         // process all quantified seeds
         for (auto & a : tmpArrCands)
         {
+          // push all elements in tmpArrCands to candForPhi, unless the below transformations are required
+          // in that case, push replCand
           if (u.isTrue(a) || u.isFalse(a)) continue;
           Expr replCand = a;
           for (int i = 0; i < 3; i++)
@@ -1014,6 +1019,9 @@ namespace ufo
         // sanity check for replCand:
         if (toCont (ind, replCand, arrAccessVars[ind]) && addCandidate(ind, replCand))
           propagate (ind, replCand, true);
+
+        // push replCand to candForPhi
+        candsForPhi.insert(replCand);
       }
     }
 
@@ -1339,7 +1347,79 @@ namespace ufo
     }
   };
 
-  inline void learnInvariants3(CHCs &ruleManager, /*char * outfile, int maxAttempts,*/ bool freqs, bool aggp, bool enableDataLearning, const vector<string> & behaviorfiles)
+    inline void learnInvariants3(string smt, char * outfile, int maxAttempts, bool freqs, bool aggp, bool enableDataLearning, const vector<string> & behaviorfiles)
+  {
+    ExprFactory m_efac;
+    EZ3 z3(m_efac);
+
+    CHCs ruleManager(m_efac, z3);
+    ruleManager.parse(smt);
+    BndExpl bnd(ruleManager);
+
+    if (!ruleManager.hasCycles())
+    {
+      bnd.exploreTraces(1, ruleManager.chcs.size(), true);
+      return;
+    }
+
+    RndLearnerV3 ds(m_efac, z3, ruleManager, freqs, aggp);
+    map<Expr, ExprSet> cands;
+    ExprSet candsForPhi;
+    for (auto& dcl: ruleManager.decls) ds.initializeDecl(dcl);
+
+    for (int i = 0; i < ruleManager.cycles.size(); i++)
+    {
+      Expr pref = bnd.compactPrefix(i);
+      cands[ruleManager.chcs[ruleManager.cycles[i][0]].srcRelation].insert(pref);
+      //if (ruleManager.hasArrays)
+      ds.initArrayStuff(bnd, i, pref);
+    }
+
+    if (enableDataLearning) {
+#ifdef HAVE_ARMADILLO
+      ds.getDataCandidates(cands, behaviorfiles);
+#else
+      outs() << "Skipping learning from data as required library (armadillo) not found\n";
+#endif
+    }
+
+    // for (auto it : cands)
+    // {
+    //   errs() << "\ncands for:\n";
+    //   errs() << *it.first << ": ";
+    //   for (auto it2 : it.second)
+    //   {
+    //     errs() << *it2 << " ";
+    //   }
+    //   errs() << "\n";
+    // }
+
+    for (auto& dcl: ruleManager.wtoDecls) ds.getSeeds(dcl, cands, candsForPhi);
+    ds.refreshCands(cands);
+  // errs() << "\nafter refreshing:\n";
+  // for (auto it : cands)
+  //   {
+  //     errs() << "cands for:\n";
+  //     errs() << *it.first << ": ";
+  //     for (auto it2 : it.second)
+  //     {
+  //       errs() << *it2 << " ";
+  //     }
+  //     errs() << "\n\n";
+  //   }
+  
+    errs() << "cands for phi:\n";
+    for (auto it : candsForPhi) errs() << *it << "\n";
+    errs() << "\n";
+
+    for (auto& dcl: ruleManager.decls) ds.doSeedMining(dcl->arg(0), cands[dcl->arg(0)], false);
+    ds.calculateStatistics();
+    if (ds.bootstrap()) return;
+    std::srand(std::time(0));
+    ds.synthesize(maxAttempts, outfile);
+  }
+
+  inline void learnInvariantsPr(CHCs &ruleManager, bool freqs, bool aggp, bool enableDataLearning, const vector<string> & behaviorfiles)
   {
     ExprFactory m_efac;
     EZ3 z3(m_efac);
@@ -1354,6 +1434,7 @@ namespace ufo
 
     RndLearnerV3 ds(m_efac, z3, ruleManager, freqs, aggp);
     map<Expr, ExprSet> cands;
+    ExprSet candsForPhi;
     for (auto& dcl: ruleManager.decls) ds.initializeDecl(dcl);
 
     for (int i = 0; i < ruleManager.cycles.size(); i++)
@@ -1380,16 +1461,14 @@ namespace ufo
       errs() << "\n";
     }
 
-    for (auto& dcl: ruleManager.wtoDecls) ds.getSeeds(dcl, cands);
+    for (auto& dcl: ruleManager.wtoDecls) ds.getSeeds(dcl, cands, candsForPhi);
     ds.refreshCands(cands);
     for (auto& dcl: ruleManager.decls) ds.doSeedMining(dcl->arg(0), cands[dcl->arg(0)], false);
 
     // todo: this line throws an error, investigate later
-    // ds.calculateStatistics();
+    ds.calculateStatistics();
     
     if (ds.bootstrap()) return;
-    // std::srand(std::time(0));
-    // ds.synthesize(maxAttempts, outfile);
   }
 }
 

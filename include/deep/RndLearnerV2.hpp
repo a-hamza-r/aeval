@@ -26,9 +26,6 @@ namespace ufo
     RndLearnerV2 (ExprFactory &efac, EZ3 &z3, CHCs& r, bool freqs, bool aggp) :
       RndLearner (efac, z3, r, /*k-induction*/ false, freqs, /*epsilon*/ true, aggp){}
 
-    RndLearnerV2 (CHCs& r, bool freqs, bool aggp) :
-      RndLearner (r.m_efac, r.m_z3, r, /*k-induction*/ false, freqs, /*epsilon*/ true, aggp){}
-
     Expr getModel(ExprVector& vars)
     {
       ExprVector eqs;
@@ -335,10 +332,15 @@ namespace ufo
     }
   };
   
-  inline void learnInvariants2(CHCs ruleManager, char * outfile, int maxAttempts,
+  inline void learnInvariants2(string smt, char * outfile, int maxAttempts,
                                int itp, int batch, int retry, bool freqs, bool aggp)
   {
-    RndLearnerV2 ds(ruleManager, freqs, aggp);
+    ExprFactory m_efac;
+    EZ3 z3(m_efac);
+
+    CHCs ruleManager(m_efac, z3);
+    ruleManager.parse(smt);
+    RndLearnerV2 ds(m_efac, z3, ruleManager, freqs, aggp);
     ds.categorizeCHCs();
 
     std::srand(std::time(0));
@@ -348,8 +350,6 @@ namespace ufo
 //      outs () << "Arrays are not supported in this mode\n";
 //      exit(0);
 //    }
-    // for (auto it = ruleManager.decls.begin(); it != ruleManager.decls.end(); it++)
-    //   errs() << **it << "\n";
     if (ruleManager.decls.size() > 1)
     {
       outs() << "WARNING: learning multiple invariants is currently unsupported in --v2.\n"
