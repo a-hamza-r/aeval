@@ -31,7 +31,7 @@ namespace ufo
   template <typename T>
   void concatenateVectors(vector<T> &result, vector<T> vec1, vector<T> vec2)
   {
-    result.reserve(vec1.size()+vec2.size());
+    result.reserve(result.size()+vec1.size()+vec2.size());
     result.insert(result.end(), vec1.begin(), vec1.end());
     result.insert(result.end(), vec2.begin(), vec2.end());
   }
@@ -207,22 +207,6 @@ namespace ufo
       }
     }
 
-    void getInvVars(Expr relation, ExprVector &vars)
-    {
-      if (isOpX<AND>(relation))
-      {
-        for (auto it = relation->args_begin(); it != relation->args_end(); it++)
-        {
-          getInvVars(*it, vars);
-        }
-      }
-      else {
-        ExprVector v = invVars[relation];
-        vars.insert(vars.end(), v.begin(), v.end());
-      }
-    }
-
-
     void preprocess (Expr term, ExprVector& srcVars, Expr &srcRelation, ExprSet& lin)
     {
       if (isOpX<AND>(term))
@@ -305,15 +289,6 @@ namespace ufo
           else assert(0);
           invVars[a->arg(0)].push_back(var);
         }
-      }
-    }
-
-    void addDecl2 (Expr a, ExprVector vars)
-    {
-      if (invVars[a->arg(0)].size() == 0)
-      {
-        decls.insert(a);
-        invVars[a->arg(0)] = vars;
       }
     }
 
