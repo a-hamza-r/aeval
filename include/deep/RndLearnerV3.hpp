@@ -692,11 +692,16 @@ namespace ufo
 
         if (hr.isQuery) continue;
 
+        hr.printMemberVars();
         if (!checkCHC(hr, candidatesTmp))
         {
           bool res2 = true;
           int ind = getVarIndex(hr.dstRelation, decls);
+          errs() << "\ncands considered:\n";
+          for (auto it : candidatesTmp[ind])
+            errs() << *it << "\n";
           Expr model = u.getModel(hr.dstVars);
+          errs() << "\nmodel: " << *model << "\n";
           if (isSkippable(model, hr.dstVars, candidatesTmp))
           {
             // something went wrong with z3. do aggressive weakening (TODO: try bruteforce):
@@ -705,6 +710,7 @@ namespace ufo
           }
           else
           {
+            // errs() << "not isSkippable\n";
             ExprVector& ev = candidatesTmp[ind];
             ExprVector invVars;
             for (auto & a : invarVars[ind]) invVars.push_back(a.second);
@@ -720,10 +726,11 @@ namespace ufo
                 if (hr.isFact)
                 {
                   Expr failedCand = normalizeDisj(*it, invVars);
-//                outs () << "failed cand for " << *hr.dstRelation << ": " << *failedCand << "\n";
+               outs () << "failed cand for " << *hr.dstRelation << ": " << *failedCand << "\n";
                   Sampl& s = sf.exprToSampl(failedCand);
                   sf.assignPrioritiesForFailed();
                 }
+                errs() << "erasing: " << **it << "\n";
                 it = ev.erase(it);
                 res2 = false;
               }
@@ -855,11 +862,15 @@ namespace ufo
         if (hr.dstRelation != invRel && hr.srcRelation != invRel) continue;
         SeedMiner sm (hr, invRel, invarVars[ind], sf.lf.nonlinVars);
 
-        if (analizeCode) sm.analizeCode();
+        if (analizeCode) sm.analizeCode(candsForPhi);
         else sm.candidates.clear();
+        // errs() << "cands from code: \n";
+        // for (auto it : sm.candidates)
+        //   errs() << *it << "\n";
+        // errs() << "\n";
         if (!analizedExtras && hr.srcRelation == invRel)
         {
-          sm.analizeExtras (cands[invRel]);
+          sm.analizeExtras (cands[invRel], candsForPhi);
           analizedExtras = true;
         }
         for (auto &cand : sm.candidates) candsFromCode.insert(cand);
@@ -940,9 +951,6 @@ namespace ufo
                       iterators[ind], *arrAccessVars[ind].begin()));
         }
 
-        // inserting all tmpArrCands into candsForPhi
-        candsForPhi.insert(tmpArrCands.begin(), tmpArrCands.end());
-
         // process all quantified seeds
         for (auto & a : tmpArrCands)
         {
@@ -1019,9 +1027,6 @@ namespace ufo
         // sanity check for replCand:
         if (toCont (ind, replCand, arrAccessVars[ind]) && addCandidate(ind, replCand))
           propagate (ind, replCand, true);
-
-        // push replCand to candForPhi
-        candsForPhi.insert(replCand);
       }
     }
 
@@ -1327,6 +1332,141 @@ namespace ufo
         ruleManager.hasArrays[rel] = true;
     }
 
+    template <typename T>
+    void findExpr(Expr toFind, Expr conj, Expr &result, Expr avoid=NULL, bool firstIter=true)
+    {
+      if (isOpX<AND>(conj))
+      {
+        for (auto it = conj->args_begin(); it != conj->args_end(); it++)
+        {
+          findExpr<T>(toFind, *it, result, avoid, firstIter);
+        }
+      }
+      else if (isOpX<T>(conj))
+      {
+        if (conj->arg(0) == toFind)
+        {
+          if (firstIter || (!firstIter && conj->arg(1) != avoid))
+            result = conj->arg(1);
+        }
+        else if (conj->arg(1) == toFind)
+        {
+          if (firstIter || (!firstIter && conj->arg(0) != avoid))
+            result = conj->arg(0);
+        }
+      }
+    }
+
+    void getNumberIters(BndExpl& bnd, int cycleNum)
+    {
+      vector<int>& cycle = ruleManager.cycles[cycleNum];
+      Expr rel = ruleManager.chcs[cycle[0]].srcRelation;
+      int invNum = getVarIndex(rel, decls);
+      Expr e, e1;
+
+      for (int i = 0; i < bnd.bindVars.back().size(); i++)
+      {
+        Expr a = ruleManager.chcs[cycle[0]].srcVars[i];
+        Expr b = bnd.bindVars.back()[i];
+        errs() << "checking: " << *b << "\n";
+        if (!bind::isIntConst(a) /*|| !contains(postconds[invNum], a)*/) continue;
+
+        // errs() << *ssas[invNum] << " -> " << *mk<GT>(a, b) << "\n";
+        // errs() << *ssas[invNum] << " -> " << *mk<LT>(a, b) << "\n";
+
+        if (u.implies(ssas[invNum], mk<GT>(a, b)))
+        {
+          // iterGrows[invNum] = false;
+          findExpr<EQ>(b, ssas[invNum], e);
+          findExpr<EQ>(e, ssas[invNum], e, b, false);
+          errs() << "found iter: " << *e << "\n";
+
+          if (isOpX<MINUS>(e))
+          {
+            if (isOpX<MPZ>(e->arg(0)))
+            {
+              findExpr<GT>(e->arg(1), ssas[invNum], e1);
+              if (e1 && e1 != e->arg(1))
+              {
+                errs() << "found limit GT: " << *e1 << "\n";
+              }
+              else 
+              {
+                e1 = NULL;
+                findExpr<GEQ>(e->arg(1), ssas[invNum], e1);
+                if (e1 && e1 != e->arg(1))
+                {
+                  errs() << "found limit GEQ: " << *e1 << "\n";
+                }
+              }
+            } 
+            else if (isOpX<MPZ>(e->arg(1)))
+            {
+              findExpr<GT>(e->arg(0), ssas[invNum], e1);
+              if (e1 && e1 != e->arg(0))
+              {
+                errs() << "found limit GT: " << *e1 << "\n";
+              }
+              else 
+              {
+                e1 = NULL;
+                findExpr<GEQ>(e->arg(0), ssas[invNum], e1);
+                if (e1 && e1 != e->arg(0))
+                {
+                  errs() << "found limit GEQ: " << *e1 << "\n";
+                }
+              }
+            }
+          }
+        }
+        else if (u.implies(ssas[invNum], mk<LT>(a, b)))
+        {
+          // iterGrows[invNum] = true;
+          findExpr<EQ>(b, ssas[invNum], e);
+          findExpr<EQ>(e, ssas[invNum], e, b, false);
+          errs() << "found: " << *e << "\n";
+
+          if (isOpX<PLUS>(e))
+          {
+            if (isOpX<MPZ>(e->arg(0)))
+            {
+              findExpr<LT>(e->arg(1), ssas[invNum], e1);
+              if (e1 && e1 != e->arg(1))
+              {
+                errs() << "found limit LT: " << *e1 << "\n";
+              }
+              else 
+              {
+                e1 = NULL;
+                findExpr<LEQ>(e->arg(1), ssas[invNum], e1);
+                if (e1 && e1 != e->arg(1))
+                {
+                  errs() << "found limit LEQ: " << *e1 << "\n";
+                }
+              }
+            } 
+            else if (isOpX<MPZ>(e->arg(1)))
+            {
+              findExpr<LT>(e->arg(0), ssas[invNum], e1);
+              if (e1 && e1 != e->arg(0))
+              {
+                errs() << "found limit LT: " << *e1 << "\n";
+              }
+              else 
+              {
+                e1 = NULL;
+                findExpr<LEQ>(e->arg(0), ssas[invNum], e1);
+                if (e1 && e1 != e->arg(0))
+                {
+                  errs() << "found limit LEQ: " << *e1 << "\n";
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
     void printSolution(bool simplify = true)
     {
       for (int i = 0; i < decls.size(); i++)
@@ -1373,6 +1513,7 @@ namespace ufo
       cands[ruleManager.chcs[ruleManager.cycles[i][0]].srcRelation].insert(pref);
       //if (ruleManager.hasArrays)
       ds.initArrayStuff(bnd, i, pref);
+      ds.getNumberIters(bnd, i);
     }
 
     if (enableDataLearning) {
@@ -1453,6 +1594,7 @@ namespace ufo
 #endif
     }
 
+    errs() << "\n\n";
     for (auto it : cands)
     {
       errs() << "cand: " << *it.first << "\n";
@@ -1460,14 +1602,12 @@ namespace ufo
         errs() << *it2 << " ";
       errs() << "\n";
     }
+    errs() << "\n\n";
 
     for (auto& dcl: ruleManager.wtoDecls) ds.getSeeds(dcl, cands, candsForPhi);
     ds.refreshCands(cands);
     for (auto& dcl: ruleManager.decls) ds.doSeedMining(dcl->arg(0), cands[dcl->arg(0)], false);
-
-    // todo: this line throws an error, investigate later
     ds.calculateStatistics();
-    
     if (ds.bootstrap()) return;
   }
 }

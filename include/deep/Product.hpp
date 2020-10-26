@@ -337,26 +337,26 @@ namespace ufo
         
         if (calculateRulesOfP) 
         {
-            errs() << "Rules of relation: " << *rel1->arg(0) << "\n";
+            // errs() << "Rules of relation: " << *rel1->arg(0) << "\n";
             rulesOfPredicate(rules.chcs, rel1, rulesOfCurrentP);
 
             for (auto &it : rulesOfCurrentP) 
             {
                 toRemoveCHCs.push_back(ExprVector{it.srcRelation, it.dstRelation});
-                rules.print(it);
+                // rules.print(it);
             }
 
             rulesOfPredicates.push_back(rulesOfCurrentP);
 
             rulesOfCurrentP.clear();
 
-            errs() << "Rules of relation: " << *rel2->arg(0) << "\n";
+            // errs() << "Rules of relation: " << *rel2->arg(0) << "\n";
             rulesOfPredicate(rules.chcs, rel2, rulesOfCurrentP);
 
             for (auto &it : rulesOfCurrentP) 
             {
                 toRemoveCHCs.push_back(ExprVector{it.srcRelation, it.dstRelation});
-                rules.print(it);
+                // rules.print(it);
             }
 
             rulesOfPredicates.push_back(rulesOfCurrentP);
@@ -389,12 +389,12 @@ namespace ufo
 
         concatenateVectors(newProductRule.locVars, chc1.locVars, chc2.locVars);
 
-        errs() << "Taking product of two CHCs: \n";
-        rules.print(chc1);
-        rules.print(chc2);
-        errs() << "The product is: \n";
-        rules.print(newProductRule);
-        errs() << "\n";
+        // errs() << "Taking product of two CHCs: \n";
+        // rules.print(chc1);
+        // rules.print(chc2);
+        // errs() << "The product is: \n";
+        // rules.print(newProductRule);
+        // errs() << "\n";
 
         rulesOfP.push_back(newProductRule);
     }
@@ -478,8 +478,8 @@ namespace ufo
             C_a = worklist[0];
             worklist.erase(worklist.begin());
 
-            errs() << "current worklist item popped: \n";
-            product.print(C_a);
+            // errs() << "current worklist item popped: \n";
+            // product.print(C_a);
 
             // AH: In the original algorithm, the operation PARTITION is used that is defined: 
             // 'operator partition from a set to a set of its disjoint subsets'
@@ -490,17 +490,17 @@ namespace ufo
 
             if (partition.size() >= 2) 
             {
-                errs() << "Non-recursive partition is: " << *partition[0]->arg(0) 
-                    << " and " << *partition[1]->arg(0) << "\n";
+                // errs() << "Non-recursive partition is: " << *partition[0]->arg(0) 
+                //     << " and " << *partition[1]->arg(0) << "\n";
 
                 productRelationSymbols(partition, freshP, rulesOfP, product, true, toRemoveCHCs);
 
                 C_a.srcRelation = freshP->arg(0);
 
-                errs() << "We push rules of p " << *C_a.srcRelation << " to worklist:\n";
+                // errs() << "We push rules of p " << *C_a.srcRelation << " to worklist:\n";
                 worklist.insert(worklist.end(), rulesOfP.begin(), rulesOfP.end());
-                for (auto it : rulesOfP)
-                    product.print(it);
+                // for (auto it : rulesOfP)
+                //     product.print(it);
             }
 
             if (isOpX<AND>(C_a.srcRelation))
@@ -515,9 +515,9 @@ namespace ufo
                 
                 product.chcs.push_back(C_a);
                 
-                errs() << "Updated CHC added to CHCs: \n";
-                product.print(C_a);
-                errs() << "\n";
+                // errs() << "Updated CHC added to CHCs: \n";
+                // product.print(C_a);
+                // errs() << "\n";
             }
         }
 
@@ -534,13 +534,14 @@ namespace ufo
             product.outgs[product.chcs[i].srcRelation].push_back(i);
 
         product.wtoSort();
-        // product.print();
 
-        errs() << "Final system:\n";
+        errs() << "\nFinal system:\n";
         product.print();
 
+        errs() << "Printing all rules and member vars:\n";
         for (auto &hr : product.chcs)
             hr.printMemberVars();
+        errs() << "\n--------------------------CALCULATING PRODUCT DONE-----------------------------\n\n";
     }
 
 

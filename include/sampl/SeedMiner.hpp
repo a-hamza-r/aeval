@@ -314,6 +314,21 @@ namespace ufo
       }
     }
 
+    void getEqualities(Expr e, ExprSet &cands)
+    {
+      if (isOpX<AND>(e))
+      {
+        for (auto it = e->args_begin(); it != e->args_end(); it++)
+        {
+          getEqualities(*it, cands);
+        }
+      }
+      else if (isOpX<EQ>(e))
+      {
+        cands.insert(e);
+      }
+    }
+
     void coreProcess(Expr e)
     {
       e = rewriteBoolEq(e);
@@ -322,21 +337,23 @@ namespace ufo
       e = convertToGEandGT(e);
       e = rewriteNegAnd(e);
       obtainSeeds(e);
+      errs() << "Expr : " << *e << "\n\n";
     }
 
-    void analizeExtra(Expr extra)
+    void analizeExtra(Expr extra, ExprSet &candsForPhi)
     {
       Expr e = propagateEqualities(extra);
 //    e = rewriteSelectStore(e); // GF: to fix (it breaks array_init_monot_ind.smt2)
+      getEqualities(e, candsForPhi);
       coreProcess(e);
     }
 
-    void analizeExtras(ExprSet& extra)
+    void analizeExtras(ExprSet& extra, ExprSet &candsForPhi)
     {
-      for (auto &cnj : extra) analizeExtra(cnj);
+      for (auto &cnj : extra) analizeExtra(cnj, candsForPhi);
     }
 
-    void analizeCode()
+    void analizeCode(ExprSet &candsForPhi)
     {
       if (false) // printing only
       {
@@ -404,6 +421,8 @@ namespace ufo
         e = rewriteSelectStore(e);
         e = propagateEqualities(e);
         coreProcess(e);
+        
+        getEqualities(e, candsForPhi);
       }
       else
       {
@@ -430,6 +449,7 @@ namespace ufo
         }
         e = simplifyBool(e);
         e = rewriteBoolEq(e);
+        getEqualities(e, candsForPhi);
         e = convertToGEandGT(e);
         e = rewriteNegAnd(e);
         obtainSeeds(e);

@@ -476,6 +476,8 @@ namespace ufo
       set<cpp_int> progConstsTmp;
       set<cpp_int> progConsts;
       set<cpp_int> intCoefs;
+      // nullS for support of some functionality in RndLearnerV3
+      ExprSet nullS;
 
       int ind = getVarIndex(invRel, decls);
       SamplFactory& sf = sfs[ind].back();
@@ -487,11 +489,11 @@ namespace ufo
         if (hr.dstRelation != invRel && hr.srcRelation != invRel) continue;
 
         css.push_back(SeedMiner(hr, invRel, invarVars[ind], sf.lf.nonlinVars));
-        if (analizeCode) css.back().analizeCode();
+        if (analizeCode) css.back().analizeCode(nullS);
 
         if (!analizedExtras && hr.srcRelation == invRel)
         {
-          css.back().analizeExtras (cands);
+          css.back().analizeExtras (cands, nullS);
           analizedExtras = true;
         }
 
