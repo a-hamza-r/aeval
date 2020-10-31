@@ -201,7 +201,9 @@ namespace ufo
         ExprSet intConstsE;
         filter (tmpl, bind::IsHardIntConst(), std::inserter (intConstsE, intConstsE.begin ()));
         for (auto &a : intConstsE) intConsts.insert(lexical_cast<cpp_int>(a));
-        if (getLinCombCoefs(tmpl, intCoefs)) candidates.insert(tmpl);
+        if (getLinCombCoefs(tmpl, intCoefs)) {
+          candidates.insert(tmpl);
+        }
       }
     }
 
@@ -221,11 +223,10 @@ namespace ufo
           addArrCand(term);
         return;
       }
-
       ExprSet actualVars;
       filter (term, bind::IsConst(), std::inserter (actualVars, actualVars.begin ()));
 
-      term = rewriteMultAdd(term);
+       term = rewriteMultAdd(term);
 
       bool locals = false;
       if (actualVars.size() == 0 || isTautology(term)) return;
@@ -302,6 +303,7 @@ namespace ufo
         if (containsOp<ARRAY_TY>(term)) addSeed(term);
         else
         {
+          // addSeed(term);
           Expr tmp = convertToGEandGT(term);
           if (tmp != term)
             obtainSeeds(tmp);
@@ -337,23 +339,23 @@ namespace ufo
       e = convertToGEandGT(e);
       e = rewriteNegAnd(e);
       obtainSeeds(e);
-      errs() << "Expr : " << *e << "\n\n";
     }
 
-    void analizeExtra(Expr extra, ExprSet &candsForPhi)
+    void analizeExtra(Expr extra)
     {
       Expr e = propagateEqualities(extra);
 //    e = rewriteSelectStore(e); // GF: to fix (it breaks array_init_monot_ind.smt2)
-      getEqualities(e, candsForPhi);
       coreProcess(e);
     }
 
-    void analizeExtras(ExprSet& extra, ExprSet &candsForPhi)
+    void analizeExtras(ExprSet& extra)
     {
-      for (auto &cnj : extra) analizeExtra(cnj, candsForPhi);
+      for (auto &cnj : extra) {
+        analizeExtra(cnj);
+      }
     }
 
-    void analizeCode(ExprSet &candsForPhi)
+    void analizeCode()
     {
       if (false) // printing only
       {
@@ -421,8 +423,6 @@ namespace ufo
         e = rewriteSelectStore(e);
         e = propagateEqualities(e);
         coreProcess(e);
-        
-        getEqualities(e, candsForPhi);
       }
       else
       {
@@ -449,7 +449,6 @@ namespace ufo
         }
         e = simplifyBool(e);
         e = rewriteBoolEq(e);
-        getEqualities(e, candsForPhi);
         e = convertToGEandGT(e);
         e = rewriteNegAnd(e);
         obtainSeeds(e);

@@ -722,6 +722,28 @@ namespace ufo
     return mk<NEG>(fla);
   }
 
+  
+  Expr static createQuantifiedFormulaRestr(Expr def, ExprVector& vars, bool forall = true)
+  {
+    ExprVector args;
+    for (auto & a : vars) args.push_back(a->last());
+    args.push_back(def);
+    if (forall) return mknary<FORALL>(args);
+    else return mknary<EXISTS>(args);
+  }
+
+  Expr static createQuantifiedFormula(Expr def, ExprVector& toAvoid)
+  {
+    ExprVector vars;
+    filter(def, bind::IsConst (), inserter(vars, vars.begin()));
+    for (auto it = vars.begin(); it != vars.end(); )
+      if (find(toAvoid.begin(), toAvoid.end(), (*it)->left()) != toAvoid.end())
+        it = vars.erase(it);
+      else
+        ++it;
+    return createQuantifiedFormulaRestr(def, vars);
+  }
+
   inline static cpp_int separateConst(ExprVector& plsOps)
   {
     cpp_int c = 0;

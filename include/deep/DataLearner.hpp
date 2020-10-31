@@ -59,10 +59,10 @@ namespace ufo
     loadDataFromSMTHelper() {}
 
     bool
-    executeEntireProgram(CHCs & rm)
+    executeEntireProgram(CHCs & rm, Expr initialVals=NULL)
     {
       BndExpl bnd(rm);
-      return bnd.unrollAndExecuteMultiple(invVars, exprToModels);
+      return bnd.unrollAndExecuteMultiple(invVars, exprToModels, 10, initialVals);
     }
 
     bool
@@ -82,11 +82,11 @@ namespace ufo
 
   public:
     static bool
-    getModels(bool multipleLoops, const Expr & inv, CHCs & rm, vector< vector<double> > & models, ExprVector& vars)
+    getModels(bool multipleLoops, const Expr & inv, CHCs & rm, vector< vector<double> > & models, ExprVector& vars, Expr initialVals)
     {
       if (ptr == nullptr) {
         ptr = new loadDataFromSMTHelper();
-        if (multipleLoops && !(ptr->executeEntireProgram(rm))) {
+        if (multipleLoops && !(ptr->executeEntireProgram(rm, initialVals))) {
           return false;
         }
       }
@@ -136,6 +136,9 @@ namespace ufo
 
     ExprSet polynomialsComputed;
     vector<arma::mat> basisComputed;
+
+    // to support multiple times data learning
+    Expr initialVals;
 
     // return nonzero on error
     int
@@ -627,7 +630,7 @@ namespace ufo
       vector<vector<double> > models;
       ExprVector vars;
       printmsg(DEBUG, "Unrolling and solving via SMT");
-      if (!loadDataFromSMTHelper::getModels(multipleLoops, inv, ruleManager, models, vars)) {
+      if (!loadDataFromSMTHelper::getModels(multipleLoops, inv, ruleManager, models, vars, initialVals)) {
         return 1;
       }
 
@@ -667,10 +670,11 @@ namespace ufo
 
 
     void
-    initialize(Expr invDecl, bool multiLoop = false, unsigned int loglevel = 2)
+    initialize(Expr invDecl, bool multiLoop = false, unsigned int loglevel = 2, Expr initVals=NULL)
     {
       inv = invDecl;
       multipleLoops = multiLoop;
+      initialVals = initVals;
       setLogLevel(loglevel);
     }
 

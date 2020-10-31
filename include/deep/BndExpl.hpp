@@ -364,7 +364,7 @@ namespace ufo
     //used for multiple loops to unroll inductive clauses k times and collect corresponding models
     bool unrollAndExecuteMultiple(
           map<Expr, ExprVector>& src_vars,
-				  map<Expr, vector<vector<double> > > & models, int k = 10)
+				  map<Expr, vector<vector<double> > > & models, int k = 10, Expr initVals=NULL)
     {
 
       // helper var
@@ -409,15 +409,19 @@ namespace ufo
         vector<int> trace;
         Expr lastModel = mk<TRUE>(m_efac);
 
-        for (int p = 0; p < prefix.size(); p++)
+        // if initVals is not empty, we do not add prefixes
+        if (!initVals)
         {
-          if (chcsConsidered[prefix[p]] == true)
+          for (int p = 0; p < prefix.size(); p++)
           {
-            Expr lastModelTmp = exprModels[prefix[p]];
-            if (lastModelTmp != NULL) lastModel = lastModelTmp;
-            trace.clear(); // to avoid CHCs at the beginning
+            if (chcsConsidered[prefix[p]] == true)
+            {
+              Expr lastModelTmp = exprModels[prefix[p]];
+              if (lastModelTmp != NULL) lastModel = lastModelTmp;
+              trace.clear(); // to avoid CHCs at the beginning
+            }
+            trace.push_back(prefix[p]);
           }
-          trace.push_back(prefix[p]);
         }
 
         int l = trace.size() - 1; // starting index (before the loop)
@@ -442,6 +446,8 @@ namespace ufo
 
         ExprVector ssa;
         getSSA(trace, ssa);
+        if (initVals)
+          ssa[0] = mk<AND>(ssa[0], initVals);
         bindVars.pop_back();
         int traceSz = trace.size();
 

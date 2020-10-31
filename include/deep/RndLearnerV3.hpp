@@ -692,7 +692,7 @@ namespace ufo
 
         if (hr.isQuery) continue;
 
-        hr.printMemberVars();
+        // hr.printMemberVars();
         if (!checkCHC(hr, candidatesTmp))
         {
           bool res2 = true;
@@ -710,7 +710,6 @@ namespace ufo
           }
           else
           {
-            // errs() << "not isSkippable\n";
             ExprVector& ev = candidatesTmp[ind];
             ExprVector invVars;
             for (auto & a : invarVars[ind]) invVars.push_back(a.second);
@@ -843,7 +842,7 @@ namespace ufo
     }
 
     // adapted from doSeedMining
-    void getSeeds(Expr invRel, map<Expr, ExprSet>& cands, ExprSet& candsForPhi, bool analizeCode = true)
+    void getSeeds(Expr invRel, map<Expr, ExprSet>& cands, bool analizeCode = true)
     {
       int ind = getVarIndex(invRel, decls);
       SamplFactory& sf = sfs[ind].back();
@@ -862,17 +861,15 @@ namespace ufo
         if (hr.dstRelation != invRel && hr.srcRelation != invRel) continue;
         SeedMiner sm (hr, invRel, invarVars[ind], sf.lf.nonlinVars);
 
-        if (analizeCode) sm.analizeCode(candsForPhi);
+        if (analizeCode) sm.analizeCode();
         else sm.candidates.clear();
-        // errs() << "cands from code: \n";
-        // for (auto it : sm.candidates)
-        //   errs() << *it << "\n";
-        // errs() << "\n";
+
         if (!analizedExtras && hr.srcRelation == invRel)
         {
-          sm.analizeExtras (cands[invRel], candsForPhi);
+          sm.analizeExtras (cands[invRel]);
           analizedExtras = true;
         }
+        // parse seed miner directly here
         for (auto &cand : sm.candidates) candsFromCode.insert(cand);
 
         // for arrays
@@ -1059,53 +1056,58 @@ namespace ufo
     }
 
 #ifdef HAVE_ARMADILLO
+    void getDataCandsForDcl(map<Expr, ExprSet>& cands, const vector<string> & behaviorfiles, 
+      Expr dcl, int& fileIndex, Expr initVals=NULL){
+      DataLearner dl(ruleManager, m_z3);
+      dl.initialize(dcl, true /*multipleLoops*/);
+      string filename("");
+      if (fileIndex < behaviorfiles.size()) {
+        filename = behaviorfiles[fileIndex];
+        fileIndex++;
+      }
+      if (!dl.computeData(filename)) return;
+      ExprSet tmp, tmp2;
+      map<Expr, ExprVector> substs;
+      (void)dl.computePolynomials(tmp);
+      for (auto a : tmp)
+      {
+        errs() << " >>>> CAND FROM DATA for " << *dcl << ": " << *a << "\n";
+        // before pushing them to the cand set, we do some small mutations to get rid of specific consts
+        a = simplifyArithm(a);
+        if (isOpX<EQ>(a) && isIntConst(a->left()) &&
+            isNumericConst(a->right()) && lexical_cast<string>(a->right()) != "0")
+        {
+          substs[a->right()].push_back(a->left());
+        }
+        else
+        {
+          tmp2.insert(a);
+        }
+      }
+      for (auto a : tmp2)
+      {
+        cands[dcl].insert(a);
+        if (isNumericConst(a->right()))
+
+        for (auto b : substs)
+        {
+          cpp_int i1 = lexical_cast<cpp_int>(a->right());
+          cpp_int i2 = lexical_cast<cpp_int>(b.first);
+
+          if (i1 % i2 == 0)
+            for (auto c : b.second)
+            {
+              Expr e = replaceAll(a, a->right(), mk<MULT>(mkMPZ(i1/i2, m_efac), c));
+              cands[dcl].insert(e);
+            }
+        }
+      }
+    }
+
     void getDataCandidates(map<Expr, ExprSet>& cands, const vector<string> & behaviorfiles){
       int fileIndex = 0;
       for (auto & dcl : decls) {
-        DataLearner dl(ruleManager, m_z3);
-        dl.initialize(dcl, true /*multipleLoops*/);
-        string filename("");
-        if (fileIndex < behaviorfiles.size()) {
-          filename = behaviorfiles[fileIndex];
-          fileIndex++;
-        }
-        if (!dl.computeData(filename)) continue;
-        ExprSet tmp, tmp2;
-        map<Expr, ExprVector> substs;
-        (void)dl.computePolynomials(tmp);
-        for (auto a : tmp)
-        {
-          errs() << " >>>> CAND FROM DATA for " << *dcl << ": " << *a << "\n";
-          // before pushing them to the cand set, we do some small mutations to get rid of specific consts
-          a = simplifyArithm(a);
-          if (isOpX<EQ>(a) && isIntConst(a->left()) &&
-              isNumericConst(a->right()) && lexical_cast<string>(a->right()) != "0")
-          {
-            substs[a->right()].push_back(a->left());
-          }
-          else
-          {
-            tmp2.insert(a);
-          }
-        }
-        for (auto a : tmp2)
-        {
-          cands[dcl].insert(a);
-          if (isNumericConst(a->right()))
-
-          for (auto b : substs)
-          {
-            cpp_int i1 = lexical_cast<cpp_int>(a->right());
-            cpp_int i2 = lexical_cast<cpp_int>(b.first);
-
-            if (i1 % i2 == 0)
-              for (auto c : b.second)
-              {
-                Expr e = replaceAll(a, a->right(), mk<MULT>(mkMPZ(i1/i2, m_efac), c));
-                cands[dcl].insert(e);
-              }
-          }
-        }
+        getDataCandsForDcl(cands, behaviorfiles, dcl, fileIndex);
       }
     }
 #endif
@@ -1332,28 +1334,22 @@ namespace ufo
         ruleManager.hasArrays[rel] = true;
     }
 
-    template <typename T>
-    void findExpr(Expr toFind, Expr conj, Expr &result, Expr avoid=NULL, bool firstIter=true)
+    template <typename T, typename T1>
+    void findExpr(Expr toFind, Expr conj, Expr &result)
     {
       if (isOpX<AND>(conj))
       {
         for (auto it = conj->args_begin(); it != conj->args_end(); it++)
         {
-          findExpr<T>(toFind, *it, result, avoid, firstIter);
+          findExpr<T, T1>(toFind, *it, result);
         }
       }
       else if (isOpX<T>(conj))
       {
-        if (conj->arg(0) == toFind)
-        {
-          if (firstIter || (!firstIter && conj->arg(1) != avoid))
-            result = conj->arg(1);
-        }
-        else if (conj->arg(1) == toFind)
-        {
-          if (firstIter || (!firstIter && conj->arg(0) != avoid))
-            result = conj->arg(0);
-        }
+        if (conj->arg(0) == toFind && isOpX<T1>(conj->arg(1)))
+          result = conj->arg(1);
+        else if (conj->arg(1) == toFind && isOpX<T1>(conj->arg(0)))
+          result = conj->arg(0);
       }
     }
 
@@ -1362,107 +1358,28 @@ namespace ufo
       vector<int>& cycle = ruleManager.cycles[cycleNum];
       Expr rel = ruleManager.chcs[cycle[0]].srcRelation;
       int invNum = getVarIndex(rel, decls);
-      Expr e, e1;
 
       for (int i = 0; i < bnd.bindVars.back().size(); i++)
       {
+        Expr e;
         Expr a = ruleManager.chcs[cycle[0]].srcVars[i];
         Expr b = bnd.bindVars.back()[i];
-        errs() << "checking: " << *b << "\n";
+        // errs() << "checking: " << *b << "\n";
         if (!bind::isIntConst(a) /*|| !contains(postconds[invNum], a)*/) continue;
 
-        // errs() << *ssas[invNum] << " -> " << *mk<GT>(a, b) << "\n";
-        // errs() << *ssas[invNum] << " -> " << *mk<LT>(a, b) << "\n";
+        // errs() << *ssas[invNum] << "\n";
 
         if (u.implies(ssas[invNum], mk<GT>(a, b)))
         {
-          // iterGrows[invNum] = false;
-          findExpr<EQ>(b, ssas[invNum], e);
-          findExpr<EQ>(e, ssas[invNum], e, b, false);
-          errs() << "found iter: " << *e << "\n";
+          findExpr<EQ, MINUS>(b, ssas[invNum], e);
+          errs() << "found iter: " << *b<< "\n";
 
-          if (isOpX<MINUS>(e))
-          {
-            if (isOpX<MPZ>(e->arg(0)))
-            {
-              findExpr<GT>(e->arg(1), ssas[invNum], e1);
-              if (e1 && e1 != e->arg(1))
-              {
-                errs() << "found limit GT: " << *e1 << "\n";
-              }
-              else 
-              {
-                e1 = NULL;
-                findExpr<GEQ>(e->arg(1), ssas[invNum], e1);
-                if (e1 && e1 != e->arg(1))
-                {
-                  errs() << "found limit GEQ: " << *e1 << "\n";
-                }
-              }
-            } 
-            else if (isOpX<MPZ>(e->arg(1)))
-            {
-              findExpr<GT>(e->arg(0), ssas[invNum], e1);
-              if (e1 && e1 != e->arg(0))
-              {
-                errs() << "found limit GT: " << *e1 << "\n";
-              }
-              else 
-              {
-                e1 = NULL;
-                findExpr<GEQ>(e->arg(0), ssas[invNum], e1);
-                if (e1 && e1 != e->arg(0))
-                {
-                  errs() << "found limit GEQ: " << *e1 << "\n";
-                }
-              }
-            }
-          }
+        //       findExpr<GT>(e->arg(1), ssas[invNum], e1);
         }
         else if (u.implies(ssas[invNum], mk<LT>(a, b)))
         {
-          // iterGrows[invNum] = true;
-          findExpr<EQ>(b, ssas[invNum], e);
-          findExpr<EQ>(e, ssas[invNum], e, b, false);
-          errs() << "found: " << *e << "\n";
-
-          if (isOpX<PLUS>(e))
-          {
-            if (isOpX<MPZ>(e->arg(0)))
-            {
-              findExpr<LT>(e->arg(1), ssas[invNum], e1);
-              if (e1 && e1 != e->arg(1))
-              {
-                errs() << "found limit LT: " << *e1 << "\n";
-              }
-              else 
-              {
-                e1 = NULL;
-                findExpr<LEQ>(e->arg(1), ssas[invNum], e1);
-                if (e1 && e1 != e->arg(1))
-                {
-                  errs() << "found limit LEQ: " << *e1 << "\n";
-                }
-              }
-            } 
-            else if (isOpX<MPZ>(e->arg(1)))
-            {
-              findExpr<LT>(e->arg(0), ssas[invNum], e1);
-              if (e1 && e1 != e->arg(0))
-              {
-                errs() << "found limit LT: " << *e1 << "\n";
-              }
-              else 
-              {
-                e1 = NULL;
-                findExpr<LEQ>(e->arg(0), ssas[invNum], e1);
-                if (e1 && e1 != e->arg(0))
-                {
-                  errs() << "found limit LEQ: " << *e1 << "\n";
-                }
-              }
-            }
-          }
+          findExpr<EQ, PLUS>(b, ssas[invNum], e);
+          errs() << "found iter: " << *b<< "\n";
         }
       }
     }
@@ -1504,7 +1421,6 @@ namespace ufo
 
     RndLearnerV3 ds(m_efac, z3, ruleManager, freqs, aggp);
     map<Expr, ExprSet> cands;
-    ExprSet candsForPhi;
     for (auto& dcl: ruleManager.decls) ds.initializeDecl(dcl);
 
     for (int i = 0; i < ruleManager.cycles.size(); i++)
@@ -1524,34 +1440,8 @@ namespace ufo
 #endif
     }
 
-    // for (auto it : cands)
-    // {
-    //   errs() << "\ncands for:\n";
-    //   errs() << *it.first << ": ";
-    //   for (auto it2 : it.second)
-    //   {
-    //     errs() << *it2 << " ";
-    //   }
-    //   errs() << "\n";
-    // }
-
-    for (auto& dcl: ruleManager.wtoDecls) ds.getSeeds(dcl, cands, candsForPhi);
+    for (auto& dcl: ruleManager.wtoDecls) ds.getSeeds(dcl, cands);
     ds.refreshCands(cands);
-  // errs() << "\nafter refreshing:\n";
-  // for (auto it : cands)
-  //   {
-  //     errs() << "cands for:\n";
-  //     errs() << *it.first << ": ";
-  //     for (auto it2 : it.second)
-  //     {
-  //       errs() << *it2 << " ";
-  //     }
-  //     errs() << "\n\n";
-  //   }
-  
-    errs() << "cands for phi:\n";
-    for (auto it : candsForPhi) errs() << *it << "\n";
-    errs() << "\n";
 
     for (auto& dcl: ruleManager.decls) ds.doSeedMining(dcl->arg(0), cands[dcl->arg(0)], false);
     ds.calculateStatistics();
@@ -1560,10 +1450,10 @@ namespace ufo
     ds.synthesize(maxAttempts, outfile);
   }
 
-  inline void learnInvariantsPr(CHCs &ruleManager, bool freqs, bool aggp, bool enableDataLearning, const vector<string> & behaviorfiles)
+  inline void learnInvariantsPr(CHCs &ruleManager, int maxAttempts, bool freqs, bool aggp, bool enableDataLearning, const vector<string> & behaviorfiles)
   {
-    ExprFactory m_efac;
-    EZ3 z3(m_efac);
+    char *c;
+    EZ3 z3(ruleManager.m_efac);
 
     BndExpl bnd(ruleManager);
 
@@ -1573,9 +1463,8 @@ namespace ufo
       return;
     }
 
-    RndLearnerV3 ds(m_efac, z3, ruleManager, freqs, aggp);
+    RndLearnerV3 ds(ruleManager.m_efac, z3, ruleManager, freqs, aggp);
     map<Expr, ExprSet> cands;
-    ExprSet candsForPhi;
     for (auto& dcl: ruleManager.decls) ds.initializeDecl(dcl);
 
     for (int i = 0; i < ruleManager.cycles.size(); i++)
@@ -1584,6 +1473,7 @@ namespace ufo
       cands[ruleManager.chcs[ruleManager.cycles[i][0]].srcRelation].insert(pref);
       //if (ruleManager.hasArrays)
       ds.initArrayStuff(bnd, i, pref);
+      ds.getNumberIters(bnd, i);
     }
 
     if (enableDataLearning) {
@@ -1604,11 +1494,24 @@ namespace ufo
     }
     errs() << "\n\n";
 
-    for (auto& dcl: ruleManager.wtoDecls) ds.getSeeds(dcl, cands, candsForPhi);
+    for (auto& dcl: ruleManager.wtoDecls) ds.getSeeds(dcl, cands);
     ds.refreshCands(cands);
+
+  errs() << "\n\n";
+    for (auto it : cands)
+    {
+      errs() << "cand: " << *it.first << "\n";
+      for (auto it2 : it.second)
+        errs() << *it2 << "\n";
+      errs() << "\n";
+    }
+    errs() << "\n\n";  
+
     for (auto& dcl: ruleManager.decls) ds.doSeedMining(dcl->arg(0), cands[dcl->arg(0)], false);
     ds.calculateStatistics();
     if (ds.bootstrap()) return;
+    std::srand(std::time(0));
+    ds.synthesize(maxAttempts, c);
   }
 }
 
