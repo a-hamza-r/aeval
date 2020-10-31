@@ -3,6 +3,7 @@
 
 #include "Horn.hpp"
 #include "RndLearnerV3.hpp"
+#include "../ae/SMTUtils.hpp"
 
 using namespace std;
 using namespace boost;
@@ -396,7 +397,10 @@ namespace ufo
         // rules.print(newProductRule);
         // errs() << "\n";
 
-        rulesOfP.push_back(newProductRule);
+        // do not push if one is inductive and other one is not. Push in all other cases
+        // make sure this condition is correct generically
+        if (!((!chc1.isInductive && chc2.isInductive) || (!chc2.isInductive && chc1.isInductive)))
+            rulesOfP.push_back(newProductRule);
     }
 
     void renamingAsProductRules(CHCs &rules)
@@ -421,17 +425,26 @@ namespace ufo
     {
         vector<HornRuleExt*> rulesToKeep;
         bool erased;
+        Expr propagated, tmp;
 
         renamingAsProductRules(rules);
 
         for (auto chcIter = rules.chcs.begin(); chcIter != rules.chcs.end(); )
-        {
+        {   
             erased = false;
+
+            ExprSet vars(chcIter->locVars.begin(), chcIter->locVars.end());
+            chcIter->body = eliminateQuantifiers(chcIter->body, vars);
+            chcIter->locVars.clear();
+
             for (auto it : rulesToKeep)
             {
                 if (chcIter->srcRelation == it->srcRelation && chcIter->dstRelation == it->dstRelation)
                 {
                     it->body = mk<OR>(it->body, chcIter->body);
+
+                    // it->locVars.insert(it->locVars.end(), chcIter->locVars.begin(), chcIter->locVars.end());
+
                     chcIter = rules.chcs.erase(chcIter);
                     erased = true;
                     break;
@@ -442,7 +455,15 @@ namespace ufo
                 rulesToKeep.push_back(&(*chcIter));
                 chcIter++;
             }
+
         }
+
+        // check if it's faster to remove duplicates in previous loop or in separate loop
+        /*for (auto &it : rules.chcs)
+        {
+            ExprSet s(it.locVars.begin(), it.locVars.end());
+            it.locVars.assign(s.begin(), s.end());
+        }*/
     }
 
     // generates the product of two CHC systems
@@ -526,6 +547,9 @@ namespace ufo
             removeCHC(it[0], it[1], product);
         }
 
+        for (auto &hr : product.chcs)
+            hr.printMemberVars();
+
         // changes variables from _v1_ and _v2_ prefixes to _pr_ with necessary changes, 
         // also disjoins rules to remove redundancy
         simplifyRules(product);
@@ -539,8 +563,15 @@ namespace ufo
         product.print();
 
         errs() << "Printing all rules and member vars:\n";
-        for (auto &hr : product.chcs)
+        for (auto &hr : product.chcs) {
             hr.printMemberVars();
+            
+            // creates an encoding of formula and prints to stdout
+            /*ExprVector v;
+            Expr q = createQuantifiedFormula(hr.body, v);
+            SMTUtils su(hr.body->getFactory());
+            su.serialize_formula(q);*/
+        }
         errs() << "\n--------------------------CALCULATING PRODUCT DONE-----------------------------\n\n";
     }
 
@@ -572,7 +603,7 @@ namespace ufo
         // product of two CHC systems
 	    Product(ruleManagerProduct, queries);
 
-        learnInvariantsPr(ruleManagerProduct, false, false, true, vector<string>());
+        learnInvariantsPr(ruleManagerProduct, 2000000, false, false, true, vector<string>());
   };
 }
 
