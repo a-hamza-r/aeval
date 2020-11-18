@@ -156,15 +156,18 @@ namespace ufo
     map<Expr, bool> hasArrays;
     map<Expr, int> iterator;
 
+    CHCs *chcSrc;
+    CHCs *chcDst;
+    map<Expr, ExprVector> productRelsToSrcDst;
+
     CHCs(ExprFactory &efac, EZ3 &z3) : m_efac(efac), m_z3(z3), varname("_FH_") {};
     CHCs(ExprFactory &efac, EZ3 &z3, string n) : m_efac(efac), m_z3(z3), varname(n) {};
 
-    CHCs(const CHCs &rules1, const CHCs &rules2, string n) : m_efac(rules1.m_efac), m_z3(rules1.m_z3), varname(n) 
+    CHCs(CHCs &rules1, CHCs &rules2, string n) : m_efac(rules1.m_efac), m_z3(rules1.m_z3), varname(n), chcSrc(&rules1), chcDst(&rules2) 
     {
       setUnion(decls, rules1.decls, rules2.decls);
       concatenateVectors(chcs, rules1.chcs, rules2.chcs);
       concatenateMaps(invVars, rules1.invVars, rules2.invVars);
-      // join other member variables if required
     };
 
     bool isFapp (Expr e)

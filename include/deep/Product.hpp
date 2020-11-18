@@ -328,6 +328,10 @@ namespace ufo
 
         Expr productRel = mkTerm<string>(lexical_cast<string>(rel1->arg(0)) + "*" + 
             lexical_cast<string>(rel2->arg(0)), rules.m_efac);
+
+        if (rules.productRelsToSrcDst.find(productRel) == rules.productRelsToSrcDst.end())
+            rules.productRelsToSrcDst[productRel] = ExprVector{rel1->arg(0), rel2->arg(0)};
+
         for (int i = 1; i < rel1->arity()-1; i++) 
             productTypes.push_back(rel1->arg(i));
 

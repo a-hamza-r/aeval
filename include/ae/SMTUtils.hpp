@@ -81,6 +81,7 @@ namespace ufo
         filter (c, bind::IsConst (), inserter (allVars, allVars.begin()));
         smt.assertExpr(c);
       }
+      // smt.toSmtLib (outs());
       boost::tribool res = smt.solve ();
       return res;
     }

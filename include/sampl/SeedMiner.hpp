@@ -303,7 +303,6 @@ namespace ufo
         if (containsOp<ARRAY_TY>(term)) addSeed(term);
         else
         {
-          // addSeed(term);
           Expr tmp = convertToGEandGT(term);
           if (tmp != term)
             obtainSeeds(tmp);
@@ -316,9 +315,38 @@ namespace ufo
       }
     }
 
+    void addAfterFilter(Expr e, ExprVector &vars, ExprSet &cands)
+    {
+      ExprSet vrs;
+      bool found = true;
+
+      filter (e, bind::IsConst(), std::inserter (vrs, vrs.begin ()));
+
+      // to make sure getting candidates showing relations between vars
+      if (vrs.size() < 2) return;
+
+      for (auto & a : vrs)
+      {
+        if (std::find(std::begin(vars), std::end (vars), a)
+            == std::end(vars)) { found = false; break; }
+      }
+      if (found)
+      {
+        for (auto &v : vrs)
+        {
+          int index = getVarIndex(v, vars);
+          if (index >= 0)
+          {
+            e = replaceAll(e, v, invVars[index]);
+          }
+        }
+        cands.insert(e);
+      }
+    }
+
     void getEqualities(Expr e, ExprSet &cands)
     {
-      if (isOpX<AND>(e))
+      if (isOpX<AND>(e) || isOpX<OR>(e))
       {
         for (auto it = e->args_begin(); it != e->args_end(); it++)
         {
@@ -327,7 +355,15 @@ namespace ufo
       }
       else if (isOpX<EQ>(e))
       {
-        cands.insert(e);
+        if (hr.srcRelation == invRel)
+        {
+          addAfterFilter(e, hr.srcVars, cands);
+        }
+
+        if (hr.dstRelation == invRel)
+        {
+          addAfterFilter(e, hr.dstVars, cands);
+        } 
       }
     }
 
@@ -355,7 +391,7 @@ namespace ufo
       }
     }
 
-    void analizeCode()
+    void analizeCode(ExprSet &cands)
     {
       if (false) // printing only
       {
@@ -422,6 +458,7 @@ namespace ufo
         Expr e = unfoldITE(body);
         e = rewriteSelectStore(e);
         e = propagateEqualities(e);
+        // getEqualities(e, cands);
         coreProcess(e);
       }
       else
@@ -449,6 +486,7 @@ namespace ufo
         }
         e = simplifyBool(e);
         e = rewriteBoolEq(e);
+        // getEqualities(e, cands);
         e = convertToGEandGT(e);
         e = rewriteNegAnd(e);
         obtainSeeds(e);

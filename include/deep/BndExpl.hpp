@@ -410,7 +410,7 @@ namespace ufo
         Expr lastModel = mk<TRUE>(m_efac);
 
         // if initVals is not empty, we do not add prefixes
-        if (!initVals)
+        // if (!initVals)
         {
           for (int p = 0; p < prefix.size(); p++)
           {
@@ -425,6 +425,7 @@ namespace ufo
         }
 
         int l = trace.size() - 1; // starting index (before the loop)
+        // int l = ((trace.size() > 0) ? trace.size() - 1 : 0); // starting index (before the loop)
         if (ruleManager.hasArrays[srcRel]) l++; // first iter is usually useless
 
         for (int j = 0; j < k; j++)
@@ -446,8 +447,15 @@ namespace ufo
 
         ExprVector ssa;
         getSSA(trace, ssa);
-        if (initVals)
-          ssa[0] = mk<AND>(ssa[0], initVals);
+
+        // might not work if trace has more than one prefixes
+        if (initVals) 
+        {
+          // ssa[0] = mk<AND>(ssa[0], initVals);
+          ssa[0] = replaceAll(initVals, ruleManager.chcs[loop[0]].dstVars, bindVars[0]);
+        }
+        // errs() << "ssa: \n";
+        // for (auto it : ssa) errs() << *it << "\n";
         bindVars.pop_back();
         int traceSz = trace.size();
 

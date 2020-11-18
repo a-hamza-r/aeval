@@ -62,7 +62,7 @@ namespace ufo
     executeEntireProgram(CHCs & rm, Expr initialVals=NULL)
     {
       BndExpl bnd(rm);
-      return bnd.unrollAndExecuteMultiple(invVars, exprToModels, 10, initialVals);
+      return bnd.unrollAndExecuteMultiple(invVars, exprToModels, 15, initialVals);
     }
 
     bool
@@ -86,9 +86,12 @@ namespace ufo
     {
       if (ptr == nullptr) {
         ptr = new loadDataFromSMTHelper();
-        if (multipleLoops && !(ptr->executeEntireProgram(rm, initialVals))) {
-          return false;
-        }
+      }
+      
+      ptr->exprToModels.clear();
+
+      if (multipleLoops && !(ptr->executeEntireProgram(rm, initialVals))) {
+        return false;
       }
 
       if(multipleLoops) {
@@ -659,6 +662,12 @@ namespace ufo
       //to let index start from 1
       basisComputed.push_back(arma::mat());
       basisComputed.push_back(arma::mat());
+    }
+
+
+    arma::mat getDataMatrix()
+    {
+      return dataMatrix;
     }
 
 
