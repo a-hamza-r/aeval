@@ -89,20 +89,6 @@ namespace ufo
       }
     }
 
-    template <typename O> 
-    void getTypeVars(ExprVector &srcVarsWithType, ExprVector &dstVarsWithType)
-    {
-      for (auto it = srcVars.begin(); it != srcVars.end(); it++) {
-        if (isOpX<O>(bind::typeOf(*it))) {
-          srcVarsWithType.push_back(*it);
-
-          Expr new_name = mkTerm<string> (lexical_cast<string>(*it) + "'", body->getFactory());
-          Expr dstVar = cloneVar(*it, new_name);
-          dstVarsWithType.push_back(dstVar);
-        }
-      }
-    }
-
 
     void printMemberVars()
     {
@@ -207,6 +193,17 @@ namespace ufo
         it = decls.find(decl);
         if (it != decls.end()) 
           decls.erase(it);
+      }
+    }
+
+    void rulesOfPredicate(Expr &predicateDecl, vector<HornRuleExt> &rulesOfP)
+    {
+      for (auto it = chcs.begin(); it != chcs.end(); it++)
+      {
+          if (predicateDecl == it->head || predicateDecl == it->dstRelation)
+          {
+            rulesOfP.push_back(*it);
+          }
       }
     }
 
@@ -925,7 +922,7 @@ namespace ufo
         fp.addRule(allVars, boolop::limp (mk<AND>(pre, r.body), r.head));
       }
       try {
-        success = !fp.query(errApp);
+        success = bool(!fp.query(errApp));
       } catch (z3::exception &e){
         char str[3000];
         strncpy(str, e.msg(), 300);

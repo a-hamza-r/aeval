@@ -15,63 +15,28 @@ namespace ufo
 
     void productRelationSymbols(ExprVector, Expr &, vector<HornRuleExt> &, CHCs &, bool, vector<ExprVector> &);
 
-    void equivalenceTask(vector<HornRuleExt> &chcs1, vector<HornRuleExt> &chcs2, ExprFactory &m_efac)
-    {
-        ExprVector candidates;
+    // void equivalenceTask(vector<HornRuleExt> &chcs1, vector<HornRuleExt> &chcs2, ExprFactory &m_efac)
+    // {
+    //     ExprVector candidates;
         
-        ExprVector srcArrayVars1, dstArrayVars1, srcArrayVars2, dstArrayVars2;
-        ExprVector srcBvVars1, dstBvVars1, srcBvVars2, dstBvVars2;
-        ExprVector srcBoolVars1, dstBoolVars1, srcBoolVars2, dstBoolVars2;
-        for (int i = 0; i < chcs1.size(); i++) {
-            if (chcs1[i].isInductive && chcs2[i].isInductive)
-            {
-                chcs1[i].getTypeVars<ARRAY_TY>(srcArrayVars1, dstArrayVars1);
-                chcs1[i].getTypeVars<BVSORT>(srcBvVars1, dstBvVars1);
-                chcs1[i].getTypeVars<BOOL_TY>(srcBoolVars1, dstBoolVars1);
+    //     ExprVector srcArrayVars1, dstArrayVars1, srcArrayVars2, dstArrayVars2;
+    //     ExprVector srcBvVars1, dstBvVars1, srcBvVars2, dstBvVars2;
+    //     ExprVector srcBoolVars1, dstBoolVars1, srcBoolVars2, dstBoolVars2;
+    //     for (int i = 0; i < chcs1.size(); i++) {
+    //         if (chcs1[i].isInductive && chcs2[i].isInductive)
+    //         {
+    //             chcs1[i].getTypeVars<ARRAY_TY>(srcArrayVars1, dstArrayVars1);
+    //             chcs1[i].getTypeVars<BOOL_TY>(srcBoolVars1, dstBoolVars1);
+    //             // chcs1[i].getTypeVars<BVSORT>(srcBvVars1, dstBvVars1);
 
-                chcs2[i].getTypeVars<ARRAY_TY>(srcArrayVars2, dstArrayVars2);
-                chcs2[i].getTypeVars<BVSORT>(srcBvVars2, dstBvVars2);
-                chcs2[i].getTypeVars<BOOL_TY>(srcBoolVars2, dstBoolVars2);
+    //             chcs2[i].getTypeVars<ARRAY_TY>(srcArrayVars2, dstArrayVars2);
+    //             chcs2[i].getTypeVars<BOOL_TY>(srcBoolVars2, dstBoolVars2);
+    //             // chcs2[i].getTypeVars<BVSORT>(srcBvVars2, dstBvVars2);
 
-                for (auto it = srcBvVars1.begin(); it != srcBvVars1.end(); it++) {
-                    errs() << **it << ", its type: " << *bind::typeOf(*it) << "\n";
-                    errs() << bv::width(bind::typeOf(*it)) << "\n";
-                    // errs() << bv::width(*it) << "\n";
-                }
-
-
-                // int numBvToCmp = srcBvVars.size() - srcArrayVars.size();
-                Expr pre = mk<TRUE>(m_efac);
-                for (auto it = srcBvVars1.begin(); it != srcBvVars1.end(); it++)
-                {
-                    for (auto it2 = srcBvVars2.begin(); it2 != srcBvVars2.end(); it2++)
-                    {
-                        pre = mk<AND>(pre, mk<EQ>(*it, *it2));
-                    }
-                }
-
-                Expr post = mk<TRUE>(m_efac);
-                for (auto it = dstBvVars1.begin(); it != dstBvVars1.end(); it++)
-                {
-                    for (auto it2 = dstBvVars2.begin(); it2 != dstBvVars2.end(); it2++)
-                    {
-                        post = mk<AND>(post, mk<EQ>(*it, *it2));
-                    }
-                }
-                post = mk<NEG>(post);
-
-                errs() << "post: " << *post << "\n";
-
-                for (auto it = srcArrayVars1.begin(); it != srcArrayVars1.end(); it++)
-                {
-                    for (auto it2 = srcArrayVars2.begin(); it2 != srcArrayVars2.end(); it2++)
-                    {
-                        // pre = mk<AND>(post, )
-                    }
-                }
-            }
-        }
-    }
+    //             }
+    //         }
+    //     }
+    // }
 
 
     void removeCHC(Expr srcRelation, Expr dstRelation, CHCs &rules)
@@ -237,18 +202,6 @@ namespace ufo
     }
 
 
-    void rulesOfPredicate(vector<HornRuleExt> &allRules, Expr &predicateDecl, vector<HornRuleExt> &rulesOfP)
-    {
-        for (auto it = allRules.begin(); it != allRules.end(); it++)
-        {
-            if (predicateDecl == it->head)
-            {
-                rulesOfP.push_back(*it);
-            }
-        }
-    }
-
-
     void getQueries(vector<HornRuleExt> &chcs1, vector<HornRuleExt> &chcs2, vector<vector<HornRuleExt>> &queries)
     {
         for (auto it = chcs1.begin(); it != chcs1.end(); it++)
@@ -343,7 +296,7 @@ namespace ufo
         if (calculateRulesOfP) 
         {
             // errs() << "Rules of relation: " << *rel1->arg(0) << "\n";
-            rulesOfPredicate(rules.chcs, rel1, rulesOfCurrentP);
+            rules.rulesOfPredicate(rel1, rulesOfCurrentP);
 
             for (auto &it : rulesOfCurrentP) 
             {
@@ -356,7 +309,7 @@ namespace ufo
             rulesOfCurrentP.clear();
 
             // errs() << "Rules of relation: " << *rel2->arg(0) << "\n";
-            rulesOfPredicate(rules.chcs, rel2, rulesOfCurrentP);
+            rules.rulesOfPredicate(rel2, rulesOfCurrentP);
 
             for (auto &it : rulesOfCurrentP) 
             {
@@ -588,8 +541,12 @@ namespace ufo
 	    CHCs ruleManagerSrc(m_efac, z3, "_v1_");
 	    ruleManagerSrc.parse(string(chcfileSrc));
 
+        for (auto it : ruleManagerSrc.chcs) it.printMemberVars();
+
 	    CHCs ruleManagerDst(m_efac, z3, "_v2_");
 	    ruleManagerDst.parse(string(chcfileDst));
+        
+        for (auto it : ruleManagerDst.chcs) it.printMemberVars();
 
         CHCs ruleManagerProduct(ruleManagerSrc, ruleManagerDst, "_pr_");
 

@@ -88,8 +88,9 @@ namespace ufo
 
       pre = conjoin(arrRange, m_efac);
 
-      initializeLAfactory(preFac, arrRange, intVars, 1);
-      initializeLAfactory(postFac, arrCands, intVars, 0);
+    // AH: commented because it is not required and seems to take a lot of time to run
+    //   initializeLAfactory(preFac, arrRange, intVars, 1);
+    //   initializeLAfactory(postFac, arrCands, intVars, 0);
     }
 
     Expr guessTerm ()
