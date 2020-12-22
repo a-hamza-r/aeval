@@ -1270,7 +1270,7 @@ namespace ufo
         }
         exprs.insert(disjoin(negged, m_efac));
       }
-      return !u.isSat(exprs);
+      return bool(!u.isSat(exprs));
     }
 
     void initArrayStuff(BndExpl& bnd, int cycleNum, Expr pref)

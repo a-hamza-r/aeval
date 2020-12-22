@@ -773,7 +773,7 @@ namespace ufo
         fp.addRule(allVars, boolop::limp (mk<AND>(pre, r.body), r.head));
       }
       try {
-        success = !fp.query(errApp);
+        success = bool(!fp.query(errApp));
       } catch (z3::exception &e){
         char str[3000];
         strncpy(str, e.msg(), 300);
