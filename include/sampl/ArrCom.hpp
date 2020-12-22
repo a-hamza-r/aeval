@@ -60,9 +60,10 @@ namespace ufo
         orArities.insert(ar);
       }
 
-      lf.initDensities(orArities);
-      for (auto & b : laDisjs) lf.calculateStatistics(b, b.arity, 0, 0);
-      for (auto & ar : orArities) lf.stabilizeDensities(ar, eps, 1);
+      // AH: commented because it is not required and seems to take a lot of time to run
+      // lf.initDensities(orArities);
+      // for (auto & b : laDisjs) lf.calculateStatistics(b, b.arity, 0, 0);
+      // for (auto & ar : orArities) lf.stabilizeDensities(ar, eps, 1);
     }
 
     void initialize(ExprVector& intVars, ExprSet& arrCands, ExprVector& arrAccessVars, ExprSet& arrRange)
@@ -88,9 +89,8 @@ namespace ufo
 
       pre = conjoin(arrRange, m_efac);
 
-    // AH: commented because it is not required and seems to take a lot of time to run
-    //   initializeLAfactory(preFac, arrRange, intVars, 1);
-    //   initializeLAfactory(postFac, arrCands, intVars, 0);
+      initializeLAfactory(preFac, arrRange, intVars, 1);
+      initializeLAfactory(postFac, arrCands, intVars, 0);
     }
 
     Expr guessTerm ()

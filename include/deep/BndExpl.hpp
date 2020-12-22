@@ -366,7 +366,7 @@ namespace ufo
           map<Expr, ExprVector>& src_vars,
 				  map<Expr, vector<vector<double> > > & models, int k = 10, Expr initVals=NULL)
     {
-
+      errs() << "start of unrollAndExecuteMultiple\n";
       // helper var
       string str = to_string(numeric_limits<double>::max());
       str = str.substr(0, str.find('.'));
@@ -385,19 +385,28 @@ namespace ufo
 
         auto& hr = ruleManager.chcs[loop[0]];
         ExprVector vars;
-        for (int i = 0; i < ruleManager.chcs[loop[0]].srcVars.size(); i++)
+        for (int j = 0; j < ruleManager.chcs[loop[0]].srcVars.size(); j++)
         {
-          Expr var = ruleManager.chcs[loop[0]].srcVars[i];
+          Expr var = ruleManager.chcs[loop[0]].srcVars[j];
           if (bind::isIntConst(var))
           {
-            mainInds.push_back(i);
+            mainInds.push_back(j);
             vars.push_back(var);
           }
           else if (isConst<ARRAY_TY> (var) && ruleManager.hasArrays[srcRel])
           {
-            vars.push_back(mk<SELECT>(var, ruleManager.chcs[loop[0]].srcVars[ruleManager.iterator[srcRel]]));
+            // vars.push_back(mk<SELECT>(var, ruleManager.chcs[loop[0]].srcVars[ruleManager.iterator[srcRel]]));
+            // int lastIndStore = ruleManager.arrayStores[i][j].size()-1;
+            // int lastIndSelect = ruleManager.arraySelects[i][j].size()-1;
+            Expr ind;
+            if (!ruleManager.arrayStores[i][j].empty())
+              ind = ruleManager.arrayStores[i][j].back();
+            else
+              ind = ruleManager.arraySelects[i][j].back();
+            errs() << "ind for array " << *ruleManager.chcs[i].srcVars[j] << " is " << *ind << "\n";
+            vars.push_back(mk<SELECT>(var, ind));
             mainInds.push_back(-1);
-            arrInds.push_back(i);
+            arrInds.push_back(j);
           }
         }
 
@@ -499,15 +508,14 @@ namespace ufo
         }
 
         if (toContinue) continue;
-
         for (; l < bindVars.size(); l = l + loop.size())
         {
           vector<double> model;
          outs () << "model for " << l << ": [";
           int ai = 0;
           bool toSkip = false;
-          for (int i = 0; i < vars.size(); i++) {
-            int var = mainInds[i];
+          for (int j = 0; j < vars.size(); j++) {
+            int var = mainInds[j];
             Expr bvar;
             if (var >= 0)
             {
@@ -518,10 +526,12 @@ namespace ufo
             }
             else
             {
-              bvar = mk<SELECT>(bindVars[l][arrInds[ai]], bindVars[l-1][ruleManager.iterator[srcRel]]);
+              Expr ind = replaceAll(vars[j]->arg(1), ruleManager.chcs[loop[0]].srcVars, bindVars[l-1]);
+              bvar = mk<SELECT>(bindVars[l][arrInds[ai]], ind);
               ai++;
             }
             Expr m = u.getModel(bvar);
+            // errs() << "model: " << *m << "\n";
             double value;
             if (m == bvar) value = 0;
             else
@@ -547,7 +557,7 @@ namespace ufo
           exprModels[trace.back()] = replaceAll(u.getModel(bindVars.back()),
             bindVars.back(), ruleManager.chcs[trace.back()].srcVars);
       }
-
+      errs() << "end of unrollAndExecuteMultiple\n";
       return true;
     }
 

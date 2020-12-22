@@ -17,7 +17,6 @@ namespace ufo
 
     ExprSet checked;
     map<int, ExprVector> candidates;
-    map<int, ExprVector> candidatesBackUp;
     int updCount = 1;
 
     map<int, Expr> iterators; // per cycle
@@ -25,6 +24,8 @@ namespace ufo
     map<int, map<int, bool>> itersGrow;  // whether the iters are increasing or decreasing
     map<int, map<int, cpp_int>> numOfIters;  // contains all vars that have a behavior of iterator
     map<int, vector<vector<int>>> nonIters;  // contains all vars that do not have a behavior of iterator
+    map<int, map<int, Expr>> initValsIters;
+    map<int, map<int, Expr>> limitValsIters;
     map<int, vector<vector<vector<int>>>> equalityCands;
     map<int, Expr> preconds;
     map<int, Expr> postconds;
@@ -831,19 +832,11 @@ namespace ufo
 
     int alignment(const vector<string> & behaviorfiles, BndExpl& bnd)
     {
-      // ExprSet equivalentLoops;
-      map<Expr, ExprSet> invariant;
-      // AH: remember to remove candidatesBackUp member var from RndLearnerV3 when this is not being used anymore
-      for (auto it : candidatesBackUp) {
-        for (auto it2 : it.second) {
-          invariant[decls[it.first]].insert(it2);
-        }
-      }
+      vector<bool> equivalentLoops;
 
       int fileIndex = 0;
       for (int i = 0; i < ruleManager.cycles.size(); i++)
       {
-        bool equivalent = false;
         vector<vector<int>> iterPairs;
         vector<vector<int>> nonIterPairs;
         vector<int> &cycle = ruleManager.cycles[i];
@@ -856,29 +849,41 @@ namespace ufo
         vector<vector<int>> itersForInv = iters[invNum];
         vector<vector<int>> nonItersForInv = nonIters[invNum];
 
+        // matching all iters of one CHC system to all iters of other one
+          // could be a better way to match lesser iters
+        for (int j = 0; j < itersForInv[0].size(); j++)
+        {
+          for (int k = 0; k < itersForInv[1].size(); k++)
+          {
+            vector<int> v{itersForInv[0][j], itersForInv[1][k]};
+            iterPairs.push_back(v);
+          }
+        }
+
         for (auto &comb : equalityCands[i])
         {
           Expr ruleBodyBackup = prefixRule.body;
-          Expr eq;
-          for (auto &pair : comb)
-          {
-            // errs() << "pair: " << pair[0] << " " << pair[1] << "\n";
-            if (!eq) eq = mk<EQ>(rule.dstVars[pair[0]], rule.dstVars[pair[1]]);
-            else eq = mk<AND>(eq, mk<EQ>(rule.dstVars[pair[0]], rule.dstVars[pair[1]]));
-          }
+          Expr pre, post;
 
-          prefixRule.body = mk<AND>(prefixRule.body, eq);
-
-          // matching all iters of one CHC system to all iters of other one
-          // could be a better way to match lesser iters
-          for (int j = 0; j < itersForInv[0].size(); j++)
+          if (comb[0][0] != -1)
           {
-            for (int k = 0; k < itersForInv[1].size(); k++)
+            for (auto &pair : comb)
             {
-              vector<int> v{itersForInv[0][j], itersForInv[1][k]};
-              iterPairs.push_back(v);
+              // errs() << "pair: " << pair[0] << " " << pair[1] << "\n";
+              if (!pre) pre = mk<EQ>(rule.dstVars[pair[0]], rule.dstVars[pair[1]]);
+              else pre = mk<AND>(pre, mk<EQ>(rule.dstVars[pair[0]], rule.dstVars[pair[1]]));
             }
+
+            prefixRule.body = mk<AND>(prefixRule.body, pre);
           }
+          else pre = mk<TRUE>(m_efac);
+
+          errs() << "prefixRule: " << *prefixRule.body << "\n";
+
+          HornRuleExt* query = NULL;
+          for (auto num: ruleManager.outgs[rel])
+            if (ruleManager.chcs[num].isQuery) 
+              query = &ruleManager.chcs[num];
 
           // matching all non-iters of one CHC system to all non-iters of other one
           // could be a better way to match lesser non-iters
@@ -905,11 +910,14 @@ namespace ufo
           // running the data matrix initially
           map<Expr, ExprSet> candsFromCurrentMatrix;
           arma::mat dataMatrix;
-          getDataCandsForDcl(candsFromCurrentMatrix, behaviorfiles, rel, fileIndex, dataMatrix);
+          #ifdef HAVE_ARMADILLO
+            getDataCandsForDcl(candsFromCurrentMatrix, behaviorfiles, rel, fileIndex, dataMatrix);
+          #else
+            outs() << "Skipping learning from data as required library (armadillo) not found\n";
+          #endif
 
           Expr candsFromCurrentMatrixCnj = conjoin(candsFromCurrentMatrix[rel], m_efac);
-          Expr invariantCnj = conjoin(invariant[rel], m_efac);
-          Expr candsFromCurrentMatrixAndInv = mk<AND>(candsFromCurrentMatrixCnj, invariantCnj);
+          candsFromCurrentMatrixCnj = simplifyArithm(candsFromCurrentMatrixCnj);
 
           for (auto it = iterPairs.begin(); it != iterPairs.end(); it++)
           {
@@ -923,24 +931,58 @@ namespace ufo
             ExprSet cands;
             vector<vector<int>> aligningCandidates;
 
+            Expr candsAddToQuery;
+            int indsQuery = 0;
             // alignment candidates are all variables that are non-iters
             for (auto& it2 : nonIterPairs)
             {
-              // if (bind::isIntConst(rule.srcVars[it2[0]]))
+              Expr cand1, cand2, queryVar, initCond, finalCond;
+              Expr select1, select2, selectsNotEq, toAddToQuery;
               aligningCandidates.push_back(it2);
-              cands.insert(mk<EQ>(rule.srcVars[it2[0]], rule.srcVars[it2[1]]));
+              if (isConst<ARRAY_TY>(rule.srcVars[it2[0]]))
+              {
+                if (!ruleManager.arrayStores[i][it2[0]].empty())
+                  cand1 = ruleManager.arrayStores[i][it2[0]].back();
+                else 
+                  cand1 = ruleManager.arraySelects[i][it2[0]].back();
+                if (!ruleManager.arrayStores[i][it2[1]].empty())
+                  cand2 = ruleManager.arrayStores[i][it2[1]].back();
+                else 
+                  cand2 = ruleManager.arraySelects[i][it2[1]].back();
+                cands.insert(mk<EQ>(mk<SELECT>(rule.srcVars[it2[0]], cand1), mk<SELECT>(rule.srcVars[it2[1]], cand2)));
+                if (query)
+                {
+                  queryVar = mkTerm<string>("i"+lexical_cast<string>(indsQuery), m_efac);
+                  queryVar = cloneVar(rule.srcVars[indx1], queryVar);
+
+                  initCond = mk<GEQ>(queryVar, initValsIters[i][indx1]);
+                  finalCond = mk<LT>(queryVar, limitValsIters[i][indx1]);
+
+                  select1 = mk<SELECT>(rule.srcVars[it2[0]], queryVar);
+                  select2 = mk<SELECT>(rule.srcVars[it2[1]], queryVar);
+
+                  selectsNotEq = mk<NEQ>(select1, select2);
+
+                  toAddToQuery = mk<AND>(mk<AND>(initCond, finalCond), selectsNotEq);
+
+                  indsQuery++;
+                }
+              }
+              else
+              {
+                cands.insert(mk<EQ>(rule.srcVars[it2[0]], rule.srcVars[it2[1]]));
+                if (query)
+                  toAddToQuery = mk<NEQ>(rule.srcVars[it2[0]], rule.srcVars[it2[1]]);
+              }
+              if (candsAddToQuery) candsAddToQuery = mk<OR>(candsAddToQuery, toAddToQuery);
+              else candsAddToQuery = toAddToQuery;
             }
 
-            // might have to remove once iterator detection fixed
-            // alignment candidates are all variables that are iters, other than current iter we consider
-            for (auto it3 = iterPairs.begin(); it3 != iterPairs.end(); it3++)
-            {
-              if (it3 != it) 
-              {
-                aligningCandidates.push_back(*it3);
-                cands.insert(mk<EQ>(rule.srcVars[(*it3)[0]], rule.srcVars[(*it3)[1]]));
-              }
-            }
+            if (query) errs() << "candsAddToQuery: " << *candsAddToQuery << "\n";
+            Expr queryBodyBackUp = query->body;
+            query->body = mk<AND>(query->body, candsAddToQuery);
+
+            // query->printMemberVars();
 
             // errs() << "cands: " << *conjoin(cands, m_efac) << "\n";
 
@@ -949,7 +991,7 @@ namespace ufo
             // if we find relation between each candidate, we assume the loops are equivalent
             // possibly, find a relation between current iters pair too? 
             bool foundRelation = true;
-            if (numIters1 == numIters2 && numIters1 != -1)
+            if (numIters1 == numIters2 && numIters1 != 0)
             {
               for (auto& it2 : aligningCandidates)
               {
@@ -958,220 +1000,256 @@ namespace ufo
               }
               if (foundRelation)
               {
-                // equivalentLoops.insert(rel);
-                equivalent = true;
+                equivalentLoops.push_back(true);
                 errs() << "We have found the loop is equivalent: " << *rel << "\n";
               }
             }
 
-            HornRuleExt* query = NULL;
-            vector<HornRuleExt*> worklist;
-            for (auto num: ruleManager.outgs[rel])
-              if (ruleManager.chcs[num].isInductive)
-                worklist.push_back(&ruleManager.chcs[num]);
-              else if (ruleManager.chcs[num].isQuery)
-                query = &ruleManager.chcs[num];
-
-            // if (find(equivalentLoops.begin(), equivalentLoops.end(), rel) != equivalentLoops.end())
-            if (equivalent && query != NULL) 
+            if (equivalentLoops.size() == ruleManager.cycles.size() && query != NULL) 
             {
-              query->body = mk<AND>(query->body, mkNeg(candsFromCurrentMatrixCnj));
+              // query->body = mk<AND>(query->body, mkNeg(candsFromCurrentMatrixCnj));
               errs() << "query body: " << *query->body << "\n";
               return 1;
             }
-
             
-            while (!worklist.empty())
+            Expr currentHrBody = rule.body;
+
+            bool firstMatrix = true;
+
+            while (true)
             {
-              auto& h = worklist[0];
-              HornRuleExt& hr = *h;
+              errs() << "cands to be aligned: " << *conjoin(cands, m_efac) << "\n";
+
+              HornRuleExt& hr = rule;
 
               Expr model;
-              Expr firstMatrix = mk<AND>(candsFromCurrentMatrixCnj, mkNeg(conjoin(cands, m_efac)));
-              
-              // First dataMatrix does not imply equality
-              if (u.isSat(firstMatrix))
+              Expr currentMatrix = mk<AND>(candsFromCurrentMatrixCnj, mkNeg(conjoin(cands, m_efac)));
+
+              // Expr check = mk<AND>(mk<AND>(hr.body, eq), mkNeg(conjoin(cands, m_efac)));
+
+              errs() << "currentHrBody is: " << *currentHrBody << "\n";
+
+              // current dataMatrix does not imply equality
+              if (u.isSat(currentMatrix))
               {
-                errs() << "first matrix\n";
+                errs() << "current matrix\n";
                 model = bnd.compactPrefix(i);
                 model = replaceAll(model, hr.srcVars, hr.dstVars);
               }
               // check if at any point, the cands (equalities) do not hold
-              else if (!checkCHC1(hr, invariantCnj, cands))
+              else if (!checkCHC1(hr, mk<AND>(mk<AND>(candsFromCurrentMatrixCnj, pre), currentHrBody), cands))
               {
-                Expr e, invAndCond;
-
+                // Expr e, invAndCond;
+                firstMatrix = false;
                 model = u.getModel(hr.srcVars);
                 errs() << "\nmodel src: " << *model << "\n\n";
                 // model = u.getModel(hr.dstVars);
                 // errs() << "\nmodel: " << *model << "\n\n";
 
 
-                if (itersGrow[invNum][indx1])
-                {
-                  findExpr<EQ>(iter1, model, e);
-                  invAndCond = mk<AND>(invariantCnj, mk<LT>(iter1, e->right()));
-                  e = NULL;
+                // if (itersGrow[invNum][indx1])
+                // {
+                  // findExpr<EQ>(iter1, model, e);
+                  // invAndCond = mk<AND>(invariantCnj, mk<LT>(iter1, e->right()));
+                  // e = NULL;
                  
-                  findExpr<EQ>(iter2, model, e);
-                  if (itersGrow[invNum][indx2])
-                    invAndCond = mk<AND>(invAndCond, mk<LT>(iter2, e->right()));
-                  else if (!itersGrow[invNum][indx2])
-                    invAndCond = mk<AND>(invAndCond, mk<GT>(iter2, e->right()));
+                  // findExpr<EQ>(iter2, model, e);
+                  // if (itersGrow[invNum][indx2])
+                    // invAndCond = mk<AND>(invAndCond, mk<LT>(iter2, e->right()));
+                  // else if (!itersGrow[invNum][indx2])
+                  //   invAndCond = mk<AND>(invAndCond, mk<GT>(iter2, e->right()));
 
-                  errs() << "inv: " << *invAndCond << "\n";
-                  if (!checkCHC1(hr, invAndCond, cands))
-                  {
-                    errs() << "something is wrong\n";
-                    return -1;
-                  }
-                }
+                  // errs() << "inv: " << *invAndCond << "\n";
+                  // if (!checkCHC1(hr, invAndCond, cands))
+                  // {
+                  //   errs() << "something is wrong\n";
+                  //   return -1;
+                  // }
+                // }
 
-                else if (!itersGrow[invNum][indx1])
-                {
-                  findExpr<EQ>(iter1, model, e);
-                  invAndCond = mk<AND>(invariantCnj, mk<GT>(iter1, e->right()));
-                  e = NULL;
+                // else if (!itersGrow[invNum][indx1])
+                // {
+                  // findExpr<EQ>(iter1, model, e);
+                  // invAndCond = mk<AND>(invariantCnj, mk<GT>(iter1, e->right()));
+                  // e = NULL;
 
-                  findExpr<EQ>(iter2, model, e);
-                  if (itersGrow[invNum][indx2])
-                    invAndCond = mk<AND>(invAndCond, mk<LT>(iter2, e->right()));
-                  else if (!itersGrow[invNum][indx2])
-                    invAndCond = mk<AND>(invAndCond, mk<GT>(iter2, e->right()));
+                  // findExpr<EQ>(iter2, model, e);
+                  // if (itersGrow[invNum][indx2])
+                  //   invAndCond = mk<AND>(invAndCond, mk<LT>(iter2, e->right()));
+                  // else if (!itersGrow[invNum][indx2])
+                  //   invAndCond = mk<AND>(invAndCond, mk<GT>(iter2, e->right()));
                   
-                  errs() << "inv: " << *invAndCond << "\n";
-                  if (!checkCHC1(hr, invAndCond, cands))
-                  {
-                    errs() << "something is wrong\n";
-                    return -1;
-                  }
-                }
+                  // errs() << "inv: " << *invAndCond << "\n";
+                  // if (!checkCHC1(hr, invAndCond, cands))
+                  // {
+                  //   errs() << "something is wrong\n";
+                  //   return -1;
+                  // }
+                // }
 
                 model = replaceAll(model, hr.srcVars, hr.dstVars);
                 candsFromCurrentMatrix.clear();
-                getDataCandsForDcl(candsFromCurrentMatrix, behaviorfiles, rel, fileIndex, dataMatrix, model);
+                #ifdef HAVE_ARMADILLO
+                  getDataCandsForDcl(candsFromCurrentMatrix, behaviorfiles, rel, fileIndex, dataMatrix, model);
+                #else
+                  outs() << "Skipping learning from data as required library (armadillo) not found\n";
+                #endif
                 candsFromCurrentMatrixCnj = conjoin(candsFromCurrentMatrix[rel], m_efac);
               }
               else
               {
-                worklist.erase(worklist.begin());
-                if (worklist.empty())
+                equivalentLoops.push_back(true);
+                firstMatrix = false;
+                errs() << "It is done\n";
+                // prefixRule.printMemberVars();
+                // worklist[0]->printMemberVars();
+                // query->printMemberVars();
+                // bootstrap();
+
+                if (equivalentLoops.size() == ruleManager.cycles.size() && query != NULL) 
                 {
-                  HornRuleExt* query;
-                  for (auto num: ruleManager.outgs[rel])
-                    if (ruleManager.chcs[num].isQuery)
-                      query = &ruleManager.chcs[num];
+                  // query->body = mk<AND>(query->body, mkNeg(candsFromCurrentMatrixCnj));
+                  errs() << "query body: " << *query->body << "\n";
 
-                  if (query != NULL) 
-                  {
-                    query->body = mk<AND>(query->body, mkNeg(candsFromCurrentMatrixCnj));
-                    errs() << "query body: " << *query->body << "\n";
-
-                    return 2;
-                  }
-                  else continue;
+                  return 2;
                 }
+                else continue;
               }
 
-              errs() << "\ncands for current data matrix: \n";
-              for (auto it : candsFromCurrentMatrix[rel]) errs() << *it << " ";
-                errs() << "\n";
 
               Expr conjoined = conjoin(candsFromCurrentMatrix[rel], m_efac);
+              candsFromCurrentMatrixCnj = simplifyArithm(candsFromCurrentMatrixCnj);
+              errs() << "\ncands for current data matrix: \n" << *candsFromCurrentMatrixCnj << "\n";
+              int numItersOfLoop1 = 0, numItersOfLoop2 = 0;
 
-              // current assumption: 
-                // align just any of the aligning candidates, the rest should align if the program is equivalent
-              // going with the first candidate
-              vector<int> checking = aligningCandidates[0];
-
-              auto ind1 = checking[0];
-              auto ind2 = checking[1];
-
-              errs() << "indices are: " << ind1 << " and " << ind2 << "\n";
-
-              int j, k;
-              bool found = false;
-              // find the first point of equivalency
-              for (k = 0; k < dataMatrix.n_rows; k++)
+              // make sure it comes here and is the right condition
+              if (numIters1 != numIters2 && numIters1 != 0 && numIters2 != 0 
+                && (numIters2 % numIters1 == 0 || numIters1 % numIters2 == 0))
               {
-                for (j = 0; j < dataMatrix.n_rows; j++)
+                if (numIters1 % numIters2 == 0)
                 {
-                  if (dataMatrix(j, ind1+1) == dataMatrix(k, ind2+1)) 
+                  cpp_int numIters1Div = numIters1 / numIters2;
+                  if (numIters1 < 0 && numIters2 < 0)
                   {
-                    errs() << "matching at: " << dataMatrix(j, ind1+1) << " and " << dataMatrix(k, ind2+1) << "\n";
-                    found = true;
-                    break;
-                  } 
+                    numItersOfLoop1 = 1; 
+                    numItersOfLoop2 = (int)(numIters1Div);
+                  }
+                  else if (numIters1 > 0 && numIters2 > 0)
+                  {
+                    numItersOfLoop1 = (int)numIters1Div; 
+                    numItersOfLoop2 = 1;
+                  }
                 }
-                if (found) break;
-              }
-
-              vector<int> matchesInd1, matchesInd2;
-              int currentMatch1 = j, currentMatch2 = k;
-              // assumes that the variables are only aligned in increasing direction
-              // relax this assumption later, 
-              // we should be able to check if candidates are aligned in opposite directions
-              if (found)
-              {
-                for (int a = j+1; a < dataMatrix.n_rows; a++)
+                else if (numIters2 % numIters1 == 0)
                 {
-                  for (int b = k+1; b < dataMatrix.n_rows; b++)
+                  cpp_int numIters2Div = numIters2 / numIters1;
+                  if (numIters1 < 0 && numIters2 < 0)
                   {
-                    if (dataMatrix(a, ind1+1) == dataMatrix(b, ind2+1)) 
+                    numItersOfLoop1 = (int)(numIters2Div); 
+                    numItersOfLoop2 = 1;
+                  }
+                  else if (numIters1 > 0 && numIters2 > 0)
+                  {
+                    numItersOfLoop1 = 1; 
+                    numItersOfLoop2 = (int)numIters2Div;
+                  }
+                }
+              }
+              else if (numIters1 != numIters2 && numIters1 != 0 && numIters2 != 0)
+              {
+                // current assumption: 
+                  // align just any of the aligning candidates, the rest should align if the program is equivalent
+                // going with the first candidate
+                vector<int> checking = aligningCandidates[0];
+
+                auto ind1 = checking[0];
+                auto ind2 = checking[1];
+
+                errs() << "indices are: " << ind1 << " and " << ind2 << "\n";
+
+                int j, k;
+                bool found = false;
+                // find the first point of equivalency
+                for (k = 0; k < dataMatrix.n_rows; k++)
+                {
+                  for (j = 0; j < dataMatrix.n_rows; j++)
+                  {
+                    if (dataMatrix(j, ind1+1) == dataMatrix(k, ind2+1)) 
                     {
-                      matchesInd1.push_back(a - currentMatch1);
-                      matchesInd2.push_back(b - currentMatch2);
-                      currentMatch1 = a; currentMatch2 = b;
+                      errs() << "matching at: " << dataMatrix(j, ind1+1) << " and " << dataMatrix(k, ind2+1) << "\n";
+                      found = true;
+                      break;
+                    } 
+                  }
+                  if (found) break;
+                }
+
+                vector<int> matchesInd1, matchesInd2;
+                int currentMatch1 = j, currentMatch2 = k;
+                // assumes that the variables are only aligned in increasing direction
+                // relax this assumption later, 
+                // we should be able to check if candidates are aligned in opposite directions
+                if (found)
+                {
+                  for (int a = j+1; a < dataMatrix.n_rows; a++)
+                  {
+                    for (int b = k+1; b < dataMatrix.n_rows; b++)
+                    {
+                      if (dataMatrix(a, ind1+1) == dataMatrix(b, ind2+1)) 
+                      {
+                        matchesInd1.push_back(a - currentMatch1);
+                        matchesInd2.push_back(b - currentMatch2);
+                        currentMatch1 = a; currentMatch2 = b;
+                      }
                     }
                   }
                 }
-              }
-              // else 
-              // {
-              //   Expr newModel = mk<TRUE>(m_efac);
-              //   for (int i = 1; i < dataMatrix.n_cols; i++)
-              //   {
-              //     newModel = mk<AND>(newModel, mk<EQ>(hr.srcVars[i-1], mkMPZ(dataMatrix(dataMatrix.n_rows-1, i), m_efac)));
-              //   }
+                // else 
+                // {
+                //   Expr newModel = mk<TRUE>(m_efac);
+                //   for (int i = 1; i < dataMatrix.n_cols; i++)
+                //   {
+                //     newModel = mk<AND>(newModel, mk<EQ>(hr.srcVars[i-1], mkMPZ(dataMatrix(dataMatrix.n_rows-1, i), m_efac)));
+                //   }
 
-              //   getDataCandsForDcl(candsFromCurrentMatrix, behaviorfiles, rel, fileIndex, dataMatrix, newModel);
-              // }
+                //   getDataCandsForDcl(candsFromCurrentMatrix, behaviorfiles, rel, fileIndex, dataMatrix, newModel);
+                // }
 
-              errs() << "matches 1: \n";
-              for (auto it : matchesInd1) errs() << it << " ";
-              errs() << "\n";
-              errs() << "matches 2: \n";
-              for (auto it : matchesInd2) errs() << it << " ";
-              errs() << "\n";
+                errs() << "matches 1: \n";
+                for (auto it : matchesInd1) errs() << it << " ";
+                errs() << "\n";
+                errs() << "matches 2: \n";
+                for (auto it : matchesInd2) errs() << it << " ";
+                errs() << "\n";
 
-              int alignPattern1 = findPattern(matchesInd1);
-              int alignPattern2 = findPattern(matchesInd2);
+                int alignPattern1 = findPattern(matchesInd1);
+                int alignPattern2 = findPattern(matchesInd2);
 
-              int numItersOfLoop1 = 0, numItersOfLoop2 = 0;
-              if (alignPattern1 > 0 && alignPattern2 > 0)
-              {
-                // cout << "first alignment at: " << alignPattern1 << "\n";
-                // cout << "second alignment at: " << alignPattern2 << "\n";
-
-                if (alignPattern1 % alignPattern2 == 0)
+                if (alignPattern1 > 0 && alignPattern2 > 0)
                 {
-                  for (int a = 0; a < alignPattern1; a++) 
+                  // cout << "first alignment at: " << alignPattern1 << "\n";
+                  // cout << "second alignment at: " << alignPattern2 << "\n";
+
+                  if (alignPattern1 % alignPattern2 == 0)
                   {
-                    numItersOfLoop1 += matchesInd1[a];
-                    numItersOfLoop2 += matchesInd2[a];
+                    for (int a = 0; a < alignPattern1; a++) 
+                    {
+                      numItersOfLoop1 += matchesInd1[a];
+                      numItersOfLoop2 += matchesInd2[a];
+                    }
                   }
-                }
-                else if (alignPattern2 % alignPattern1 == 0)
-                {
-                  for (int a = 0; a < alignPattern2; a++) 
+                  else if (alignPattern2 % alignPattern1 == 0)
                   {
-                    numItersOfLoop1 += matchesInd1[a];
-                    numItersOfLoop2 += matchesInd2[a];
+                    for (int a = 0; a < alignPattern2; a++) 
+                    {
+                      numItersOfLoop1 += matchesInd1[a];
+                      numItersOfLoop2 += matchesInd2[a];
+                    }
                   }
+                  else errs() << "alignment could not be found\n";
                 }
-                else errs() << "alignment could not be found\n";
+                else {}
               }
-              else {}
 
               cout << "numIters for loop 1: " << numItersOfLoop1 << "\n";
               cout << "numIters for loop 2: " << numItersOfLoop2 << "\n";
@@ -1291,22 +1369,145 @@ namespace ufo
 
               // the cond is appended to the new rule rulesPr
               errs() << "\ncond is: " << *cond << "\n";
-              rulesBody = mk<AND>(rulesBody, cond);
+
+              currentHrBody = mk<AND>(rulesBody, cond);
 
               // possibly, the current rule we are handling, add !cond to the body
               errs() << "\ncond prev is: " << *condPrev << "\n";
-              hr.body = mk<AND>(hr.body, condPrev);
 
-              hr.body = mk<OR>(hr.body, rulesBody);
+              if (firstMatrix)
+                hr.body = rulesBody;
+              else
+                hr.body = mk<OR>(mk<AND>(hr.body, condPrev), mk<AND>(rulesBody, cond));
+
+              firstMatrix = false;
 
               errs() << "\nUpdated rule: ";
               hr.printMemberVars();
 
+              ruleManager.arrayStores[i].clear();
+              ruleManager.arraySelects[i].clear();
+
+              ExprSet ssa, conjs;
+              getConj(rulesBody, ssa);
+
+              // errs() << "new rule: " << *rulesBody << "\n";
+
+
+              // AH: FIX THIS BIG TIME (make it more efficient)
+              for (int j = 0; j < bnd.bindVars.back().size(); j++)
+              {
+                Expr a = hr.srcVars[j];
+                Expr b = hr.dstVars[j];
+                if (!isOpX<ARRAY_TY>(bind::typeOf(a))) continue;
+                // errs() << "ARRAY: " << *a << "\n";
+                Expr result, result1, indx;
+                if (!u.implies(rulesBody, mk<EQ>(a, b)))
+                {
+                  findExpr<EQ>(b, rulesBody, result);
+                  // errs() << "found: " << *result << "\n";
+                  if (isOpX<STORE>(result->right())) 
+                  {
+                    // errs() << "index: " << *result->right()->arg(1) << "\n";
+                    indx = result->right()->arg(1);
+                    for (int k = 0; k < hr.dstVars.size(); k++)
+                    {
+                      if (contains(indx, hr.dstVars[k]))
+                      {
+                        // errs() << "contains: " << *hr.dstVars[k] << "\n";
+                        findExpr<EQ>(hr.dstVars[k], rulesBody, result1);
+                        // errs() << "result1 is: " << *result1 << "\n";
+                        getConj(result1, conjs);
+                        result1 = NULL;
+                        for (auto &it : conjs)
+                        {
+                          if (!containsOp<ARRAY_TY>(it))
+                          {
+                            if (!result1) result1 = it;
+                            else result1 = mk<AND>(result1, it);
+                          }
+                        }
+                        // errs() << "updated result1 is: " << *result1 << "\n";
+
+                        ExprSet s{hr.dstVars[k]};
+                        indx = ufo::eliminateQuantifiers(mk<AND>(indx, result1), s);
+                        // errs() << "updated index is: " << *indx << "\n";
+                      }
+                    }
+                    ruleManager.arrayStores[i][j].push_back(indx);
+                  }
+                }
+                else
+                {
+                  for (auto &it : ssa)
+                  {
+                    // errs() << "\n\nsearching in: " << *it << "\n";
+                    findStoresAndSelects(a, it->right(), j, i);
+                  }
+                  
+                  Expr result1;
+                  Expr indx = ruleManager.arraySelects[i][j].back();
+                  // errs() << "for array select, indx: " << *indx << "\n";
+                  for (int k = 0; k < hr.dstVars.size(); k++)
+                  {
+                    if (contains(indx, hr.dstVars[k]))
+                    {
+                      // errs() << "contains: " << *hr.dstVars[k] << "\n";
+                      findExpr<EQ>(hr.dstVars[k], rulesBody, result1);
+                      // errs() << "result1 is: " << *result1 << "\n";
+                      getConj(result1, conjs);
+                      result1 = NULL;
+                      for (auto &it : conjs)
+                      {
+                        if (!containsOp<ARRAY_TY>(it))
+                        {
+                          if (!result1) result1 = it;
+                          else result1 = mk<AND>(result1, it);
+                        }
+                      }
+                      // errs() << "updated result1 is: " << *result1 << "\n";
+
+                      ExprSet s{hr.dstVars[k]};
+                      indx = ufo::eliminateQuantifiers(mk<AND>(indx, result1), s);
+                      // errs() << "updated index is: " << *indx << "\n";
+                    }
+                  }
+                  ruleManager.arraySelects[i][j].back() = indx;
+                }
+              }
+
               candsFromCurrentMatrix.clear();
               getDataCandsForDcl(candsFromCurrentMatrix, behaviorfiles, rel, fileIndex, dataMatrix, model);
               candsFromCurrentMatrixCnj = conjoin(candsFromCurrentMatrix[rel], m_efac);
+
+              candsFromCurrentMatrixCnj = simplifyArithm(candsFromCurrentMatrixCnj);
+
+              errs() << "cands from updated matrix: " << *candsFromCurrentMatrixCnj << "\n";
+
+              cands.clear();
+              for (auto& it2 : nonIterPairs)
+              {
+                Expr cand1, cand2;
+                if (isConst<ARRAY_TY>(rule.srcVars[it2[0]]))
+                {
+                  if (!ruleManager.arrayStores[i][it2[0]].empty())
+                    cand1 = ruleManager.arrayStores[i][it2[0]].back();
+                  else 
+                    cand1 = ruleManager.arraySelects[i][it2[0]].back();
+                  if (!ruleManager.arrayStores[i][it2[1]].empty())
+                    cand2 = ruleManager.arrayStores[i][it2[1]].back();
+                  else 
+                    cand2 = ruleManager.arraySelects[i][it2[1]].back();
+                  // cands.insert(mk<EQ>(cand1, cand2));
+                  cands.insert(mk<EQ>(mk<SELECT>(rule.srcVars[it2[0]], cand1), mk<SELECT>(rule.srcVars[it2[1]], cand2)));
+                }
+                else
+                  cands.insert(mk<EQ>(rule.srcVars[it2[0]], rule.srcVars[it2[1]]));
+              }
             }
+            query->body = queryBodyBackUp;
           }
+          prefixRule.body = ruleBodyBackup;
         }
       }
       return 0;
@@ -1328,19 +1529,22 @@ namespace ufo
         {
           bool res2 = true;
           int ind = getVarIndex(hr.dstRelation, decls);
-          // errs() << "\ncands considered:\n";
-          // for (auto it : candidatesTmp[ind])
-          //   errs() << *it << "\n";
+          errs() << "\ncands considered:\n";
+          for (auto it : candidatesTmp[ind])
+            errs() << *it << "\n";
           Expr model = u.getModel(hr.dstVars);
+          if (model)
           errs() << "\nmodel: " << *model << "\n";
           if (isSkippable(model, hr.dstVars, candidatesTmp))
           {
+            errs() << "isSkippable\n";
             // something went wrong with z3. do aggressive weakening (TODO: try bruteforce):
             candidatesTmp[ind].clear();
             res2 = false;
           }
           else
           {
+            errs() << "isSkippable not\n";
             ExprVector& ev = candidatesTmp[ind];
             ExprVector invVars;
             for (auto & a : invarVars[ind]) invVars.push_back(a.second);
@@ -1373,6 +1577,7 @@ namespace ufo
 
           if (recur && !res2)
           {
+            errs() << "recur && !res2\n";
             res1 = false;
             break;
           }
@@ -1473,7 +1678,7 @@ namespace ufo
     }
 
     // adapted from doSeedMining
-    void getSeeds(Expr invRel, map<Expr, ExprSet>& cands, map<Expr, ExprSet>& candsForPhi, bool analizeCode = true)
+    void getSeeds(Expr invRel, map<Expr, ExprSet>& cands, /*map<Expr, ExprSet>& candsForPhi, */bool analizeCode = true)
     {
       int ind = getVarIndex(invRel, decls);
       SamplFactory& sf = sfs[ind].back();
@@ -1492,7 +1697,7 @@ namespace ufo
         if (hr.dstRelation != invRel && hr.srcRelation != invRel) continue;
         SeedMiner sm (hr, invRel, invarVars[ind], sf.lf.nonlinVars);
 
-        if (analizeCode) sm.analizeCode(candsForPhi[invRel]);
+        if (analizeCode) sm.analizeCode(/*candsForPhi[invRel]*/);
         else sm.candidates.clear();
 
         if (!analizedExtras && hr.srcRelation == invRel)
@@ -1690,16 +1895,20 @@ namespace ufo
     void getDataCandsForDcl(map<Expr, ExprSet>& cands, const vector<string> & behaviorfiles, 
       Expr dcl, int& fileIndex, arma::mat& dataMatrix, Expr initVals=NULL){
       DataLearner dl(ruleManager, m_z3);
+      errs() << "before initialize\n";
       dl.initialize(dcl, true /*multipleLoops*/, 2, initVals);
       string filename("");
       if (fileIndex < behaviorfiles.size()) {
         filename = behaviorfiles[fileIndex];
         fileIndex++;
       }
+      errs() << "before computeData\n";
       if (!dl.computeData(filename)) return;
       ExprSet tmp, tmp2;
       map<Expr, ExprVector> substs;
+      errs() << "before computePolynomials\n";
       (void)dl.computePolynomials(tmp);
+      errs() << "after computePolynomials\n";
       for (auto a : tmp)
       {
         errs() << " >>>> CAND FROM DATA for " << *dcl << ": " << *a << "\n";
@@ -1751,6 +1960,7 @@ namespace ufo
 
       if (multiHoudini(ruleManager.wtoCHCs))
       {
+        errs() << "After multiHoudini\n";
         assignPrioritiesForLearned();
         if (checkAllLemmas())
         {
@@ -1891,7 +2101,7 @@ namespace ufo
         ExprSet lms = sf.learnedExprs;
         for (auto & a : annotations[ind]) lms.insert(a);
         for (auto a : lms)
-        {
+        { 
           for (auto & v : invarVars[ind]) a = replaceAll(a, v.second, hr.srcVars[v.first]);
           exprs.insert(a);
         }
@@ -1916,16 +2126,19 @@ namespace ufo
 
     bool checkCHC1 (HornRuleExt& hr, Expr assump, ExprSet& annotations)
     {
-      outs()  << "CHECKING " << * hr.srcRelation << " -> "<< * hr.dstRelation << "\n";
+      // outs()  << "CHECKING " << * hr.srcRelation << " -> "<< * hr.dstRelation << "\n";
       ExprSet exprs;
-      exprs.insert(hr.body);
+      // exprs.insert(hr.body);
       exprs.insert(assump);
 
       if (!hr.isFact)
       {
         int ind = getVarIndex(hr.srcRelation, decls);
+        // SamplFactory& sf = sfs[ind].back();
+        // ExprSet lms = sf.learnedExprs;
+        // for (auto & a : annotations) lms.insert(a);
         for (auto a : annotations)
-        {
+        { 
           for (auto & v : invarVars[ind]) a = replaceAll(a, v.second, hr.srcVars[v.first]);
           exprs.insert(a);
         }
@@ -1942,8 +2155,61 @@ namespace ufo
         }
         exprs.insert(disjoin(negged, m_efac));
       }
-      errs() << *conjoin(exprs, m_efac) << "\n";
+      errs() << "exprs: " << "\n";
+      for (auto it : exprs)
+        errs() << *it << "\n";
+      errs() << "\n\n";
       return bool(!u.isSat(exprs));
+    }
+
+
+    // need to fix, not really covered all cases
+    // look at getChainOfStores and getCounters in ExprSimpl.hpp
+    void findStoresAndSelects(Expr array, Expr e, int i, int cycleNum)
+    {
+      if (contains(e, array) && (containsOp<STORE>(e) || containsOp<SELECT>(e))) 
+      {
+        // errs() << *e << "\n";
+        if (isOpX<STORE>(e))
+        {
+          if (array == e->arg(0))
+          {
+            // errs() << "store at array " << *array << " at index " << *e->arg(1) << "\n";
+            auto &v = ruleManager.arrayStores[cycleNum][i];
+            if (find(v.begin(), v.end(), e->arg(1)) == v.end())
+              v.push_back(e->arg(1));
+            findStoresAndSelects(array, e->arg(2), i, cycleNum);
+          }
+          else 
+          {
+            findStoresAndSelects(array, e->arg(0), i, cycleNum);
+            findStoresAndSelects(array, e->arg(2), i, cycleNum);
+          }
+        }
+
+        if (isOpX<SELECT>(e))
+        {
+          if (array == e->arg(0))
+          {
+            // errs() << "select at array " << *array << " at index " << *e->arg(1) << "\n";
+            auto &v = ruleManager.arraySelects[cycleNum][i];
+            if (find(v.begin(), v.end(), e->arg(1)) == v.end())
+              v.push_back(e->arg(1));
+            // findStoresAndSelects(array, e->arg(1), i, cycleNum)
+          }
+          else 
+          {
+            findStoresAndSelects(array, e->arg(0), i, cycleNum);
+            findStoresAndSelects(array, e->arg(1), i, cycleNum);
+          }
+        }
+      }
+      else return;
+      if (isOpX<PLUS>(e) || isOpX<MINUS>(e) || isOpX<MULT>(e) || isOpX<DIV>(e))
+      {
+        findStoresAndSelects(array, e->arg(0), i, cycleNum);
+        findStoresAndSelects(array, e->arg(1), i, cycleNum);
+      }
     }
 
     void initArrayStuff(BndExpl& bnd, int cycleNum, Expr pref)
@@ -1959,8 +2225,36 @@ namespace ufo
 
       getConj(ssas[invNum], ssa);
 
+      // errs() << "SSA\n";
+      // errs() << *ssas[invNum] << "\n\n";
+
       filter (ssas[invNum], bind::IsConst (), inserter(qvars[invNum], qvars[invNum].begin()));
       postconds[invNum] = ruleManager.getPrecondition(&ruleManager.chcs[cycle[0]]);
+
+      for (int i = 0; i < bnd.bindVars.back().size(); i++)
+      {
+        Expr a = ruleManager.chcs[cycle[0]].srcVars[i];
+        Expr b = bnd.bindVars.back()[i];
+        if (!isOpX<ARRAY_TY>(bind::typeOf(a))) continue;
+        // errs() << "ARRAY: " << *a << "\n";
+        Expr result;
+        if (!u.implies(ssas[invNum], mk<EQ>(a, b)))
+        {
+          findExpr<EQ>(b, ssas[invNum], result);
+          if (isOpX<STORE>(result->right())) {
+            // errs() << "index: " << *result->right()->arg(1) << "\n";
+            ruleManager.arrayStores[cycleNum][i].push_back(result->right()->arg(1));
+          }
+        }
+        else
+        {
+          for (auto &it : ssa)
+          {
+            // errs() << "\n\nsearching in: " << *it << "\n";
+            findStoresAndSelects(a, it->right(), i, cycleNum);
+          }
+        }
+      }
 
       for (int i = 0; i < bnd.bindVars.back().size(); i++)
       {
@@ -2039,7 +2333,7 @@ namespace ufo
           result = conj;
     }
 
-    void getIters(BndExpl& bnd, int cycleNum)
+    void varsMetaInfo(BndExpl& bnd, int cycleNum)
     {
       vector<int>& cycle = ruleManager.cycles[cycleNum];
       Expr rel = ruleManager.chcs[cycle[0]].srcRelation;
@@ -2081,7 +2375,7 @@ namespace ufo
           if (isOpX<AND>(e) || isOpX<OR>(e)) continue;
 
           Expr right = e->right();
-          Expr initVal;
+          Expr initVal, transitionVal;
           int minusOrDiv = 0;
           bool initValFound = false, transitionValFound = false, limitValFound = false;
           bool hasInitVal = false, hasTransitionVal = false, hasLimitVal = false;
@@ -2097,6 +2391,7 @@ namespace ufo
           // right->arg(0) should be the same as variable a in this code
           if (isIntConst(right->arg(0)))
           {
+            Expr model;
             findExpr<EQ>(right->arg(0), init, initVal);
             initVal = ineqSimplifier(right->arg(0), initVal);
             // errs() << "init: " << *initVal << "\n";
@@ -2108,25 +2403,28 @@ namespace ufo
             else */if (u.hasOneModel(right->arg(0), init))
             {
               u.isSat(init);
-              Expr model = u.getModel(right->arg(0));
+              model = u.getModel(right->arg(0));
               initValNumeric = lexical_cast<cpp_int>(model);
               initValFound = true;
             }
             if (initVal) hasInitVal = true;
+            if (model) initVal = model;
           }
 
-          if (isNumericConst(right->arg(1)))
+          transitionVal = right->arg(1);
+          if (isNumericConst(transitionVal))
           {
-            transitionValNumeric = lexical_cast<cpp_int>(right->arg(1));
+            transitionValNumeric = lexical_cast<cpp_int>(transitionVal);
             transitionValFound = true;
             hasTransitionVal = true;
           }
-          else if (isNumeric(right->arg(1)))
+          else if (isNumeric(transitionVal))
           {
-            if (u.hasOneModel(right->arg(1), initAndCycle))
+            Expr model;
+            if (u.hasOneModel(transitionVal, initAndCycle))
             {
               u.isSat(initAndCycle);
-              Expr model = u.getModel(right->arg(1));
+              model = u.getModel(transitionVal);
               transitionValNumeric = lexical_cast<cpp_int>(model);
               transitionValFound = true;
             }
@@ -2153,7 +2451,7 @@ namespace ufo
           // limit is just a number, like (var > c), c is a constant
           if (limit && isNumericConst(limit))
           {
-            cpp_int limitValNumeric = lexical_cast<cpp_int>(limit);
+            limitValNumeric = lexical_cast<cpp_int>(limit);
             cout << "limitValNumeric: " << limitValNumeric << "\n";
             limitValFound = true;
             hasLimitVal = true;
@@ -2161,15 +2459,17 @@ namespace ufo
           // limit is some variable and not constant, can occur in the case var > n, n is a variable
           else if (limit && isIntConst(limit))
           {
+            Expr model;
             errs() << "intConst: " << *limit << "\n";
             if (u.hasOneModel(limit, initAndCycle))
             {
               u.isSat(initAndCycle);
-              Expr model = u.getModel(limit);
+              model = u.getModel(limit);
               limitValNumeric = lexical_cast<cpp_int>(model);
               limitValFound = true;
             }
             hasLimitVal = true;
+            if (model) limit = model;
           }
 
           if (initValFound && transitionValFound && limitValFound)
@@ -2185,7 +2485,7 @@ namespace ufo
               cout << "numIters: " << numIters << "\n";
             }
           }
-          else if (transitionValFound)
+          else if (transitionValFound && hasInitVal && hasLimitVal)
           {
             if (minusOrDiv == 1)
             {
@@ -2205,6 +2505,8 @@ namespace ufo
             // this iter is decreasing
             itersGrow[cycleNum][i] = false;
             numOfIters[cycleNum][i] = numIters;
+            initValsIters[cycleNum][i] = initVal;
+            limitValsIters[cycleNum][i] = limit;
           }
           else notAnIter = true;
         }
@@ -2222,7 +2524,7 @@ namespace ufo
           if (isOpX<AND>(e) || isOpX<OR>(e)) continue;
 
           Expr right = e->right();
-          Expr initVal;
+          Expr initVal, transitionVal;
           int plusOrMult = 0;
           bool initValFound = false, transitionValFound = false, limitValFound = false;
           bool hasInitVal = false, hasTransitionVal = false, hasLimitVal = false;
@@ -2237,6 +2539,7 @@ namespace ufo
           // right->arg(0) should be the same as variable a in this code
           if (isIntConst(right->arg(0)))
           {
+            Expr model;
             findExpr<EQ>(right->arg(0), init, initVal);
             initVal = ineqSimplifier(right->arg(0), initVal);
             // errs() << "init: " << *initVal << "\n";
@@ -2248,25 +2551,31 @@ namespace ufo
             else */if (u.hasOneModel(right->arg(0), init))
             {
               u.isSat(init);
-              Expr model = u.getModel(right->arg(0));
+              model = u.getModel(right->arg(0));
               initValNumeric = lexical_cast<cpp_int>(model);
               initValFound = true;
             }
             if (initVal) hasInitVal = true;
+            if (model) initVal = model;
           }
 
-          if (isNumericConst(right->arg(1)))
+          transitionVal = right->arg(1);
+          if (isNumericConst(transitionVal))
           {
-            transitionValNumeric = lexical_cast<cpp_int>(right->arg(1));
+            transitionValNumeric = lexical_cast<cpp_int>(transitionVal);
             transitionValFound = true;
             hasTransitionVal = true;
           }
-          else if (isNumeric(right->arg(1)) && u.hasOneModel(right->arg(1), initAndCycle))
+          else if (isNumeric(transitionVal))
           {
-            u.isSat(initAndCycle);
-            Expr model = u.getModel(right->arg(1));
-            transitionValNumeric = lexical_cast<cpp_int>(model);
-            transitionValFound = true;
+            Expr model;
+            if (u.hasOneModel(transitionVal, initAndCycle))
+            {
+              u.isSat(initAndCycle);
+              model = u.getModel(transitionVal);
+              transitionValNumeric = lexical_cast<cpp_int>(model);
+              transitionValFound = true;
+            }
             hasTransitionVal = true;
           }
 
@@ -2290,7 +2599,7 @@ namespace ufo
           // limit is just a number, like (var < c), c is a constant
           if (limit && isNumericConst(limit))
           {
-            cpp_int limitValNumeric = lexical_cast<cpp_int>(limit);
+            limitValNumeric = lexical_cast<cpp_int>(limit);
             cout << "limitValNumeric: " << limitValNumeric << "\n";
             limitValFound = true;
             hasLimitVal = true;
@@ -2298,15 +2607,17 @@ namespace ufo
           // limit is some variable and not constant, can occur in the case var > n, n is a variable
           else if (limit && isIntConst(limit))
           {
+            Expr model;
             errs() << "intConst: " << *limit << "\n";
             if (u.hasOneModel(limit, initAndCycle))
             {
               u.isSat(initAndCycle);
-              Expr model = u.getModel(limit);
+              model = u.getModel(limit);
               limitValNumeric = lexical_cast<cpp_int>(model);
               limitValFound = true;
             }
             hasLimitVal = true;
+            if (model) limit = model;
           }
 
           if (initValFound && transitionValFound && limitValFound)
@@ -2322,7 +2633,7 @@ namespace ufo
               cout << "numIters: " << numIters << "\n";
             }
           }
-          else if (transitionValFound)
+          else if (transitionValFound && hasInitVal && hasLimitVal)
           {
             if (plusOrMult == 1)
             {
@@ -2342,6 +2653,8 @@ namespace ufo
             // this iter is increasing
             itersGrow[cycleNum][i] = true;
             numOfIters[cycleNum][i] = numIters;
+            initValsIters[cycleNum][i] = initVal;
+            limitValsIters[cycleNum][i] = limit;
           }
           else notAnIter = true;
         }
@@ -2409,6 +2722,9 @@ namespace ufo
       joinVars(combsArray, combsInt, combs1);
       joinVars(combs1, combsBool, combs);
 
+      // fix later
+      vector<vector<int>> v{{-1, -1}};
+      if (combs.empty()) combs.push_back(v);
       equalityCands[cycleNum] = combs;
 
       // for (auto elems: equalityCands[cycleNum])
@@ -2429,9 +2745,6 @@ namespace ufo
         SamplFactory& sf = sfs[i].back();
         ExprSet lms = sf.learnedExprs;
 
-        ExprVector v(lms.begin(), lms.end());
-        candidatesBackUp[i] = v;
-        
         outs () << "(define-fun " << *rel << " (";
         for (auto & b : ruleManager.invVars[rel])
           outs () << "(" << *b << " " << u.varType(b) << ")";
@@ -2459,7 +2772,7 @@ namespace ufo
     }
 
     RndLearnerV3 ds(ruleManager.m_efac, z3, ruleManager, freqs, aggp);
-    map<Expr, ExprSet> cands, candsForPhi;
+    map<Expr, ExprSet> cands/*, candsForPhi*/;
     for (auto& dcl: ruleManager.decls) ds.initializeDecl(dcl);
 
     for (int i = 0; i < ruleManager.cycles.size(); i++)
@@ -2468,43 +2781,46 @@ namespace ufo
       cands[ruleManager.chcs[ruleManager.cycles[i][0]].srcRelation].insert(pref);
       //if (ruleManager.hasArrays)
       ds.initArrayStuff(bnd, i, pref);
-      ds.getIters(bnd, i);
+      ds.varsMetaInfo(bnd, i);
     }
-
-//     if (enableDataLearning) {
-// #ifdef HAVE_ARMADILLO
-//       ds.getDataCandidates(cands, behaviorfiles);
-// #else
-//       outs() << "Skipping learning from data as required library (armadillo) not found\n";
-// #endif
-//     }
 
 //     candsForPhi = cands;
 
-    errs() << "\n\n";
-    for (auto it : cands)
-    {
-      errs() << "cand: " << *it.first << "\n";
-      for (auto it2 : it.second)
-        errs() << *it2 << " ";
-      errs() << "\n";
-    }
-    errs() << "\n\n";
+    // errs() << "\n\n";
+    // for (auto it : cands)
+    // {
+    //   errs() << "cand: " << *it.first << "\n";
+    //   for (auto it2 : it.second)
+    //     errs() << *it2 << " ";
+    //   errs() << "\n";
+    // }
+    // errs() << "\n\n";
 
-    for (auto& dcl: ruleManager.wtoDecls) ds.getSeeds(dcl, cands, candsForPhi);
+    for (auto& dcl: ruleManager.wtoDecls) ds.getSeeds(dcl, cands/*, candsForPhi*/);
     ds.refreshCands(cands);
 
+    // errs() << "after refreshCands\n";
     for (auto& dcl: ruleManager.decls) ds.doSeedMining(dcl->arg(0), cands[dcl->arg(0)], false);
     ds.calculateStatistics();
+    // errs() << "after calculateStatistics\n";
     // if (ds.bootstrap()) return;
-    bool check = ds.bootstrap();
+    // bool check = ds.bootstrap();
+    // errs() << "HERE\n";
     int eqStatus = ds.alignment(behaviorfiles, bnd);
     if (eqStatus == 1 && ds.checkAllLemmas())
       errs() << "The programs are equivalent\n";
     else if (eqStatus == 2)
     {
+      for (auto it : ruleManager.chcs)
+      {
+        ExprVector v;
+        Expr q = createQuantifiedFormula(it.body, v);
+        SMTUtils su(it.body->getFactory());
+        su.serialize_formula(q);
+      }
+
       RndLearnerV3 ds1(ruleManager.m_efac, z3, ruleManager, freqs, aggp);
-      map<Expr, ExprSet> cands1, candsForPhi1;
+      map<Expr, ExprSet> cands1;
       for (auto& dcl: ruleManager.decls) ds1.initializeDecl(dcl);
 
       for (int i = 0; i < ruleManager.cycles.size(); i++)
@@ -2513,7 +2829,7 @@ namespace ufo
         cands1[ruleManager.chcs[ruleManager.cycles[i][0]].srcRelation].insert(pref);
         //if (ruleManager.hasArrays)
         ds1.initArrayStuff(bnd, i, pref);
-        ds1.getIters(bnd, i);
+        ds1.varsMetaInfo(bnd, i);
         for (auto num : ruleManager.outgs[ruleManager.chcs[ruleManager.cycles[i][0]].srcRelation])
           if (ruleManager.chcs[num].isQuery)
            errs() << "body of query is: " << *ruleManager.chcs[num].body << "\n";
@@ -2528,13 +2844,14 @@ namespace ufo
       }
       errs() << "\n\n";
 
-      for (auto& dcl: ruleManager.wtoDecls) ds1.getSeeds(dcl, cands1, candsForPhi1);
+      for (auto& dcl: ruleManager.wtoDecls) ds1.getSeeds(dcl, cands1);
       ds1.refreshCands(cands1);
 
       for (auto& dcl: ruleManager.decls) ds1.doSeedMining(dcl->arg(0), cands1[dcl->arg(0)], false);
       ds1.calculateStatistics();
       bool check1 = ds1.bootstrap();
       if (check1) errs() << "The programs are equivalent\n";
+      else errs() << "The programs are not equivalent\n";
     }
     else errs() << "The programs are not equivalent\n";
 

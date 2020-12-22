@@ -141,6 +141,8 @@ namespace ufo
     vector<vector<int>> cycles;
     map<Expr, bool> hasArrays;
     map<Expr, int> iterator;
+    map<int, map<int, ExprVector>> arrayStores;
+    map<int, map<int, ExprVector>> arraySelects;
 
     CHCs *chcSrc;
     CHCs *chcDst;

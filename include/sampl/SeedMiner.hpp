@@ -391,7 +391,7 @@ namespace ufo
       }
     }
 
-    void analizeCode(ExprSet &cands)
+    void analizeCode(/*ExprSet &cands*/)
     {
       if (false) // printing only
       {

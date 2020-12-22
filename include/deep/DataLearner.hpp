@@ -62,7 +62,7 @@ namespace ufo
     executeEntireProgram(CHCs & rm, Expr initialVals=NULL)
     {
       BndExpl bnd(rm);
-      return bnd.unrollAndExecuteMultiple(invVars, exprToModels, 15, initialVals);
+      return bnd.unrollAndExecuteMultiple(invVars, exprToModels, 18, initialVals);
     }
 
     bool
