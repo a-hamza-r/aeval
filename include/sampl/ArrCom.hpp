@@ -60,10 +60,9 @@ namespace ufo
         orArities.insert(ar);
       }
 
-      // AH: commented because it is not required and seems to take a lot of time to run
-      // lf.initDensities(orArities);
-      // for (auto & b : laDisjs) lf.calculateStatistics(b, b.arity, 0, 0);
-      // for (auto & ar : orArities) lf.stabilizeDensities(ar, eps, 1);
+      lf.initDensities(orArities);
+      for (auto & b : laDisjs) lf.calculateStatistics(b, b.arity, 0, 0);
+      for (auto & ar : orArities) lf.stabilizeDensities(ar, eps, 1);
     }
 
     void initialize(ExprVector& intVars, ExprSet& arrCands, ExprVector& arrAccessVars, ExprSet& arrRange)
@@ -79,13 +78,16 @@ namespace ufo
         }
       }
 
-      ExprSet se;
-      for (auto & a : arrCands)
-      {
-        filter (a, bind::IsSelect (), inserter(se, se.begin()));
-      }
+      // AH: commented because it is not required and causes program to take a lot of time
+      // ExprSet se;
+      // for (auto & a : arrCands)
+      // {
+      //   filter (a, bind::IsSelect (), inserter(se, se.begin()));
+      // }
 
-      for (auto & b : se) postFac.addVar(b);
+      // for (auto & b : se) {
+      //   postFac.addVar(b);
+      // }
 
       pre = conjoin(arrRange, m_efac);
 

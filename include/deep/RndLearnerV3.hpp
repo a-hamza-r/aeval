@@ -715,9 +715,17 @@ namespace ufo
 
     bool containsNoOtherVars(Expr e, Expr a, Expr b, ExprVector& indxArgs)
     {
+      ExprSet s;
       if (isConst<ARRAY_TY>(a))
       {
-        for (auto it = e->args_begin(); it != e->args_end(); it++)
+        filter (e, bind::IsSelect(), inserter(s, s.begin()));
+        // for (auto it1 : s) errs() << "IsSelect: " << *it1 << "\n";
+        for (auto it : s)
+        {
+          if (!(it->arg(0) == a || it->arg(0) == b)) return false;
+          indxArgs.push_back(it->arg(1));
+        }
+        /*for (auto it = e->args_begin(); it != e->args_end(); it++)
         {
           if (isOpX<MPZ>(*it)) continue;
           if (isOpX<SELECT>(*it))
@@ -731,16 +739,17 @@ namespace ufo
           }
           else return false;
         }
-        return true;
+        return true;*/
       }
       else
       {
-        ExprSet allVars;
-        filter (e, bind::IsConst (), inserter(allVars, allVars.begin()));
-        return (allVars.size() == 2);
+        filter (e, bind::IsConst (), inserter(s, s.begin()));
+        return (s.size() == 2);
       }
     }
 
+
+    // AH: if I do not find a proper relation directly in the candidates, I need to create one
     bool varsRelated(Expr a, Expr b, ExprSet& relations, Expr &requiredRel, Expr& indVar)
     {
       Expr argsRel, dummy;
@@ -777,6 +786,7 @@ namespace ufo
           }
         }
       }
+      return false;
 
       // ExprSet varsConsidered1, varsConsidered2, vars;
       // varsConsidered1.insert(a); varsConsidered2.insert(b);
@@ -817,7 +827,6 @@ namespace ufo
 
       //   if (!inters.empty()) return true;
       // }
-      return false;
     }
 
     template <typename O> 
@@ -1089,7 +1098,6 @@ namespace ufo
             for (auto& it2 : nonIterPairs)
             {
               Expr cand1, cand2, queryVar, initCond, finalCond;
-              Expr select1, select2, selectsNotEq, toAddToQuery;
               aligningCandidates.push_back(it2);
               if (isConst<ARRAY_TY>(rule.srcVars[it2[0]]))
               {
@@ -1190,6 +1198,8 @@ namespace ufo
                 errs() << "current matrix\n";
                 model = bnd.compactPrefix(i);
                 model = replaceAll(model, hr.srcVars, hr.dstVars);
+
+                errs() << "model: " << *model << "\n";
               }
               // check if at any point, the cands (equalities) do not hold
               else if (!checkCHC1(hr, condToCheck, cands))
@@ -1219,8 +1229,6 @@ namespace ufo
 
                     if (!checkCHC1(hr, condToCheck1, cands))
                     {
-                      // errs() << "something is wrong\n";
-                      // return -1;
                       model = u.getModel(hr.srcVars);
                       errs() << "\nmodel src: " << *model << "\n\n";
                     }
@@ -1239,8 +1247,6 @@ namespace ufo
 
                     if (!checkCHC1(hr, condToCheck1, cands))
                     {
-                      // errs() << "something is wrong\n";
-                      // return -1;
                       model = u.getModel(hr.srcVars);
                       errs() << "\nmodel src: " << *model << "\n\n";
                     }
@@ -1262,10 +1268,6 @@ namespace ufo
                 equivalentLoops.push_back(true);
                 firstMatrix = false;
                 errs() << "It is done\n";
-                // prefixRule.printMemberVars();
-                // worklist[0]->printMemberVars();
-                // query->printMemberVars();
-                // bootstrap();
 
                 if (equivalentLoops.size() == ruleManager.cycles.size() && query != NULL) 
                 {
@@ -1284,7 +1286,7 @@ namespace ufo
               int numItersOfLoop1 = 0, numItersOfLoop2 = 0;
 
               // make sure it comes here and is the right condition
-              if (numIters1 != numIters2 && numIters1 != 0 && numIters2 != 0 
+              /*if (numIters1 != numIters2 && numIters1 != 0 && numIters2 != 0 
                 && (numIters2 % numIters1 == 0 || numIters1 % numIters2 == 0))
               {
                 if (numIters1 % numIters2 == 0)
@@ -1316,7 +1318,7 @@ namespace ufo
                   }
                 }
               }
-              else if (numIters1 != numIters2 && numIters1 != 0 && numIters2 != 0)
+              else */if (numIters1 != numIters2 && numIters1 != 0 && numIters2 != 0)
               {
                 // current assumption: 
                   // align just any of the aligning candidates, the rest should align if the program is equivalent
@@ -1362,6 +1364,7 @@ namespace ufo
                         matchesInd2.push_back(b - currentMatch2);
                         currentMatch1 = a; currentMatch2 = b;
                         found1 = true;
+                        break;
                       }
                     }
                     if (found1) break;
@@ -1373,13 +1376,14 @@ namespace ufo
                   Expr newModel;
                   for (int i = 1; i < dataMatrix.n_cols; i++)
                   {
+                    if (isConst<ARRAY_TY>(hr.dstVars[i-1])) continue;
                     if (newModel)
-                      newModel = mk<AND>(newModel, mk<EQ>(hr.srcVars[i-1], mkMPZ(dataMatrix(dataMatrix.n_rows-1, i), m_efac)));
+                      newModel = mk<AND>(newModel, mk<EQ>(hr.dstVars[i-1], mkMPZ(dataMatrix(dataMatrix.n_rows-1, i), m_efac)));
                     else 
-                      newModel = mk<EQ>(hr.srcVars[i-1], mkMPZ(dataMatrix(dataMatrix.n_rows-1, i), m_efac));
+                      newModel = mk<EQ>(hr.dstVars[i-1], mkMPZ(dataMatrix(dataMatrix.n_rows-1, i), m_efac));
                   }
                   errs() << "newModel: " << *newModel << "\n";
-                  // getDataCandsForDcl(candsFromCurrentMatrix, behaviorfiles, rel, fileIndex, dataMatrix, newModel);
+                  getDataCandsForDcl(candsFromCurrentMatrix, behaviorfiles, rel, fileIndex, dataMatrix, newModel);
                 }
 
                 errs() << "matches 1: \n";

@@ -366,7 +366,6 @@ namespace ufo
           map<Expr, ExprVector>& src_vars,
 				  map<Expr, vector<vector<double> > > & models, int k = 10, Expr initVals=NULL)
     {
-      errs() << "start of unrollAndExecuteMultiple\n";
       // helper var
       string str = to_string(numeric_limits<double>::max());
       str = str.substr(0, str.find('.'));
@@ -456,6 +455,8 @@ namespace ufo
 
         ExprVector ssa;
         getSSA(trace, ssa);
+
+        // errs() << "Ssa 0: " << *ssa[0] << "\n";
 
         // might not work if trace has more than one prefixes
         if (initVals) 
@@ -557,7 +558,6 @@ namespace ufo
           exprModels[trace.back()] = replaceAll(u.getModel(bindVars.back()),
             bindVars.back(), ruleManager.chcs[trace.back()].srcVars);
       }
-      errs() << "end of unrollAndExecuteMultiple\n";
       return true;
     }
 
