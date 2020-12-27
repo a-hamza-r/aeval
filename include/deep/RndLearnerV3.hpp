@@ -685,14 +685,6 @@ namespace ufo
     {
       if (!anyProgress(worklist)) return false;
       map<int, ExprVector> candidatesTmp = candidates;
-      // errs() << "candidates in multiHoudini: \n";
-      // for (auto it : candidates)
-      // {
-      //   errs() << it.first << ": ";
-      //   for (auto it2 : it.second)
-      //     errs() << *it2 << " ";
-      //   errs() << "\n";
-      // }
       bool res1 = true;
       for (auto &h: worklist)
       {

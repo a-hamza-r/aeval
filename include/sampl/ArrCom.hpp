@@ -78,13 +78,14 @@ namespace ufo
         }
       }
 
-      ExprSet se;
-      for (auto & a : arrCands)
-      {
-        filter (a, bind::IsSelect (), inserter(se, se.begin()));
-      }
+      // AH: commented because it is not needed and slows down the process
+      // ExprSet se;
+      // for (auto & a : arrCands)
+      // {
+      //   filter (a, bind::IsSelect (), inserter(se, se.begin()));
+      // }
 
-      for (auto & b : se) postFac.addVar(b);
+      // for (auto & b : se) postFac.addVar(b);
 
       pre = conjoin(arrRange, m_efac);
 
