@@ -1867,9 +1867,14 @@ namespace ufo
             fla = (iterGrows[ind]) ? mk<GEQ>(qVar, pre->right()) :
                                      mk<LEQ>(qVar, pre->right());
 
+          ExprSet tmp;
+          getConj(postconds[ind], tmp);
+          for (auto it = tmp.begin(); it != tmp.end(); )
+            if (contains(*it, iterators[ind])) ++it; else it = tmp.erase(it);
+
           arrIterRanges[ind].insert(normalizeDisj(fla, invAndIterVarsAll));
           arrIterRanges[ind].insert(normalizeDisj(
-                  replaceAll(postconds[ind], iterators[ind], qVar), invAndIterVarsAll));
+                  replaceAll(conjoin(tmp, m_efac), iterators[ind], qVar), invAndIterVarsAll));
         }
 
         auto nested = ruleManager.getNestedRel(invRel);
