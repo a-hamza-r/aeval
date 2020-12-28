@@ -190,7 +190,7 @@ namespace ufo
         }
       }
 
-      tmpl = findNonlinAndRewrite(tmpl, invVarsCstm, extraVars);
+      tmpl = findNonlinAndRewrite(tmpl, invVarsCstm, extraVars, false);
 
       for (auto &a : extraVars) invVarsCstm.push_back(a.second);
       tmpl = normalizeDisj(tmpl, invVarsCstm);
