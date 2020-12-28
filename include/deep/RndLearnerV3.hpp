@@ -1286,7 +1286,7 @@ namespace ufo
               int numItersOfLoop1 = 0, numItersOfLoop2 = 0;
 
               // make sure it comes here and is the right condition
-              /*if (numIters1 != numIters2 && numIters1 != 0 && numIters2 != 0 
+              if (numIters1 != numIters2 && numIters1 != 0 && numIters2 != 0 
                 && (numIters2 % numIters1 == 0 || numIters1 % numIters2 == 0))
               {
                 if (numIters1 % numIters2 == 0)
@@ -1318,7 +1318,7 @@ namespace ufo
                   }
                 }
               }
-              else */if (numIters1 != numIters2 && numIters1 != 0 && numIters2 != 0)
+              else if (numIters1 != numIters2 && numIters1 != 0 && numIters2 != 0)
               {
                 // current assumption: 
                   // align just any of the aligning candidates, the rest should align if the program is equivalent
@@ -1663,14 +1663,12 @@ namespace ufo
           errs() << "\nmodel: " << *model << "\n";
           if (isSkippable(model, hr.dstVars, candidatesTmp))
           {
-            errs() << "isSkippable\n";
             // something went wrong with z3. do aggressive weakening (TODO: try bruteforce):
             candidatesTmp[ind].clear();
             res2 = false;
           }
           else
           {
-            errs() << "isSkippable not\n";
             ExprVector& ev = candidatesTmp[ind];
             ExprVector invVars;
             for (auto & a : invarVars[ind]) invVars.push_back(a.second);
@@ -1703,7 +1701,6 @@ namespace ufo
 
           if (recur && !res2)
           {
-            errs() << "recur && !res2\n";
             res1 = false;
             break;
           }
@@ -1804,7 +1801,7 @@ namespace ufo
     }
 
     // adapted from doSeedMining
-    void getSeeds(Expr invRel, map<Expr, ExprSet>& cands, /*map<Expr, ExprSet>& candsForPhi, */bool analizeCode = true)
+    void getSeeds(Expr invRel, map<Expr, ExprSet>& cands, bool analizeCode = true)
     {
       int ind = getVarIndex(invRel, decls);
       SamplFactory& sf = sfs[ind].back();
@@ -1823,7 +1820,7 @@ namespace ufo
         if (hr.dstRelation != invRel && hr.srcRelation != invRel) continue;
         SeedMiner sm (hr, invRel, invarVars[ind], sf.lf.nonlinVars);
 
-        if (analizeCode) sm.analizeCode(/*candsForPhi[invRel]*/);
+        if (analizeCode) sm.analizeCode();
         else sm.candidates.clear();
 
         if (!analizedExtras && hr.srcRelation == invRel)
@@ -2101,7 +2098,6 @@ namespace ufo
 
       if (multiHoudini(ruleManager.wtoCHCs))
       {
-        errs() << "After multiHoudini\n";
         assignPrioritiesForLearned();
         if (checkAllLemmas())
         {
@@ -2913,7 +2909,7 @@ namespace ufo
     }
 
     RndLearnerV3 ds(ruleManager.m_efac, z3, ruleManager, freqs, aggp);
-    map<Expr, ExprSet> cands/*, candsForPhi*/;
+    map<Expr, ExprSet> cands;
     for (auto& dcl: ruleManager.decls) ds.initializeDecl(dcl);
 
     for (int i = 0; i < ruleManager.cycles.size(); i++)
@@ -2925,22 +2921,9 @@ namespace ufo
       ds.varsMetaInfo(bnd, i);
     }
 
-//     candsForPhi = cands;
-
-    // errs() << "\n\n";
-    // for (auto it : cands)
-    // {
-    //   errs() << "cand: " << *it.first << "\n";
-    //   for (auto it2 : it.second)
-    //     errs() << *it2 << " ";
-    //   errs() << "\n";
-    // }
-    // errs() << "\n\n";
-
-    for (auto& dcl: ruleManager.wtoDecls) ds.getSeeds(dcl, cands/*, candsForPhi*/);
+    for (auto& dcl: ruleManager.wtoDecls) ds.getSeeds(dcl, cands);
     ds.refreshCands(cands);
 
-    // errs() << "after refreshCands\n";
     for (auto& dcl: ruleManager.decls) ds.doSeedMining(dcl->arg(0), cands[dcl->arg(0)], false);
     ds.calculateStatistics();
     // errs() << "after calculateStatistics\n";
@@ -2948,9 +2931,7 @@ namespace ufo
     // bool check = ds.bootstrap();
     // errs() << "HERE\n";
     int eqStatus = ds.alignment(behaviorfiles, bnd);
-    if (eqStatus == 1 && ds.checkAllLemmas())
-      errs() << "The programs are equivalent\n";
-    else if (eqStatus == 2)
+    if (eqStatus == 1 || eqStatus == 2)
     {
       // for (auto it : ruleManager.chcs)
       // {
