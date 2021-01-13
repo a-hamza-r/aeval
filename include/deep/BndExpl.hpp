@@ -366,6 +366,7 @@ namespace ufo
           map<Expr, ExprVector>& src_vars,
 				  map<Expr, vector<vector<double> > > & models, int k = 10, Expr initVals=NULL)
     {
+      errs() << "in unrollANdExec\n";
       // helper var
       string str = to_string(numeric_limits<double>::max());
       str = str.substr(0, str.find('.'));
@@ -387,6 +388,7 @@ namespace ufo
         for (int j = 0; j < ruleManager.chcs[loop[0]].srcVars.size(); j++)
         {
           Expr var = ruleManager.chcs[loop[0]].srcVars[j];
+          errs() << "var: " << *var << "\n";
           if (bind::isIntConst(var))
           {
             mainInds.push_back(j);
@@ -395,8 +397,6 @@ namespace ufo
           else if (isConst<ARRAY_TY> (var) && ruleManager.hasArrays[srcRel])
           {
             // vars.push_back(mk<SELECT>(var, ruleManager.chcs[loop[0]].srcVars[ruleManager.iterator[srcRel]]));
-            // int lastIndStore = ruleManager.arrayStores[i][j].size()-1;
-            // int lastIndSelect = ruleManager.arraySelects[i][j].size()-1;
             Expr ind;
             if (!ruleManager.arrayStores[i][j].empty())
               ind = ruleManager.arrayStores[i][j].back();
@@ -532,7 +532,6 @@ namespace ufo
               ai++;
             }
             Expr m = u.getModel(bvar);
-            // errs() << "model: " << *m << "\n";
             double value;
             if (m == bvar) value = 0;
             else

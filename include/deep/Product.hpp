@@ -15,29 +15,6 @@ namespace ufo
 
     void productRelationSymbols(ExprVector, Expr &, vector<HornRuleExt> &, CHCs &, bool, vector<ExprVector> &);
 
-    // void equivalenceTask(vector<HornRuleExt> &chcs1, vector<HornRuleExt> &chcs2, ExprFactory &m_efac)
-    // {
-    //     ExprVector candidates;
-        
-    //     ExprVector srcArrayVars1, dstArrayVars1, srcArrayVars2, dstArrayVars2;
-    //     ExprVector srcBvVars1, dstBvVars1, srcBvVars2, dstBvVars2;
-    //     ExprVector srcBoolVars1, dstBoolVars1, srcBoolVars2, dstBoolVars2;
-    //     for (int i = 0; i < chcs1.size(); i++) {
-    //         if (chcs1[i].isInductive && chcs2[i].isInductive)
-    //         {
-    //             chcs1[i].getTypeVars<ARRAY_TY>(srcArrayVars1, dstArrayVars1);
-    //             chcs1[i].getTypeVars<BOOL_TY>(srcBoolVars1, dstBoolVars1);
-    //             // chcs1[i].getTypeVars<BVSORT>(srcBvVars1, dstBvVars1);
-
-    //             chcs2[i].getTypeVars<ARRAY_TY>(srcArrayVars2, dstArrayVars2);
-    //             chcs2[i].getTypeVars<BOOL_TY>(srcBoolVars2, dstBoolVars2);
-    //             // chcs2[i].getTypeVars<BVSORT>(srcBvVars2, dstBvVars2);
-
-    //             }
-    //         }
-    //     }
-    // }
-
 
     void removeCHC(Expr srcRelation, Expr dstRelation, CHCs &rules)
     {
@@ -107,7 +84,7 @@ namespace ufo
         if (chc2NonRec)
         {
             rel = chc2NonRecPart[0]->arg(0);
-            if (!product) product = chc2NonRecPart[0]->arg(0);
+            if (!product) product = rel;
             else product = mk<AND>(product, rel);
             vars.insert(vars.end(), rules.invVars[rel].begin(), rules.invVars[rel].end());
             for (auto it = chc2NonRecPart.begin()+1; it != chc2NonRecPart.end(); it++)
@@ -135,8 +112,7 @@ namespace ufo
     }
 
 
-    void recursiveProduct(HornRuleExt &chc1, HornRuleExt &chc2, Expr &product, ExprVector &vars,
-        CHCs &rules)
+    void recursiveProduct(HornRuleExt &chc1, HornRuleExt &chc2, Expr &product, ExprVector &vars, CHCs &rules)
     {
         vector<HornRuleExt> nullV;
         vector<ExprVector> nullV1;
@@ -177,6 +153,9 @@ namespace ufo
 
         // recursive part product
         recursiveProduct(chc1, chc2, recursivePr, recursivePrVars, rules);
+
+        if (chc1.isInductive && chc2.isInductive) newProductRule.subRelationsBothInductive = true;
+        else newProductRule.subRelationsBothInductive = false;
 
         newProductRule.body = constraintPr;
 
@@ -246,6 +225,9 @@ namespace ufo
             queryPr.srcRelation = mk<AND>(query1.srcRelation, query2.srcRelation);
             queryPr.dstRelation = mkTerm<string>(lexical_cast<string>(query1.dstRelation) + 
                 "*" + lexical_cast<string>(query2.dstRelation), queryPr.body->getFactory());
+
+            if (rules.productRelsToSrcDst.find(queryPr.dstRelation) == rules.productRelsToSrcDst.end())
+                rules.productRelsToSrcDst[queryPr.dstRelation] = ExprVector{query1.dstRelation, query2.dstRelation};
             
             queryPr.head = bind::fdecl(queryPr.dstRelation, ExprVector{mk<BOOL_TY>(rules.m_efac)});
 
@@ -277,6 +259,7 @@ namespace ufo
 
         rules.getDecl(rel1, rel1); rules.getDecl(rel2, rel2);
 
+        // might have to do more handling, probably outside this method
         if (!isFdecl(rel1) || !isFdecl(rel2)) return;
 
         Expr productRel = mkTerm<string>(lexical_cast<string>(rel1->arg(0)) + "*" + 
@@ -356,8 +339,8 @@ namespace ufo
 
         // do not push if one is inductive and other one is not. Push in all other cases
         // make sure this condition is correct generically
-        if (!((!chc1.isInductive && chc2.isInductive) || (!chc2.isInductive && chc1.isInductive)))
-            rulesOfP.push_back(newProductRule);
+        // if (!((!chc1.isInductive && chc2.isInductive) || (!chc2.isInductive && chc1.isInductive)))
+        rulesOfP.push_back(newProductRule);
     }
 
     void renamingAsProductRules(CHCs &rules)
@@ -381,18 +364,37 @@ namespace ufo
     void simplifyRules(CHCs &rules)
     {
         vector<HornRuleExt*> rulesToKeep;
-        bool erased;
         Expr propagated, tmp;
 
         renamingAsProductRules(rules);
 
         for (auto chcIter = rules.chcs.begin(); chcIter != rules.chcs.end(); )
         {   
-            erased = false;
+            bool erased = false;
+            bool allowed = (chcIter->isInductive && chcIter->subRelationsBothInductive) || !chcIter->isInductive;
 
-            ExprSet vars(chcIter->locVars.begin(), chcIter->locVars.end());
-            chcIter->body = eliminateQuantifiers(chcIter->body, vars);
+            // it checks if any inductive CHC has only one loop iterating
+            // generally we allow that behavior in the product of two CHC systems, we compute them in the algorithm
+            // but since we do not need those extra relations, we filter them out here
+            if (!allowed)
+            {
+                chcIter = rules.chcs.erase(chcIter);
+                continue;
+            }
+
+            // outs() << "is inductive: " << chcIter->isInductive << ", is fact: " << chcIter->isFact << "\n";
+            for (auto& it : chcIter->locVars)
+            {
+                // outs() << "eliminating: " << *it << "\n";
+                ExprSet vars{it};
+                chcIter->body = eliminateQuantifiers(chcIter->body, vars);    
+                // outs() << "body: " << *chcIter->body << "\n";
+            }
+            // ExprSet vars(chcIter->locVars.begin(), chcIter->locVars.end());
+            // chcIter->body = eliminateQuantifiers(chcIter->body, vars);
             chcIter->locVars.clear();
+
+            // uniqueizeSelects(chcIter->body);
 
             for (auto it : rulesToKeep)
             {
@@ -412,15 +414,7 @@ namespace ufo
                 rulesToKeep.push_back(&(*chcIter));
                 chcIter++;
             }
-
         }
-
-        // check if it's faster to remove duplicates in previous loop or in separate loop
-        /*for (auto &it : rules.chcs)
-        {
-            ExprSet s(it.locVars.begin(), it.locVars.end());
-            it.locVars.assign(s.begin(), s.end());
-        }*/
     }
 
     // generates the product of two CHC systems
@@ -441,12 +435,8 @@ namespace ufo
         worklist = queriesPr;
 
         for (auto &it : queries) 
-        {
             for (auto &it2 : it)
-            {
                 toRemoveCHCs.push_back(ExprVector{it2.srcRelation, it2.dstRelation});
-            }
-        }
 
         while (!worklist.empty())
         {
@@ -463,7 +453,7 @@ namespace ufo
             // 'operator partition from a set to a set of its disjoint subsets'
             // I just create one partition of two symbols because there are only two relation symbols here 
 
-            // argument false for non-recursive
+            // argument false for non-recursive; getting non-recursive parts of the srcrelation
             getSpecificSrcRelations(C_a.srcRelation, C_a.dstRelation, false, partition, product);
 
             if (partition.size() >= 2) 
@@ -541,6 +531,24 @@ namespace ufo
 	    CHCs ruleManagerSrc(m_efac, z3, "_v1_");
 	    ruleManagerSrc.parse(string(chcfileSrc));
 
+        /*outs() << "eliminateQuantifiers:\n";
+        for (auto it : ruleManagerSrc.chcs)
+        {
+            // ExprVector v;
+            // Expr q = createQuantifiedFormula(it.body, v);
+            // SMTUtils su(it.body->getFactory());
+            // su.serialize_formula(q);
+            outs() << "is inductive: " << it.isInductive << ", is fact: " << it.isFact << "\n";
+            Expr body = it.body;
+            for (auto v : it.locVars)
+            {
+                outs() << "eliminating: " << *v << "\n";
+                ExprSet s{v};
+                body = eliminateQuantifiers(body, s);
+                outs() << "body: " << *body << "\n";
+            }
+        }*/
+
         for (auto it : ruleManagerSrc.chcs) it.printMemberVars();
 
 	    CHCs ruleManagerDst(m_efac, z3, "_v2_");
@@ -555,7 +563,7 @@ namespace ufo
         // get queries of both systems
         getQueries(ruleManagerSrc.chcs, ruleManagerDst.chcs, queries);
 
-        if (queries.empty())
+        if (queries[0].empty() || queries[1].empty())
         {
             outs() << "Product can not be found.\n";
             exit(1);

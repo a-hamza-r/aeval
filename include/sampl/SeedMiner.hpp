@@ -458,7 +458,6 @@ namespace ufo
         Expr e = unfoldITE(body);
         e = rewriteSelectStore(e);
         e = propagateEqualities(e);
-        // getEqualities(e, cands);
         coreProcess(e);
       }
       else
@@ -486,7 +485,6 @@ namespace ufo
         }
         e = simplifyBool(e);
         e = rewriteBoolEq(e);
-        // getEqualities(e, cands);
         e = convertToGEandGT(e);
         e = rewriteNegAnd(e);
         obtainSeeds(e);

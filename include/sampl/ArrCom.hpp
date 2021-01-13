@@ -84,7 +84,7 @@ namespace ufo
       //   filter (a, bind::IsSelect (), inserter(se, se.begin()));
       // }
 
-//      for (auto & b : se) postFac.addVar(b);
+     // for (auto & b : se) postFac.addVar(b);
 
       pre = conjoin(arrRange, m_efac);
 

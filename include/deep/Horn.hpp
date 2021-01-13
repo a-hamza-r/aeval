@@ -68,6 +68,8 @@ namespace ufo
     bool isQuery;
     bool isInductive;
 
+    bool subRelationsBothInductive;
+
     // possibly, add an option to detect multiple srcRelations
 
     void assignVarsAndRewrite (ExprVector& _srcVars, ExprVector& invVarsSrc,
@@ -151,7 +153,8 @@ namespace ufo
     CHCs(ExprFactory &efac, EZ3 &z3) : m_efac(efac), m_z3(z3), varname("_FH_") {};
     CHCs(ExprFactory &efac, EZ3 &z3, string n) : m_efac(efac), m_z3(z3), varname(n) {};
 
-    CHCs(CHCs &rules1, CHCs &rules2, string n) : m_efac(rules1.m_efac), m_z3(rules1.m_z3), varname(n), chcSrc(&rules1), chcDst(&rules2) 
+    CHCs(CHCs &rules1, CHCs &rules2, string n) : 
+      m_efac(rules1.m_efac), m_z3(rules1.m_z3), varname(n), chcSrc(&rules1), chcDst(&rules2) 
     {
       setUnion(decls, rules1.decls, rules2.decls);
       concatenateVectors(chcs, rules1.chcs, rules2.chcs);
