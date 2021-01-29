@@ -1034,13 +1034,15 @@ namespace ufo
               Expr var = rule.srcVars[pair[0]];
               Expr var1 = rule.srcVars[pair[1]];
               
-              if (!u.hasOneModel(var, init) && !u.hasOneModel(var1, init))
+              // fix conditions later
+              if ((!u.hasOneModel(var, init) && !u.hasOneModel(var1, init)) 
+                || (u.hasOneModel(var, init) && u.hasOneModel(var1, init)))
               {
                 // errs() << "pair: " << pair[0] << " " << pair[1] << "\n";
                 if (!pre) pre = mk<EQ>(rule.dstVars[pair[0]], rule.dstVars[pair[1]]);
                 else pre = mk<AND>(pre, mk<EQ>(rule.dstVars[pair[0]], rule.dstVars[pair[1]]));
               } 
-              else if (!u.hasOneModel(var, init) || !u.hasOneModel(var1, init))
+              else/* if (!u.hasOneModel(var, init) || !u.hasOneModel(var1, init))*/
               {
                 skipComb = true;
                 break;
@@ -1088,11 +1090,11 @@ namespace ufo
           // running the data matrix initially
           map<Expr, ExprSet> candsFromCurrentMatrix;
           arma::mat dataMatrix;
-          #ifdef HAVE_ARMADILLO
-            getDataCandsForDcl(candsFromCurrentMatrix, behaviorfiles, rel, fileIndex, dataMatrix);
-          #else
-            outs() << "Skipping learning from data as required library (armadillo) not found\n";
-          #endif
+          // #ifdef HAVE_ARMADILLO
+          //   getDataCandsForDcl(candsFromCurrentMatrix, behaviorfiles, rel, fileIndex, dataMatrix);
+          // #else
+          //   outs() << "Skipping learning from data as required library (armadillo) not found\n";
+          // #endif
 
           errs() << "here2\n";
           Expr candsFromCurrentMatrixCnj = conjoin(candsFromCurrentMatrix[rel], m_efac);
@@ -1128,14 +1130,23 @@ namespace ufo
 
                 if (isConst<ARRAY_TY>(rule.srcVars[it2[0]]))
                 {
-                  if (!ruleManager.arrayStores[i][it2[0]].empty())
+                  if (!ruleManager.arrayStores[i][it2[0]].empty()) {
+                    outs() << "Array store\n";
                     ind1 = ruleManager.arrayStores[i][it2[0]].back();
-                  else 
+                  }
+                  else {
+                    outs() << "Array select\n";
                     ind1 = ruleManager.arraySelects[i][it2[0]].back();
-                  if (!ruleManager.arrayStores[i][it2[1]].empty())
+                  }
+                  if (!ruleManager.arrayStores[i][it2[1]].empty()) {
+                    outs() << "Array store\n";
                     ind2 = ruleManager.arrayStores[i][it2[1]].back();
-                  else 
+                  }
+                  else {
+                    outs() << "Array select\n";
                     ind2 = ruleManager.arraySelects[i][it2[1]].back();
+                  }
+                  outs() << "outside\n";
                   cands.insert(mk<EQ>(mk<SELECT>(rule.srcVars[it2[0]], ind1), mk<SELECT>(rule.srcVars[it2[1]], ind2)));
                 }
                 else cands.insert(mk<EQ>(rule.srcVars[it2[0]], rule.srcVars[it2[1]]));
@@ -1148,7 +1159,8 @@ namespace ufo
                   else candsAddToQuery = postCond;
                 }
               }
-
+              outs() << "I am outside loop\n";
+              outs() << "query: " << query << "\n";
             // if (query) errs() << "candsAddToQuery: " << *candsAddToQuery << "\n";
             Expr queryBodyBackUp;
             if (query)
@@ -1511,8 +1523,8 @@ namespace ufo
                   extraVars.insert(var);
                 }
 
-                outs() << "rulesBody: " << *rulesBody << "\n";
-                outs() << "rules1Body: " << *rules1Body << "\n";
+                // outs() << "rulesBody: " << *rulesBody << "\n";
+                // outs() << "rules1Body: " << *rules1Body << "\n";
                 rulesBody = mk<AND>(rulesBody, rules1Body);
               }
 
@@ -1610,7 +1622,7 @@ namespace ufo
               ExprSet ssa, conjs;
               getConj(rulesBody, ssa);
 
-              errs() << "new rule: " << *rulesBody << "\n";
+              // errs() << "new rule: " << *rulesBody << "\n";
 
               ExprSet se;
               filter (rulesBody, IsSelect(), inserter(se, se.begin()));
@@ -1618,10 +1630,10 @@ namespace ufo
               for (int j = 0; j < bnd.bindVars.back().size(); j++)
               {
                 Expr a = hr.srcVars[j];
-                outs() << "var: " << *a << "\n";
+                // outs() << "var: " << *a << "\n";
                 Expr b = hr.dstVars[j];
                 if (!isOpX<ARRAY_TY>(bind::typeOf(a))) continue;
-                errs() << "ARRAY: " << *a << "\n";
+                // errs() << "ARRAY: " << *a << "\n";
                 Expr result, result1, indx;
                 if (!u.implies(rulesBody, mk<EQ>(a, b)))
                 {
@@ -1650,17 +1662,17 @@ namespace ufo
                   ruleManager.arraySelects[i][j].back() = indx;
                 }
               }
-              errs() << "In cands\n";
-              for (auto it : cands)
-              {
-                errs() << *it << "\n";
-              }
+              // errs() << "In cands\n";
+              // for (auto it : cands)
+              // {
+              //   errs() << *it << "\n";
+              // }
 
-              candsFromCurrentMatrix.clear();
-              getDataCandsForDcl(candsFromCurrentMatrix, behaviorfiles, rel, fileIndex, dataMatrix, model);
-              candsFromCurrentMatrixCnj = conjoin(candsFromCurrentMatrix[rel], m_efac);
+              // candsFromCurrentMatrix.clear();
+              // getDataCandsForDcl(candsFromCurrentMatrix, behaviorfiles, rel, fileIndex, dataMatrix, model);
+              // candsFromCurrentMatrixCnj = conjoin(candsFromCurrentMatrix[rel], m_efac);
 
-              candsFromCurrentMatrixCnj = simplifyArithm(candsFromCurrentMatrixCnj);
+              // candsFromCurrentMatrixCnj = simplifyArithm(candsFromCurrentMatrixCnj);
 
               errs() << "cands from updated matrix: " << *candsFromCurrentMatrixCnj << "\n";
 
@@ -2394,8 +2406,8 @@ namespace ufo
       
       ExprSet se;
       filter (ssas[invNum], IsSelect(), inserter(se, se.begin()));
-      for (auto it : se)
-        errs() << "is a select: " << *it << "\n";
+      // for (auto it : se)
+      //   errs() << "is a select: " << *it << "\n";
 
       for (int i = 0; i < bnd.bindVars.back().size(); i++)
       {
@@ -2532,7 +2544,8 @@ namespace ufo
         Expr e, gt, ge, lt, le, limit;
         Expr a = ruleManager.chcs[cycle[0]].srcVars[i];
         Expr b = bnd.bindVars.back()[i];
-        // errs() << "checking: " << *mk<LT>(a, b) << "\n";
+        errs() << "checking: " << *mk<LT>(a, b) << "\n";
+        errs() << "and checking: " << *mk<GT>(a, b) << "\n";
 
         bool iterDecreases = bind::isIntConst(a) && u.implies(ssas[invNum], mk<GT>(a, b));
         bool iterIncreases = bind::isIntConst(a) && u.implies(ssas[invNum], mk<LT>(a, b));
@@ -2555,7 +2568,7 @@ namespace ufo
 
           // AH: handle the case where e is a conjunction or disjunction better
           // for now, assuming we have found the transitionval
-          if (isOpX<AND>(e) || isOpX<OR>(e)) hasTransitionVal = true;
+          if (isOpX<AND>(e) || isOpX<OR>(e) || containsOp<ITE>(e)) hasTransitionVal = true;
 
           if (iterDecreases)
           {
@@ -2601,7 +2614,7 @@ namespace ufo
             if (initVal) hasInitVal = true;
             if (model) initVal = model;
           }
-
+          // outs() << "initval: " << *initVal << "\n";
           if (!hasTransitionVal)
           {
             transitionVal = right->arg(1);
@@ -2869,6 +2882,11 @@ namespace ufo
     }
   };
 
+  Expr numIterations(Expr init, Expr transition, Expr final)
+  {
+
+  }
+
   inline void learnInvariantsPr(CHCs &ruleManager, int maxAttempts, bool freqs, bool aggp, bool enableDataLearning, const vector<string> & behaviorfiles)
   {
     char *c;
@@ -2889,10 +2907,28 @@ namespace ufo
     for (int i = 0; i < ruleManager.cycles.size(); i++)
     {
       Expr pref = bnd.compactPrefix(i);
+      outs() << "pref: " << *pref << "\n";
       cands[ruleManager.chcs[ruleManager.cycles[i][0]].srcRelation].insert(pref);
       //if (ruleManager.hasArrays)
       ds.initArrayStuff(bnd, i, pref);
       ds.varsMetaInfo(bnd, i);
+
+      /*bool hasOnlyVars(Expr fla, ExprVector& vars)
+      {
+        ExprSet allVars;
+        filter (fla, bind::IsConst (), inserter (allVars, allVars.begin()));
+        minusSets(allVars, vars);
+        map<Expr, ExprVector> qv;
+        getQVars (fla, qv);
+        for (auto & q : qv) minusSets(allVars, q.second);
+        return allVars.empty();
+      }
+      Expr rel = ruleManager.chcs[ruleManager.cycles[i][0]].srcRelation;
+      ExprSet tmp;
+      getConj(pref, tmp);
+      for (auto & t : tmp)
+        if(hasOnlyVars(t, ruleManager.invVars[rel]))
+          cands[rel].insert(t);*/
     }
 
     for (auto& dcl: ruleManager.wtoDecls) ds.getSeeds(dcl, cands);

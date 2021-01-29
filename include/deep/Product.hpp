@@ -383,15 +383,15 @@ namespace ufo
             }
 
             // outs() << "is inductive: " << chcIter->isInductive << ", is fact: " << chcIter->isFact << "\n";
-            for (auto& it : chcIter->locVars)
-            {
-                // outs() << "eliminating: " << *it << "\n";
-                ExprSet vars{it};
-                chcIter->body = eliminateQuantifiers(chcIter->body, vars);    
-                // outs() << "body: " << *chcIter->body << "\n";
-            }
-            // ExprSet vars(chcIter->locVars.begin(), chcIter->locVars.end());
-            // chcIter->body = eliminateQuantifiers(chcIter->body, vars);
+            // for (auto& it : chcIter->locVars)
+            // {
+            //     // outs() << "eliminating: " << *it << "\n";
+            //     ExprSet vars{it};
+            //     chcIter->body = eliminateQuantifiers(chcIter->body, vars);    
+            //     // outs() << "body: " << *chcIter->body << "\n";
+            // }
+            ExprSet vars(chcIter->locVars.begin(), chcIter->locVars.end());
+            chcIter->body = eliminateQuantifiers(chcIter->body, vars);
             chcIter->locVars.clear();
 
             // uniqueizeSelects(chcIter->body);

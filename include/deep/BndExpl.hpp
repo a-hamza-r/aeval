@@ -366,7 +366,6 @@ namespace ufo
           map<Expr, ExprVector>& src_vars,
 				  map<Expr, vector<vector<double> > > & models, int k = 10, Expr initVals=NULL)
     {
-      errs() << "in unrollANdExec\n";
       // helper var
       string str = to_string(numeric_limits<double>::max());
       str = str.substr(0, str.find('.'));
@@ -388,7 +387,7 @@ namespace ufo
         for (int j = 0; j < ruleManager.chcs[loop[0]].srcVars.size(); j++)
         {
           Expr var = ruleManager.chcs[loop[0]].srcVars[j];
-          errs() << "var: " << *var << "\n";
+          // errs() << "var: " << *var << "\n";
           if (bind::isIntConst(var))
           {
             mainInds.push_back(j);
@@ -402,7 +401,7 @@ namespace ufo
               ind = ruleManager.arrayStores[i][j].back();
             else
               ind = ruleManager.arraySelects[i][j].back();
-            errs() << "ind for array " << *ruleManager.chcs[i].srcVars[j] << " is " << *ind << "\n";
+            // errs() << "ind for array " << *ruleManager.chcs[i].srcVars[j] << " is " << *ind << "\n";
             vars.push_back(mk<SELECT>(var, ind));
             mainInds.push_back(-1);
             arrInds.push_back(j);
