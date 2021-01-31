@@ -382,7 +382,7 @@ namespace ufo
                 continue;
             }
 
-            // outs() << "is inductive: " << chcIter->isInductive << ", is fact: " << chcIter->isFact << "\n";
+            outs() << "is inductive: " << chcIter->isInductive << ", is fact: " << chcIter->isFact << "\n";
             // for (auto& it : chcIter->locVars)
             // {
             //     // outs() << "eliminating: " << *it << "\n";
@@ -390,9 +390,14 @@ namespace ufo
             //     chcIter->body = eliminateQuantifiers(chcIter->body, vars);    
             //     // outs() << "body: " << *chcIter->body << "\n";
             // }
-            ExprSet vars(chcIter->locVars.begin(), chcIter->locVars.end());
-            chcIter->body = eliminateQuantifiers(chcIter->body, vars);
-            chcIter->locVars.clear();
+            if (!chcIter->isFact)
+            {
+                ExprSet vars(chcIter->locVars.begin(), chcIter->locVars.end());
+                chcIter->body = eliminateQuantifiers(chcIter->body, vars);
+                chcIter->locVars.clear();
+            }
+
+            // outs() << "after QE: " << *chcIter->body << "\n";
 
             // uniqueizeSelects(chcIter->body);
 

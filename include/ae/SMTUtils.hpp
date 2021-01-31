@@ -50,7 +50,7 @@ namespace ufo
         Expr tmp;
         ZSolver<EZ3>::Model m = smt.getModel();
         tmp = m.eval(v);
-        smt.assertExpr(mk<LT>(v, tmp));
+        smt.assertExpr(mk<GT>(v, tmp));
         if (smt.solve() == false) return tmp;
       }
     }
@@ -60,12 +60,14 @@ namespace ufo
       while (true)
       {
         Expr tmp;
+        Expr allModels;
         ZSolver<EZ3>::Model m = smt.getModel();
         tmp = m.eval(v);
-        smt.assertExpr(mk<GT>(v, tmp));
-        if (smt.solve() == false) return tmp;
+        allModels = getModel();
+        smt.assertExpr(mk<LT>(v, tmp));
+        if (smt.solve() == false) return allModels;
       }
-    }
+    } 
 
     template <typename T> Expr getModel(T& vars)
     {

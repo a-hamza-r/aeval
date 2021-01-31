@@ -395,14 +395,14 @@ namespace ufo
           }
           else if (isConst<ARRAY_TY> (var) && ruleManager.hasArrays[srcRel])
           {
-            // vars.push_back(mk<SELECT>(var, ruleManager.chcs[loop[0]].srcVars[ruleManager.iterator[srcRel]]));
-            Expr ind;
-            if (!ruleManager.arrayStores[i][j].empty())
-              ind = ruleManager.arrayStores[i][j].back();
-            else
-              ind = ruleManager.arraySelects[i][j].back();
+            vars.push_back(mk<SELECT>(var, ruleManager.chcs[loop[0]].srcVars[ruleManager.iterator[srcRel]]));
+            // Expr ind;
+            // if (!ruleManager.arrayStores[i][j].empty())
+            //   ind = ruleManager.arrayStores[i][j].back();
+            // else
+            //   ind = ruleManager.arraySelects[i][j].back();
             // errs() << "ind for array " << *ruleManager.chcs[i].srcVars[j] << " is " << *ind << "\n";
-            vars.push_back(mk<SELECT>(var, ind));
+            // vars.push_back(mk<SELECT>(var, ind));
             mainInds.push_back(-1);
             arrInds.push_back(j);
           }
@@ -526,8 +526,9 @@ namespace ufo
             }
             else
             {
-              Expr ind = replaceAll(vars[j]->arg(1), ruleManager.chcs[loop[0]].srcVars, bindVars[l-1]);
-              bvar = mk<SELECT>(bindVars[l][arrInds[ai]], ind);
+              // Expr ind = replaceAll(vars[j]->arg(1), ruleManager.chcs[loop[0]].srcVars, bindVars[l-1]);
+              // bvar = mk<SELECT>(bindVars[l][arrInds[ai]], ind);
+              bvar = mk<SELECT>(bindVars[l][arrInds[ai]], bindVars[l-1][ruleManager.iterator[srcRel]]);
               ai++;
             }
             Expr m = u.getModel(bvar);
