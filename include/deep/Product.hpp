@@ -866,6 +866,9 @@ namespace ufo
 			int coef2Int = (int)lexical_cast<cpp_int>(minCoef2);
 			int const2Int = (int)lexical_cast<cpp_int>(minConst2);
 
+      if (const1Int != 0) const1Int++;
+      if (const2Int != 0) const2Int++;
+      outs () << const1Int << " " << const2Int << "\n";
 			createAlignment(ruleManager1, coef1Int, const1Int);
 			createAlignment(ruleManager2, coef2Int, const2Int);
 
@@ -893,10 +896,15 @@ namespace ufo
 				if (it.isInductive) ind = &it;
 			}
 			fact->body = mk<AND>(fact->body, pre);
-			query->body = mk<AND>(query->body, negPost);
+			query->body = simplifyBool(mk<AND>(query->body, negPost));
+
+      outs () << "   check fact sanity:  "  << bool(u.isSat(fact->body)) << "\n";
+      outs () << "   check query sanity:  "  << bool(u.isSat(query->body)) << "\n";
+      outs () << "   check ind sanity:  "  << bool(u.isSat(ind->body)) << "\n";
 
 			outs() << "------------------------CREATING ALIGNED PROGRAM DONE-----------------------------\n\n";
 
+//      ruleManagerProduct.print();
 			// for (auto &it : ruleManagerProduct.chcs)
 			// {
 			// 	it.printMemberVars();

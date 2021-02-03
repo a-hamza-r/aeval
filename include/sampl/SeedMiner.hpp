@@ -465,7 +465,7 @@ namespace ufo
         // hr.isInductive
         Expr e = unfoldITE(body);
         ExprSet deltas; // some magic here for enhancing the grammar
-        retrieveDeltas(e, hr.srcVars, hr.dstVars, deltas);
+//        retrieveDeltas(e, hr.srcVars, hr.dstVars, deltas);
         for (auto & a : deltas) obtainSeeds(a);
         e = rewriteSelectStore(e);
         e = simpleQE(e, hr.dstVars);
