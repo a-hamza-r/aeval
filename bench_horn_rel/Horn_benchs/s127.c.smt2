@@ -25,7 +25,6 @@
 
 (rule (=> 
 	(and 
-		(= index_limit (- (* count 4) 1))
 		(= i 0)
 		(= j -1)
 	)
@@ -34,8 +33,7 @@
 (rule (=> 
 	(and 
 		(loop a_array b_array c_array d_array e_array i j count)
-		(= index_limit (- (* count 4) 1))
-		(< i index_limit)
+		(< i (- (* count 4) 1))
 		(= b_i (select b_array i))
 		(= c_i (select c_array i))
 		(= d_i (select d_array i))
@@ -45,18 +43,14 @@
 		(= a_j (+ b_i t0))
 		(= a_j1 (+ b_i t1))
 		(= a_array1 (store a_array j a_j))
-		(= j1 (+ j 1))
-		(= a_array2 (store a_array1 j1 a_j1))
-		(= j2 (+ j1 1))
-		(= i1 (+ i 1))
+		(= a_array2 (store a_array1 (+ j 1) a_j1))
 	)
-	(loop a_array2 b_array c_array d_array e_array i1 j2 count)
+	(loop a_array2 b_array c_array d_array e_array (+ i 1) (+ j 2) count)
 ))
 (rule (=> 
 	(and 
 		(loop a_array b_array c_array d_array e_array i j count)
-		(= index_limit (- (* count 4) 1))
-		(not (< i index_limit))
+		(not (< i (- (* count 4) 1)))
 	)
 	exit
 ))

@@ -24,9 +24,8 @@
 		(= b_i (select b_array i))
 		(= a_i (+ b_i 1))
 		(= a_array_new (store a_array i a_i))
-		(= i1 (- i 1))
 	)
-	(loop a_array_new b_array i1 count)
+	(loop a_array_new b_array (- i 1) count)
 ))
 (rule (=> 
 	(and 

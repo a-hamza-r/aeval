@@ -19,18 +19,16 @@
 (rule (=> 
 	(and 
 		(loop a_array sum i count)
-		(= index_limit (* count 8))
-		(< i index_limit)
+		(< i (* count 8))
 		(= a_i (select a_array i))
 		(= sum1 (+ sum a_i))
-		(= i1 (+ i 1))
 	)
-	(loop a_array sum1 i1 count)
+	(loop a_array sum1 (+ i 1) count)
 ))
 (rule (=> 
 	(and 
 		(loop a_array sum i count)
-		(not (< i index_limit))
+		(not (< i (* count 8)))
 	)
 	exit
 ))

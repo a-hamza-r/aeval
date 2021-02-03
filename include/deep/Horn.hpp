@@ -50,6 +50,47 @@ namespace ufo
     result.insert(map2.begin(), map2.end());
   }
 
+  template <typename T>
+    void findExpr(Expr toFind, Expr conj, Expr &result, bool skipArray=false)
+    {
+      Expr res;
+      if (isOpX<AND>(conj))
+      {
+        for (auto it = conj->args_begin(); it != conj->args_end(); it++)
+        {
+          findExpr<T>(toFind, *it, res, skipArray);
+          if (res)
+          {
+            if (result)
+              result = mk<AND>(result, res);
+            else
+              result = res;
+            res = NULL;
+          }
+        }
+      }
+      else if (isOpX<OR>(conj))
+      {
+        for (auto it = conj->args_begin(); it != conj->args_end(); it++)
+        {
+          findExpr<T>(toFind, *it, res, skipArray);
+          if (res)
+          {
+            if (result)
+              result = mk<OR>(result, res);
+            else
+              result = res;
+            res = NULL;
+          }
+        }
+      }
+      else if (isOpX<T>(conj)) 
+      {
+        if (skipArray && containsOp<ARRAY_TY>(conj)) return;
+        if (contains(conj, toFind)) result = conj;
+      }
+    }
+
   struct HornRuleExt
   {
     ExprVector srcVars;
@@ -67,6 +108,8 @@ namespace ufo
     bool isFact;
     bool isQuery;
     bool isInductive;
+
+    // int iterator;
 
     bool subRelationsBothInductive;
 
@@ -143,18 +186,29 @@ namespace ufo
     vector<vector<int>> cycles;
     map<Expr, bool> hasArrays;
     map<Expr, int> iterator;
-    map<int, map<int, ExprVector>> arrayStores;
-    map<int, map<int, ExprVector>> arraySelects;
+    // map<int, map<int, ExprVector>> arrayStores;
+    // map<int, map<int, ExprVector>> arraySelects;
+
+    // assuming only one loop
+    int iter;
+    bool iterGrows;
+    Expr numOfIters;
+    vector<int> varsInt;
+    vector<int> varsBool;
+    vector<int> varsArray;
+    map<Expr, Expr> exprEqualities;
+
+    SMTUtils u;
 
     CHCs *chcSrc;
     CHCs *chcDst;
     map<Expr, ExprVector> productRelsToSrcDst;
 
-    CHCs(ExprFactory &efac, EZ3 &z3) : m_efac(efac), m_z3(z3), varname("_FH_") {};
-    CHCs(ExprFactory &efac, EZ3 &z3, string n) : m_efac(efac), m_z3(z3), varname(n) {};
+    CHCs(ExprFactory &efac, EZ3 &z3) : m_efac(efac), m_z3(z3), varname("_FH_"), u(efac) {};
+    CHCs(ExprFactory &efac, EZ3 &z3, string n) : m_efac(efac), m_z3(z3), varname(n), u(efac) {};
 
     CHCs(CHCs &rules1, CHCs &rules2, string n) : 
-      m_efac(rules1.m_efac), m_z3(rules1.m_z3), varname(n), chcSrc(&rules1), chcDst(&rules2) 
+      m_efac(rules1.m_efac), m_z3(rules1.m_z3), varname(n), chcSrc(&rules1), chcDst(&rules2), u(rules1.m_efac) 
     {
       setUnion(decls, rules1.decls, rules2.decls);
       concatenateVectors(chcs, rules1.chcs, rules2.chcs);
@@ -455,6 +509,260 @@ namespace ufo
      wtoSort();
      print();
       outs () << " = = = parsing done\n";
+    }
+
+    Expr numIterations(Expr init, Expr transition, Expr final, Expr add)
+    {
+      auto &fac = init->getFactory();
+      if (!(init && transition && final)) return mkMPZ(-1, fac);
+      Expr numer = mk<MINUS>(final, init);
+      // works this way
+      if (add) numer = mk<PLUS>(numer, add);
+      Expr divisible = mk<EQ>(mk<MOD>(numer, transition), mkMPZ(0, fac));
+
+      Expr numIters = mk<PLUS>(mk<IDIV>(numer, transition), mk<ITE>(divisible, mkMPZ(0, fac), mkMPZ(1, fac)));
+      // outs() << "numIters: " << *numIters << "\n";
+      return numIters;
+    }
+
+    void getExprEqualities(Expr var, HornRuleExt& rule)
+    {
+      Expr body = rule.body;
+      ExprSet s;
+      Expr final;
+      getConj(body, s);
+      for (auto &e : s)
+      {
+        bool skip = false;
+        if (contains(e, var) && !containsOp<ARRAY_TY>(e) && containsOp<EQ>(e))
+        {
+          ExprSet ss;
+          filter(e, IsConst(), inserter(ss, ss.begin()));
+          for (auto &it : ss)
+          {
+            if (find(rule.dstVars.begin(), rule.dstVars.end(), it) != rule.dstVars.end())
+            {
+              skip = true;
+              break;
+            }
+          }
+          if (skip) continue;
+          else 
+          { 
+            if (final) final = mk<AND>(final, e);
+            else final = e;
+          }
+        }
+      }
+      exprEqualities[var] = final;
+    }
+
+    void findIterators()
+    {
+      // assuming only one cycle
+      vector<int>& cycle = cycles[0];
+      HornRuleExt& rule = chcs[cycle[0]];
+      vector<int> &prefix = prefixes[0];
+      HornRuleExt &prefixRule = chcs[prefix[0]];
+      Expr rel = rule.srcRelation;
+
+      int invNum = getVarIndex(rel, decls);
+
+      // outs() << "prefix rule: " << *prefixRule.body << "\n";
+      Expr init = prefixRule.body;
+
+      for (int i = 0; i < rule.srcVars.size(); i++)
+      {
+        Expr a = rule.srcVars[i];
+        Expr b = rule.dstVars[i];
+        Expr e, gt, ge, lt, le;
+        bool notAnIter = false;
+
+        bool iterDecreases = bind::isIntConst(a) && u.implies(rule.body, mk<GT>(a, b));
+        bool iterIncreases = bind::isIntConst(a) && u.implies(rule.body, mk<LT>(a, b));
+
+        if (iterIncreases || iterDecreases)
+        {
+          findExpr<EQ>(b, rule.body, e, true);
+          // errs() << "\nfinding: " << *b << "\n\n";
+
+          e = ineqSimplifier(b, e);
+          // errs() << "found: " << *e << "\n\n";
+
+          Expr right = e->right();
+          Expr initVal, transitionVal, limitVal;
+          Expr add;
+
+          bool hasInitVal = false, hasTransitionVal = false, hasLimitVal = false;
+
+          // AH: handle the case where e is a conjunction or disjunction better
+          // for now, assuming we have found the transitionval
+          if (isOpX<AND>(e) || isOpX<OR>(e) || containsOp<ITE>(e)) hasTransitionVal = true;
+
+          // outs() << "right: " << *right << "\n";
+
+          if (right->arity() <= 1) 
+          {
+            notAnIter = true;
+            goto L1;
+          }
+
+          Expr initVar = right->arg(0);
+
+          if (isIntConst(initVar))
+          {
+            findExpr<EQ>(initVar, init, initVal, true);
+            initVal = ineqSimplifier(initVar, initVal);
+
+            // outs() << "initVal first: " << *initVal << "\n";
+            Expr newInit;
+            // a hack
+            if (isOpX<AND>(initVal))
+            {
+              ExprSet s;
+              getConj(initVal, s);
+              for (auto &it : s)
+              {
+                bool skip = false;
+                ExprSet ss;
+                filter(it, IsConst(), inserter(ss, ss.begin()));
+                if (!containsOp<MOD>(it))  
+                {
+                  for (auto &v : ss)
+                  {
+                    if (find(rule.dstVars.begin(), rule.dstVars.end(), v) != rule.dstVars.end())
+                    {
+                      skip = true;
+                      break;
+                    }
+                  }
+                  if (skip) continue;
+                  if (newInit) newInit = mk<AND>(newInit, it);
+                  else newInit = it;
+                }
+              }
+              initVal = newInit;
+            }
+            
+            initVal = initVal->right();
+
+            if (initVal) hasInitVal = true;
+          }
+
+          // outs() << "initVal: " << *initVal << "\n";
+
+          getExprEqualities(initVar, rule);
+          // outs() << "exprEqualities for " << *initVar << ": " << *exprEqualities[initVar] << "\n";
+
+          ExprSet s;
+          filter(initVal, IsConst(), inserter(s, s.begin()));
+          if (!s.empty())
+          {
+            // outs() << "var: " << **s.begin() << "\n";
+
+            getExprEqualities(*s.begin(), rule);
+            // outs() << "exprEqualities for " << **s.begin() << ": " << *exprEqualities[*s.begin()] << "\n";
+          }
+
+          if (!hasTransitionVal)
+          {
+            transitionVal = right->arg(1);
+            hasTransitionVal = true;
+          }
+
+          // outs() << "transitionVal: " << *transitionVal << "\n";
+
+          if (iterIncreases)
+          {
+            findExpr<LT>(initVar, rule.body, lt, true);
+            findExpr<LEQ>(initVar, rule.body, le, true);
+
+            // make sure there is no case where both lt and le are not null
+            // cannot think of any but could be
+            // in case lt and le are either conjunction or disjunction, handle better
+            if (lt) 
+            {
+              // outs() << "lt: " << *lt << "\n";
+              lt = ineqSimplifier(initVar, lt);
+              if (!(isOpX<AND>(lt) || isOpX<OR>(lt))) 
+                limitVal = lt->arg(1);
+              hasLimitVal = true;
+            }
+            if (le) 
+            {
+              // outs() << "le: " << *le << "\n";
+              add = mkMPZ(1, m_efac);
+              le = ineqSimplifier(initVar, le);
+              if (!(isOpX<AND>(le) || isOpX<OR>(le))) 
+                limitVal = le->arg(1);
+              hasLimitVal = true;
+            }
+          }
+          else 
+          {
+            findExpr<GT>(initVar, rule.body, gt);
+            findExpr<GEQ>(initVar, rule.body, ge);
+
+            // make sure there is no case where both gt and ge are not null
+            // cannot think of any but could be
+            if (gt) 
+            {
+              // outs() << "gt: " << *gt << "\n";
+              gt = ineqSimplifier(initVar, gt);
+              if (!(isOpX<AND>(gt) || isOpX<OR>(gt))) 
+                limitVal = gt->arg(1);
+              hasLimitVal = true;
+            }
+            if (ge) 
+            {
+              // outs() << "ge: " << *ge << "\n";
+              add = mkMPZ(-1, m_efac);
+              ge = ineqSimplifier(initVar, ge);
+              if (!(isOpX<AND>(ge) || isOpX<OR>(ge)))
+                limitVal = ge->arg(1);
+              hasLimitVal = true;
+            }
+          }
+
+          if (limitVal) 
+          {
+            // outs() << "limitVal: " << *limitVal << "\n";
+
+            s.clear();
+            filter(limitVal, IsConst(), inserter(s, s.begin()));
+            if (!s.empty())
+            {
+              // outs() << "var: " << **s.begin() << "\n";
+
+              getExprEqualities(*s.begin(), rule);
+              // outs() << "exprEqualities for " << **s.begin() << ": " << *exprEqualities[*s.begin()] << "\n";
+            }
+          }
+
+          // outs() << "has in init: " << hasInitVal << "\n";
+          // outs() << "has in transition: " << hasTransitionVal << "\n";
+          // outs() << "has in final: " << hasLimitVal << "\n";
+
+          bool isAnIter = hasInitVal && hasTransitionVal && hasLimitVal;
+          if (isAnIter)
+          {
+            iter = i;
+          
+            // if iter is increasing/decreasing
+            iterGrows = iterIncreases;
+            numOfIters = numIterations(initVal, transitionVal, limitVal, add);
+          }
+          else notAnIter = true;
+        }
+        else notAnIter = true;
+
+L1:     if (notAnIter)
+        {
+          if (bind::isIntConst(a)) varsInt.push_back(i);
+          else if (bind::isBoolConst(a)) varsBool.push_back(i);
+          else if (isOpX<ARRAY_TY>(bind::typeOf(a))) varsArray.push_back(i);
+        }
+      }
     }
 
     bool failShrink (Expr dstRel)

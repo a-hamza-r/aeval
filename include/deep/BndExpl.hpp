@@ -432,7 +432,6 @@ namespace ufo
         }
 
         int l = trace.size() - 1; // starting index (before the loop)
-        // int l = ((trace.size() > 0) ? trace.size() - 1 : 0); // starting index (before the loop)
         if (ruleManager.hasArrays[srcRel]) l++; // first iter is usually useless
 
         for (int j = 0; j < k; j++)

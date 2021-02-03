@@ -27,8 +27,7 @@
 (rule (=> 
 	(and 
 		(loop a_array b_array c_array d_array e_array i count)
-		(< i index_limit)
-		(= index_limit (* count 8))
+		(< i (* count 8))
 		(= a_i (select a_array i))
 		(= b_i (select b_array i))
 		(= c_i (select c_array i))
@@ -37,15 +36,13 @@
 		(= x (+ (+ (* b_i c_i) (* a_i d_i)) e_i))
 		(= a_array_new (store a_array i (- x 1)))
 		(= b_array_new (store b_array i x))
-		(= i1 (+ i 1))
 	)
-	(loop a_array_new b_array_new c_array d_array e_array i1 count)
+	(loop a_array_new b_array_new c_array d_array e_array (+ i 1) count)
 ))
 (rule (=> 
 	(and 
 		(loop a_array b_array c_array d_array e_array i count)
-		(= index_limit (* count 8))
-		(not (< i index_limit))
+		(not (< i (* count 8)))
 	)
 	exit
 ))

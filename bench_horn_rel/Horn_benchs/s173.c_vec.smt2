@@ -36,40 +36,34 @@
 	(and 
 		(loop a_array b_array i count)
 
-		(= index_limit (* count 4))
-		(< i index_limit)
+		(< i (* count 4))
 		
 		(= a_i (select a_array i))
 		(= b_i (select b_array i))
 		(= a_i_plus_limit (+ a_i b_i))
-		(= a_array1 (store a_array (+ i index_limit) a_i_plus_limit))
-		(= i1 (+ i 1))
+		(= a_array1 (store a_array (+ i (* count 4)) a_i_plus_limit))
 
-		(= a_i1 (select a_array1 i1))
-		(= b_i1 (select b_array i1))
+		(= a_i1 (select a_array1 (+ i 1)))
+		(= b_i1 (select b_array (+ i 1)))
 		(= a_i_plus_limit1 (+ a_i1 b_i1))
-		(= a_array2 (store a_array1 (+ i1 index_limit) a_i_plus_limit1))
-		(= i2 (+ i1 1))
+		(= a_array2 (store a_array1 (+ (+ i 1) (* count 4)) a_i_plus_limit1))
 
-		(= a_i2 (select a_array2 i2))
-		(= b_i2 (select b_array i2))
+		(= a_i2 (select a_array2 (+ i 2)))
+		(= b_i2 (select b_array (+ i 2)))
 		(= a_i_plus_limit2 (+ a_i2 b_i2))
-		(= a_array3 (store a_array2 (+ i2 index_limit) a_i_plus_limit2))
-		(= i3 (+ i2 1))
+		(= a_array3 (store a_array2 (+ (+ i 2) (* count 4)) a_i_plus_limit2))
 
-		(= a_i3 (select a_array3 i3))
-		(= b_i3 (select b_array i3))
+		(= a_i3 (select a_array3 (+ i 3)))
+		(= b_i3 (select b_array (+ i 3)))
 		(= a_i_plus_limit3 (+ a_i3 b_i3))
-		(= a_array4 (store a_array3 (+ i3 index_limit) a_i_plus_limit3))
-		(= i4 (+ i3 1))
+		(= a_array4 (store a_array3 (+ (+ i 3) (* count 4)) a_i_plus_limit3))
 	)
-	(loop a_array4 b_array i4 count)
+	(loop a_array4 b_array (+ i 4) count)
 ))
 (rule (=> 
 	(and 
 		(loop a_array b_array i count)
-		(= index_limit (* count 4))
-		(not (< i index_limit))
+		(not (< i (* count 4)))
 	)
 	exit
 ))

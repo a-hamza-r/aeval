@@ -22,20 +22,17 @@
 (rule (=> 
 	(and 
 		(loop a_array i count x index)
-		(= index_limit (* count 8))
-		(< i index_limit)
+		(< i (* count 8))
 		(= a_i (select a_array i))
 		(= x1 (ite (> a_i x) a_i x))
 		(= index1 (ite (> a_i x) i index))
-		(= i1 (+ i 1))
 	)
-	(loop a_array i1 count x1 index1)
+	(loop a_array (+ i 1) count x1 index1)
 ))
 (rule (=> 
 	(and 
 		(loop a_array i count x index)
-		(= index_limit (* count 8))
-		(not (< i index_limit))
+		(not (< i (* count 8)))
 	)
 	exit
 ))

@@ -3771,6 +3771,17 @@ namespace ufo
     dagVisit (qvm, exp);
   }
 
+  bool hasOnlyVars(Expr fla, ExprVector& vars)
+  {
+    ExprSet allVars;
+    filter (fla, bind::IsConst (), inserter (allVars, allVars.begin()));
+    minusSets(allVars, vars);
+    map<Expr, ExprVector> qv;
+    getQVars (fla, qv);
+    for (auto & q : qv) minusSets(allVars, q.second);
+    return allVars.empty();
+  }
+
   struct QFregularizer
   {
     ExprVector& vars;

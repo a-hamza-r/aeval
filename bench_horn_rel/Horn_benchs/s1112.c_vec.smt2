@@ -51,47 +51,31 @@
 
 		(>= i 0)
 		
-		(= b_i (select b_array i))
-		(= a_i (+ b_i 1))
+		(= a_i (+ (select b_array i) 1))
 		(= a_array1 (store a_array i a_i))
-		(= i1 (- i 1))
 
-		(= b_i1 (select b_array i1))
-		(= a_i1 (+ b_i1 1))
-		(= a_array2 (store a_array1 i1 a_i1))
-		(= i2 (- i1 1))
+		(= a_i1 (+ (select b_array (- i 1)) 1))
+		(= a_array2 (store a_array1 (- i 1) a_i1))
 
-		(= b_i2 (select b_array i2))
-		(= a_i2 (+ b_i2 1))
-		(= a_array3 (store a_array2 i2 a_i2))
-		(= i3 (- i2 1))
+		(= a_i2 (+ (select b_array (- i 2)) 1))
+		(= a_array3 (store a_array2 (- i 2) a_i2))
 
-		(= b_i3 (select b_array i3))
-		(= a_i3 (+ b_i3 1))
-		(= a_array4 (store a_array3 i3 a_i3))
-		(= i4 (- i3 1))
+		(= a_i3 (+ (select b_array (- i 3)) 1))
+		(= a_array4 (store a_array3 (- i 3) a_i3))
 
-		(= b_i4 (select b_array i4))
-		(= a_i4 (+ b_i4 1))
-		(= a_array5 (store a_array4 i4 a_i4))
-		(= i5 (- i4 1))
+		(= a_i4 (+ (select b_array (- i 4)) 1))
+		(= a_array5 (store a_array4 (- i 4) a_i4))
 
-		(= b_i5 (select b_array i5))
-		(= a_i5 (+ b_i5 1))
-		(= a_array6 (store a_array5 i5 a_i5))
-		(= i6 (- i5 1))
+		(= a_i5 (+ (select b_array (- i 5)) 1))
+		(= a_array6 (store a_array5 (- i 5) a_i5))
 
-		(= b_i6 (select b_array i6))
-		(= a_i6 (+ b_i6 1))
-		(= a_array7 (store a_array6 i6 a_i6))
-		(= i7 (- i6 1))
+		(= a_i6 (+ (select b_array (- i 6)) 1))
+		(= a_array7 (store a_array6 (- i 6) a_i6))
 
-		(= b_i7 (select b_array i7))
-		(= a_i7 (+ b_i7 1))
-		(= a_array8 (store a_array7 i7 a_i7))
-		(= i8 (- i7 1))
+		(= a_i7 (+ (select b_array (- i 7)) 1))
+		(= a_array8 (store a_array7 (- i 7) a_i7))
 	)
-	(loop a_array8 b_array i8 count)
+	(loop a_array8 b_array (- i 8) count)
 ))
 (rule (=> 
 	(and 

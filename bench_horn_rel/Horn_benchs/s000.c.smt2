@@ -19,8 +19,7 @@
 (rule (=> 
 	(and 
 		(loop a_array b_array i count)
-		(= index_limit (* count 8))
-		(< i index_limit)
+		(< i (* count 8))
 		(= a_i (+ (select b_array i) 1))
 		(= a_array_new (store a_array i a_i))
 	)
@@ -29,8 +28,7 @@
 (rule (=> 
 	(and 
 		(loop a_array b_array i count)
-		(= index_limit (* count 8))
-		(not (< i index_limit))
+		(not (< i (* count 8)))
 		;(<= 0 i1)
 		;(< i1 index_limit)
 		;(not (< (select b_array i1) (select a_array i1)))

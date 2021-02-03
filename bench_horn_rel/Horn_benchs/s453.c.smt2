@@ -22,20 +22,17 @@
 (rule (=> 
 	(and 
 		(loop a_array b_array i s count)
-		(= index_limit (* count 8))
-		(< i index_limit)
-		(= s1 (+ s 2))
+		(< i (* count 8))
 		(= b_i (select b_array i))
-		(= a_i (* s1 b_i))
+		(= a_i (* (+ s 2) b_i))
 		(= a_array_new (store a_array i a_i))
-		(= i1 (+ i 1))
 	)
-	(loop a_array_new b_array i1 s1 count)
+	(loop a_array_new b_array (+ i 1) (+ s 2) count)
 ))
 (rule (=> 
 	(and 
 		(loop a_array b_array i s count)
-		(not (< i index_limit))
+		(not (< i (* count 8)))
 	)
 	exit
 ))

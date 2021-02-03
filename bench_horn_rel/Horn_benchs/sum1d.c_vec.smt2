@@ -41,48 +41,38 @@
 	(and 
 		(loop a_array i sum count)
 		
-		(= index_limit (* count 8))
-		(< i index_limit)
+		(< i (* count 8))
 		
 		(= a_i (select a_array i))
 		(= sum1 (+ sum a_i))
-		(= i1 (+ i 1))
 
-		(= a_i1 (select a_array i1))
+		(= a_i1 (select a_array (+ i 1)))
 		(= sum2 (+ sum1 a_i1))
-		(= i2 (+ i1 1))
 
-		(= a_i2 (select a_array i2))
+		(= a_i2 (select a_array (+ i 2)))
 		(= sum3 (+ sum2 a_i2))
-		(= i3 (+ i2 1))
 
-		(= a_i3 (select a_array i3))
+		(= a_i3 (select a_array (+ i 3)))
 		(= sum4 (+ sum3 a_i3))
-		(= i4 (+ i3 1))
 
-		(= a_i4 (select a_array i4))
+		(= a_i4 (select a_array (+ i 4)))
 		(= sum5 (+ sum4 a_i4))
-		(= i5 (+ i4 1))
 
-		(= a_i5 (select a_array i5))
+		(= a_i5 (select a_array (+ i 5)))
 		(= sum6 (+ sum5 a_i5))
-		(= i6 (+ i5 1))
 
-		(= a_i6 (select a_array i6))
+		(= a_i6 (select a_array (+ i 6)))
 		(= sum7 (+ sum6 a_i6))
-		(= i7 (+ i6 1))
 
-		(= a_i7 (select a_array i7))
+		(= a_i7 (select a_array (+ i 7)))
 		(= sum8 (+ sum7 a_i7))
-		(= i8 (+ i7 1))
 	)
-	(loop a_array i8 sum8 count)
+	(loop a_array (+ i 8) sum8 count)
 ))
 (rule (=> 
 	(and 
 		(loop a_array i sum count)
-		(= index_limit (* count 8))
-		(not (< i index_limit))
+		(not (< i (* count 8)))
 	)
 	exit
 ))

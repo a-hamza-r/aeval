@@ -65,65 +65,19 @@
 
 (rule (=> 
 	(and 
-		(< 1 (* count 8))
-		
-		(= a_i (+ (select b_array (- (* count 8) (+ 0 1))) (select a_array 1)))
-		(= a_array1 (store a_array 1 a_i))
-
-		(= a_i1 (+ (select b_array (- (* count 8) (+ 0 2))) (select a_array1 (+ 1 1))))
-		(= a_array2 (store a_array1 (+ 1 1) a_i1))
-
-		(= a_i2 (+ (select b_array (- (* count 8) (+ 0 3))) (select a_array2 (+ 1 2))))
-		(= a_array3 (store a_array2 (+ 1 2) a_i2))
-
-		(= a_i3 (+ (select b_array (- (* count 8) (+ 0 4))) (select a_array3 (+ 1 3))))
-		(= a_array4 (store a_array3 (+ 1 3) a_i3))
-
-		(= a_i4 (+ (select b_array (- (* count 8) (+ 0 5))) (select a_array4 (+ 1 4))))
-		(= a_array5 (store a_array4 (+ 1 4) a_i4))
-
-		(= a_i5 (+ (select b_array (- (* count 8) (+ 0 6))) (select a_array5 (+ 1 5))))
-		(= a_array6 (store a_array5 (+ 1 5) a_i5))
-
-		(= a_i6 (+ (select b_array (- (* count 8) (+ 0 7))) (select a_array6 (+ 1 6))))
-		(= a_array7 (store a_array6 (+ 1 6) a_i6))
-		
 		(= i 8)
-		(= k 8)
+		(= k 0)
+
+		(< 1 (* count 8))
 	)
 	(loop a_array7 b_array i k count)
 ))
 (rule (=> 
 	(and 
 		(loop a_array b_array i k count)
-
 		(< i (* count 8))
-		
-		(= a_i (+ (select b_array (- (* count 8) (+ k 1))) (select a_array i)))
-		(= a_array1 (store a_array i a_i))
-
-		(= a_i1 (+ (select b_array (- (* count 8) (+ k 2))) (select a_array1 (+ i 1))))
-		(= a_array2 (store a_array1 (+ i 1) a_i1))
-
-		(= a_i2 (+ (select b_array (- (* count 8) (+ k 3))) (select a_array2 (+ i 2))))
-		(= a_array3 (store a_array2 (+ i 2) a_i2))
-
-		(= a_i3 (+ (select b_array (- (* count 8) (+ k 4))) (select a_array3 (+ i 3))))
-		(= a_array4 (store a_array3 (+ i 3) a_i3))
-
-		(= a_i4 (+ (select b_array (- (* count 8) (+ k 5))) (select a_array4 (+ i 4))))
-		(= a_array5 (store a_array4 (+ i 4) a_i4))
-
-		(= a_i5 (+ (select b_array (- (* count 8) (+ k 6))) (select a_array5 (+ i 5))))
-		(= a_array6 (store a_array5 (+ i 5) a_i5))
-
-		(= a_i6 (+ (select b_array (- (* count 8) (+ k 7))) (select a_array6 (+ i 6))))
-		(= a_array7 (store a_array6 (+ i 6) a_i6))
-
-		(= a_i7 (+ (select b_array (- (* count 8) (+ k 8))) (select a_array7 (+ i 7))))
-		(= a_array8 (store a_array7 (+ i 6) a_i7))
 	)
-	(loop a_array8 b_array (+ i 8) (+ i 8) count)
+	(loop a_array8 b_array (+ i 8) k count)
 ))
 (rule (=> 
 	(and 

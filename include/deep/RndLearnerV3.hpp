@@ -739,7 +739,8 @@ namespace ufo
           }
           else return false;
         }
-        return true;*/
+        */
+        return true;
       }
       else
       {
@@ -1104,13 +1105,12 @@ namespace ufo
       rule.printMemberVars();
       extraVars.clear();
 
-      // Expr loopBody1 = prefixBody, loopBody2 = rules2.body;
+      outs() << "prefixBody: " << *prefixBody << "\n";
       mergeIterationsInFact(copiesToPrefix1, prefixBody, rules1, extraVars, 1);
       mergeIterationsInFact(copiesToPrefix2, prefixBody, rules2, extraVars, 2);
 
       prefixRule.locVars.insert(prefixRule.locVars.end(), extraVars.begin(), extraVars.end());
 
-      // outs() << "prefixBody: " << *prefixBody << "\n";
 
       prefixRule.body = prefixBody;
 
@@ -1184,12 +1184,6 @@ namespace ufo
                 break;
               }
 
-              // if (query && 
-              //   find(nonItersForInv[0].begin(), nonItersForInv[0].end(), pair[0]) == nonItersForInv[0].end())
-              // {
-              //   if (!prevAddToQuery) prevAddToQuery = mk<NEQ>(rule.srcVars[pair[0]], rule.srcVars[pair[1]]);
-              //   else prevAddToQuery = mk<OR>(prevAddToQuery, mk<NEQ>(rule.srcVars[pair[0]], rule.srcVars[pair[1]]));
-              // }
             }
             if (skipComb) continue;
 
@@ -1199,31 +1193,9 @@ namespace ufo
 
           outs() << "pre: " << *pre << "\n";
 
+          if (query) post = replaceAll(pre, rule.dstVars, rule.srcVars);
+
           // errs() << "prefixRule: " << *prefixRule.body << "\n";
-
-          // matching all non-iters of one CHC system to all non-iters of other one
-          // could be a better way to match lesser non-iters
-          /*bool found = false;
-          for (int j = 0; j < nonItersForInv[0].size(); j++)
-          {
-            for (int k = 0; k < nonItersForInv[1].size(); k++)
-            {
-              // not tested
-              for (auto a : comb)
-              {
-                if (nonItersForInv[0][j] == a[0] || nonItersForInv[1][k] == a[1])
-                {
-                  found = true; break;
-                }
-              }
-              vector<int> v{nonItersForInv[0][j], nonItersForInv[1][k]};
-              // either we found the whole pair in the comb, or we found none of the elems of the pair
-              if (find(comb.begin(), comb.end(), v) != comb.end() || !found)
-                nonIterPairs.push_back(v);
-            }
-          }*/
-
-          errs() << "here\n";
 
           // running the data matrix initially
           // map<Expr, ExprSe trix;
@@ -1279,8 +1251,14 @@ namespace ufo
                 Expr v1 = rule.srcVars[p[1]];
                 if (find(varsIters.begin(), varsIters.end(), v) != varsIters.end()
                  && find(varsIters.begin(), varsIters.end(), v1) != varsIters.end())
-                  if (newPre) newPre = mk<AND>(newPre, mk<EQ>(v, v1));
-                  else newPre = mk<EQ>(v, v1);
+                  if (newPre) 
+                  {
+                    newPre = mk<AND>(newPre, mk<EQ>(v, v1));
+                  }
+                  else 
+                  {
+                    newPre = mk<EQ>(v, v1);
+                  }
               }
 
               if (!newPre) newPre = mk<TRUE>(m_efac );
@@ -1323,6 +1301,20 @@ namespace ufo
                 findExpr<EQ>(const1, minModels, minConst1, true);
                 findExpr<EQ>(const2, minModels, minConst2, true);
 
+                Expr vals = mk<AND>(minCoef1, minCoef2);
+
+                u.isSat(mk<AND>(quantifiedFla, vals));
+
+                if (minConst1->right() == mkMPZ(0, m_efac))
+                  minModels = u.getMinModelInts(const2);
+                else 
+                  minModels = u.getMinModelInts(const1);
+
+                minConst1 = NULL;
+                minConst2 = NULL;
+                findExpr<EQ>(const1, minModels, minConst1, true);
+                findExpr<EQ>(const2, minModels, minConst2, true);
+
                 minCoef1 = minCoef1->right();
                 minCoef2 = minCoef2->right();
                 minConst1 = minConst1->right();
@@ -1342,6 +1334,9 @@ namespace ufo
             //   else prevAddToQuery = mk<OR>(prevAddToQuery, mk<NEQ>(iter1, iter2));
 
             align(i, minConst1, minConst2, minCoef1, minCoef2);
+
+            query->body = mk<AND>(query->body, mkNeg(post));
+            query->printMemberVars();
 
             return -1;
             ExprSet cands;
@@ -1948,22 +1943,17 @@ namespace ufo
         HornRuleExt& hr = *h;
 
         if (hr.isQuery) continue;
-        // if (hr.isInductive)
-        // {
-        //   candidatesTmp[0].push_back(mk<EQ>(hr.srcVars[0], hr.srcVars[4]));
-        //   candidatesTmp[0].push_back(mk<EQ>(hr.srcVars[1], hr.srcVars[5]));
-        // }
 
         if (!checkCHC(hr, candidatesTmp))
         {
           bool res2 = true;
           int ind = getVarIndex(hr.dstRelation, decls);
-          errs() << "\ncands considered:\n";
-          for (auto it : candidatesTmp[ind])
-            errs() << *it << "\n";
+          // errs() << "\ncands considered:\n";
+          // for (auto it : candidatesTmp[ind])
+          //   errs() << *it << "\n";
           Expr model = u.getModel(hr.dstVars);
           if (model)
-          errs() << "\nmodel: " << *model << "\n";
+          // errs() << "\nmodel: " << *model << "\n";
           if (isSkippable(model, hr.dstVars, candidatesTmp))
           {
             // something went wrong with z3. do aggressive weakening (TODO: try bruteforce):
@@ -1987,11 +1977,11 @@ namespace ufo
                 if (hr.isFact)
                 {
                   Expr failedCand = normalizeDisj(*it, invVars);
-               outs () << "failed cand for " << *hr.dstRelation << ": " << *failedCand << "\n";
+               // outs () << "failed cand for " << *hr.dstRelation << ": " << *failedCand << "\n";
                   Sampl& s = sf.exprToSampl(failedCand);
                   sf.assignPrioritiesForFailed();
                 }
-                errs() << "erasing: " << **it << "\n";
+                // errs() << "erasing: " << **it << "\n";
                 it = ev.erase(it);
                 res2 = false;
               }
@@ -2112,7 +2102,7 @@ namespace ufo
       bool analizedExtras = false;
       bool isFalse = false;
       bool hasArrays = false;
-
+      // outs() << "init getSeeds\n";
       // for Arrays
       ExprSet tmpArrAccess;
       ExprSet tmpArrSelects;
@@ -2144,6 +2134,7 @@ namespace ufo
         }
       }
 
+      // outs() << "before hasArrays\n";
       if (hasArrays)
       {
         Expr pre = preconds[ind];
@@ -2155,10 +2146,17 @@ namespace ufo
 
           assert (isOpX<EQ>(pre)); // TODO: support more
 
+          // outs() << "after assert\n";
+
           ExprVector invAndIterVarsAll;
           for (auto & a : invarVars[ind]) invAndIterVarsAll.push_back(a.second);
           invAndIterVarsAll.push_back(qVar);
 
+
+          // outs() << "qvar: " << *qVar << "\n";
+          // outs() << "iterGrows: " << iterGrows[ind] << "\n";
+          // outs() << "iterators[ind]: " << *iterators[ind] << "\n";
+          // outs() << "pre: " << *pre << "\n";
           Expr fla;
           if (pre->right() == iterators[ind])
             fla = (iterGrows[ind]) ? mk<GEQ>(qVar, pre->left()) :
@@ -2167,15 +2165,19 @@ namespace ufo
             fla = (iterGrows[ind]) ? mk<GEQ>(qVar, pre->right()) :
                                      mk<LEQ>(qVar, pre->right());
 
+          // outs() << "fla: " << *fla << "\n";
+          // outs() << "after iters\n";
           ExprSet tmp;
           getConj(postconds[ind], tmp);
           for (auto it = tmp.begin(); it != tmp.end(); )
             if (contains(*it, iterators[ind])) ++it; else it = tmp.erase(it);
+          // outs() << "after postCond\n";
 
           arrIterRanges[ind].insert(normalizeDisj(fla, invAndIterVarsAll));
           arrIterRanges[ind].insert(normalizeDisj(
                   replaceAll(conjoin(tmp, m_efac), iterators[ind], qVar), invAndIterVarsAll));
         }
+        // outs() << "iterator stuff\n";
 
         auto nested = ruleManager.getNestedRel(invRel);
         if (nested != NULL)
@@ -2215,6 +2217,7 @@ namespace ufo
                       iterators[ind], *arrAccessVars[ind].begin()));
         }
 
+        // outs() << "nested done\n";
         // process all quantified seeds
         for (auto & a : tmpArrCands)
         {
@@ -2252,6 +2255,7 @@ namespace ufo
             // else candsFromCode.insert(a);
           }
         }
+        // outs() << "after tmpArrCands loop\n";
 
         // trick for tiling benchs
         /*ExprSet afs;
@@ -2283,6 +2287,7 @@ namespace ufo
           }
         }*/
       }
+      // outs() << "after hasArrays\n";
 
       // errs() << "after combinations\n";
       // errs() << "cands size: " << candsFromCode.size() << "\n";
@@ -2300,7 +2305,7 @@ namespace ufo
           /*propagate (ind, replCand, true);*/
         }
       }
-      // errs() << "after loop\n";
+      // outs() << "after loop\n";
     }
 
     void refreshCands(map<Expr, ExprSet>& cands)
@@ -2542,7 +2547,7 @@ namespace ufo
       // outs()  << "CHECKING " << * hr.srcRelation << " -> "<< * hr.dstRelation << "\n";
       ExprSet exprs;
       exprs.insert(hr.body);
-      outs() << "hr body: " << *hr.body << "\n";
+      // outs() << "hr body: " << *hr.body << "\n";
 
       if (!hr.isFact)
       {
@@ -2571,9 +2576,9 @@ namespace ufo
         }
         exprs.insert(disjoin(negged, m_efac));
       }
-      outs() << "exprs: \n";
-      for (auto it : exprs)
-        outs() << *it << "\n";
+      // outs() << "exprs: \n";
+      // for (auto it : exprs)
+      //   outs() << *it << "\n";
       return bool(!u.isSat(exprs));
     }
 
@@ -2608,10 +2613,10 @@ namespace ufo
         }
         exprs.insert(disjoin(negged, m_efac));
       }
-      errs() << "exprs: " << "\n";
-      for (auto it : exprs)
-        errs() << *it << "\n";
-      errs() << "\n\n";
+      // errs() << "exprs: " << "\n";
+      // for (auto it : exprs)
+      //   errs() << *it << "\n";
+      // errs() << "\n\n";
       return bool(!u.isSat(exprs));
     }
 
@@ -3095,136 +3100,96 @@ namespace ufo
 
     void printSolution(bool simplify = true)
     {
-      for (int i = 0; i < decls.size(); i++)
+     for (int i = 0; i < decls.size(); i++)
       {
         Expr rel = decls[i];
         SamplFactory& sf = sfs[i].back();
         ExprSet lms = sf.learnedExprs;
-
         outs () << "(define-fun " << *rel << " (";
         for (auto & b : ruleManager.invVars[rel])
           outs () << "(" << *b << " " << u.varType(b) << ")";
         outs () << ") Bool\n  ";
         Expr tmp = conjoin(lms, m_efac);
         if (simplify && !containsOp<FORALL>(tmp)) u.removeRedundantConjuncts(lms);
-        Expr res = simplifyArithm(tmp);
+        Expr res = simplifyArithm(conjoin(lms, m_efac));
         u.print(res);
         outs () << ")\n";
+        assert(hasOnlyVars(res, ruleManager.invVars[rel]));
+      }
+    }
+
+    void addPostConditionEqualities(Expr currentMatching)
+    {
+      ExprSet s;
+      getConj(currentMatching, s);
+      for (auto &it : s)
+      {
+        candidates[0].push_back(it);
       }
     }
   };
 
-  inline void learnInvariantsPr(CHCs &ruleManager, int maxAttempts, bool freqs, bool aggp, bool enableDataLearning, const vector<string> & behaviorfiles)
+  inline bool learnInvariantsPr(CHCs &ruleManager, int maxAttempts, bool freqs, bool aggp, Expr currentMatching)
   {
     char *c;
     EZ3 z3(ruleManager.m_efac);
 
     BndExpl bnd(ruleManager);
 
-    if (!ruleManager.hasCycles())
-    {
-      bnd.exploreTraces(1, ruleManager.chcs.size(), true);
-      return;
-    }
+    // if (!ruleManager.hasCycles())
+    // {
+    //   bnd.exploreTraces(1, ruleManager.chcs.size(), true);
+    //   return;
+    // }
+
+    // outs() << "before running RndLearner\n";
 
     RndLearnerV3 ds(ruleManager.m_efac, z3, ruleManager, freqs, aggp);
     map<Expr, ExprSet> cands;
     for (auto& dcl: ruleManager.decls) ds.initializeDecl(dcl);
 
+    // outs() << "after initializeDecl\n";
     for (int i = 0; i < ruleManager.cycles.size(); i++)
     {
       Expr pref = bnd.compactPrefix(i);
-      outs() << "pref: " << *pref << "\n";
-      cands[ruleManager.chcs[ruleManager.cycles[i][0]].srcRelation].insert(pref);
-      //if (ruleManager.hasArrays)
-      ds.initArrayStuff(bnd, i, pref);
-      outs() << "after initArrayStuff\n";
-      ds.varsMetaInfo(bnd, i);
-
-      /*bool hasOnlyVars(Expr fla, ExprVector& vars)
-      {
-        ExprSet allVars;
-        filter (fla, bind::IsConst (), inserter (allVars, allVars.begin()));
-        minusSets(allVars, vars);
-        map<Expr, ExprVector> qv;
-        getQVars (fla, qv);
-        for (auto & q : qv) minusSets(allVars, q.second);
-        return allVars.empty();
-      }
       Expr rel = ruleManager.chcs[ruleManager.cycles[i][0]].srcRelation;
+      cands[ruleManager.chcs[ruleManager.cycles[i][0]].srcRelation].insert(pref);
       ExprSet tmp;
       getConj(pref, tmp);
       for (auto & t : tmp)
         if(hasOnlyVars(t, ruleManager.invVars[rel]))
-          cands[rel].insert(t);*/
-    }
+          cands[rel].insert(t);
 
-    // outs() << "before getSeeds\n";
-    // for (auto& dcl: ruleManager.wtoDecls) ds.getSeeds(dcl, cands);
-    // ds.refreshCands(cands);
+      //if (ruleManager.hasArrays)
+      ds.initArrayStuff(bnd, i, pref);
+    }
+    // outs() << "after initArrayStuff\n";
+
+      // for (auto it : cands)
+      // {
+      //   errs() << "cand: " << *it.first << "\n";
+      //   for (auto it2 : it.second)
+      //     errs() << *it2 << "\n";
+      //   errs() << "\n";
+      // }
+      // errs() << "\n\n";
+
+    for (auto& dcl: ruleManager.wtoDecls) ds.getSeeds(dcl, cands);
+    ds.refreshCands(cands);
     // outs() << "after getSeeds\n";
 
-    // for (auto& dcl: ruleManager.decls) ds.doSeedMining(dcl->arg(0), cands[dcl->arg(0)], false);
-    // ds.calculateStatistics();
+    for (auto& dcl: ruleManager.decls) ds.doSeedMining(dcl->arg(0), cands[dcl->arg(0)], false);
+    ds.calculateStatistics();
     // outs() << "after doSeedMining\n";
-    // if (ds.bootstrap()) return;
-    // bool check = ds.bootstrap();
-    int eqStatus = ds.alignment(behaviorfiles, bnd);
-    if (eqStatus == 1 || eqStatus == 2)
+    ds.addPostConditionEqualities(currentMatching);
+    // outs() << "before bootstrap\n";
+    bool check = ds.bootstrap();
+    if (!check)
     {
-      for (auto it : ruleManager.chcs)
-      {
-        // ExprVector v;
-        // Expr q = createQuantifiedFormula(it.body, v);
-        // SMTUtils su(it.body->getFactory());
-        // su.serialize_formula(q);
-        it.printMemberVars();
-      }
-
-      RndLearnerV3 ds1(ruleManager.m_efac, z3, ruleManager, freqs, aggp);
-      map<Expr, ExprSet> cands1;
-      for (auto& dcl: ruleManager.decls) ds1.initializeDecl(dcl);
-
-      for (int i = 0; i < ruleManager.cycles.size(); i++)
-      {
-        Expr pref = bnd.compactPrefix(i);
-        cands1[ruleManager.chcs[ruleManager.cycles[i][0]].srcRelation].insert(pref);
-        //if (ruleManager.hasArrays)
-        ds1.initArrayStuff(bnd, i, pref);
-        ds1.varsMetaInfo(bnd, i);
-        for (auto num : ruleManager.outgs[ruleManager.chcs[ruleManager.cycles[i][0]].srcRelation])
-          if (ruleManager.chcs[num].isQuery)
-           errs() << "body of query is: " << *ruleManager.chcs[num].body << "\n";
-      }
-
-      for (auto it : cands1)
-      {
-        errs() << "cand: " << *it.first << "\n";
-        for (auto it2 : it.second)
-          errs() << *it2 << " ";
-        errs() << "\n";
-      }
-      errs() << "\n\n";
-
-      for (auto& dcl: ruleManager.wtoDecls) ds1.getSeeds(dcl, cands1);
-      ds1.refreshCands(cands1);
-
-      for (auto& dcl: ruleManager.decls) ds1.doSeedMining(dcl->arg(0), cands1[dcl->arg(0)], false);
-      ds1.calculateStatistics();
-      bool check1 = ds1.bootstrap();
-      if (!check1)
-      {
-        std::srand(std::time(0));
-        check1 = ds1.synthesize(maxAttempts, c);
-      }
-      if (check1) errs() << "The programs are equivalent\n";
-      else errs() << "The programs are not equivalent\n";
+      std::srand(std::time(0));
+      check = ds.synthesize(maxAttempts, c);
     }
-    else errs() << "The programs are not equivalent\n";
-
-    // if (check) return;
-//     std::srand(std::time(0));
-//     ds.synthesize(maxAttempts, c);
+    return check;
   }
 }
 

@@ -27,26 +27,23 @@
 (rule (=> 
 	(and 
 		(loop a_array a_ind b_array b_ind c_array c_ind i count)
-		(= index_limit (* count 8))
-		(< i index_limit)
+		(< i (* count 8))
 		(= b_i (select b_array b_ind))
 		(= c_i (select c_array c_ind))
 		(= a_i (+ b_i c_i))
 		(= a_array1 (store a_array a_ind a_i))
-		(= i1 (+ i 1))
 		(= a_ind1 (+ a_ind (* 1 4)))
 		(= b_ind1 (+ b_ind (* 1 4)))
 		(= c_ind1 (+ c_ind (* 1 4)))
 	)
-	(loop a_array1 a_ind1 b_array b_ind1 c_array c_ind1 i1 count)
+	(loop a_array1 a_ind1 b_array b_ind1 c_array c_ind1 (+ i 1) count)
 ))
 (rule (=> 
 	(and 
 		(loop a_array a_ind b_array b_ind c_array c_ind i count)
-		(= index_limit (* count 8))
-		(not (< i index_limit))
+		(not (< i (* count 8)))
 		;(<= 0 i1)
-		;(< i1 index_limit)
+		;(< i1 (* count 8))
 		;(not (< (select b_array i1) (select a_array i1)))
 	)
 	exit

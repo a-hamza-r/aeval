@@ -50,55 +50,46 @@
 (rule (=> 
 	(and 
 		(loop a_array i count x index)
-		(= index_limit (* count 8))
-		(< i index_limit)
+		(< i (* count 8))
 		
 		(= a_i (select a_array i))
 		(= x1 (ite (> a_i x) a_i x))
 		(= index1 (ite (> a_i x) i index))
-		(= i1 (+ i 1))
 
-		(= a_i1 (select a_array i1))
+		(= a_i1 (select a_array (+ i 1)))
 		(= x2 (ite (> a_i1 x1) a_i1 x1))
-		(= index2 (ite (> a_i1 x1) i1 index1))
-		(= i2 (+ i1 1))
+		(= index2 (ite (> a_i1 x1) (+ i 1) index1))
 
-		(= a_i2 (select a_array i2))
+		(= a_i2 (select a_array (+ i 2)))
 		(= x3 (ite (> a_i2 x2) a_i2 x2))
-		(= index3 (ite (> a_i2 x2) i2 index2))
-		(= i3 (+ i2 1))	
+		(= index3 (ite (> a_i2 x2) (+ i 2) index2))
 
-		(= a_i3 (select a_array i3))
+		(= a_i3 (select a_array (+ i 3)))
 		(= x4 (ite (> a_i3 x3) a_i3 x3))
-		(= index4 (ite (> a_i3 x3) i3 index3))
-		(= i4 (+ i3 1))	
+		(= index4 (ite (> a_i3 x3) (+ i 3) index3))
 
-		(= a_i4 (select a_array i4))
+		(= a_i4 (select a_array (+ i 4)))
 		(= x5 (ite (> a_i4 x4) a_i4 x4))
-		(= index5 (ite (> a_i4 x4) i4 index4))
-		(= i5 (+ i4 1))
+		(= index5 (ite (> a_i4 x4) (+ i 4) index4))
 
-		(= a_i5 (select a_array i5))
+		(= a_i5 (select a_array (+ i 5)))
 		(= x6 (ite (> a_i5 x5) a_i5 x5))
-		(= index6 (ite (> a_i5 x5) i5 index5))
-		(= i6 (+ i5 1))
+		(= index6 (ite (> a_i5 x5) (+ i 5) index5))
 
-		(= a_i6 (select a_array i6))
+		(= a_i6 (select a_array (+ i 6)))
 		(= x7 (ite (> a_i6 x6) a_i6 x6))
-		(= index7 (ite (> a_i6 x6) i6 index6))
-		(= i7 (+ i6 1))
+		(= index7 (ite (> a_i6 x6) (+ i 6) index6))
 
-		(= a_i7 (select a_array i7))
+		(= a_i7 (select a_array (+ i 7)))
 		(= x8 (ite (> a_i7 x7) a_i7 x7))
-		(= index8 (ite (> a_i7 x7) i7 index7))
-		(= i8 (+ i7 1))
+		(= index8 (ite (> a_i7 x7) (+ i 7) index7))
 	)
-	(loop a_array i8 count x8 index8)
+	(loop a_array (+ i 8) count x8 index8)
 ))
 (rule (=> 
 	(and 
 		(loop a_array i count x index)
-		(not (< i index_limit))
+		(not (< i (* count 8)))
 	)
 	exit
 ))
