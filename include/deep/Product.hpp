@@ -866,9 +866,6 @@ namespace ufo
 			int coef2Int = (int)lexical_cast<cpp_int>(minCoef2);
 			int const2Int = (int)lexical_cast<cpp_int>(minConst2);
 
-      if (const1Int != 0) const1Int++;
-      if (const2Int != 0) const2Int++;
-      outs () << const1Int << " " << const2Int << "\n";
 			createAlignment(ruleManager1, coef1Int, const1Int);
 			createAlignment(ruleManager2, coef2Int, const2Int);
 
@@ -910,14 +907,18 @@ namespace ufo
 			// 	it.printMemberVars();
 			// }
 
-			Expr currentMatching;
+      Expr currentMatching = mk<TRUE>(fac);
 			int sz = rule1.srcVars.size();
-			for (auto &pair : comb)
-			{
-				Expr eq = mk<EQ>(ind->srcVars[pair[0]], ind->srcVars[sz+pair[1]]);
-				if (currentMatching) currentMatching = mk<AND>(currentMatching, eq);
-				else currentMatching = eq;
-			}
+      for (auto &pair : comb)
+      {
+        Expr eq = mk<EQ>(ind->srcVars[pair[0]], ind->srcVars[sz+pair[1]]);
+        currentMatching = mk<AND>(currentMatching, eq);
+      }
+
+      // GF: hack to create pairs (to revisit)
+      for (int i = 0; i < sz; i++)
+        if (bind::typeOf(ind->srcVars[i]) == bind::typeOf(ind->srcVars[sz + i]))
+          currentMatching = mk<AND>(currentMatching, mk<EQ>(ind->srcVars[i], (ind->srcVars[sz + i])));
 
 			// outs() << "currentMatching: " << *currentMatching << "\n";
 
