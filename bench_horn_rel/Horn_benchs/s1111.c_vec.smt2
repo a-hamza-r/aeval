@@ -99,7 +99,6 @@
 		(= t33 (* d_i3 c_i3))
 		(= a_2i3 (+ (+ (+ (+ t03 t13) t23) t13) t33))
 		(= a_array4 (store a_array3 (* 2 (+ i 3)) a_2i3))
-		(= i4 (+ i3 1))
 	)
 	(loop a_array4 b_array c_array d_array (+ i 4) count)
 ))

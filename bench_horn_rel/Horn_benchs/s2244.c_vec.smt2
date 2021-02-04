@@ -134,7 +134,7 @@
 		
 		(= i 7)
 	)
-	(loop a_array14 b_array c_array e_array i7 count)
+	(loop a_array14 b_array c_array e_array i count)
 ))
 (rule (=> 
 	(and 
