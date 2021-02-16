@@ -151,7 +151,7 @@
 		(= b_i5 (+ a_i4 (* d_i2 e_i2)))
 		(= b_array3 (store b_array2 (+ 0 2) b_i5))
 		(= a_i5 (+ b_i5 (* a_i_plus_12 d_i2)))
-		(= a_array6 (store a_array5 0 a_i5))
+		(= a_array6 (store a_array5 (+ 0 2) a_i5))
 
 		(= b_i6 (select b_array3 (+ 0 3)))
 		(= c_i3 (select c_array (+ 0 3)))
@@ -245,7 +245,7 @@
 		(= b_i5 (+ a_i4 (* d_i2 e_i2)))
 		(= b_array3 (store b_array2 (+ i 2) b_i5))
 		(= a_i5 (+ b_i5 (* a_i_plus_12 d_i2)))
-		(= a_array6 (store a_array5 i a_i5))
+		(= a_array6 (store a_array5 (+ i 2) a_i5))
 
 		(= b_i6 (select b_array3 (+ i 3)))
 		(= c_i3 (select c_array (+ i 3)))
