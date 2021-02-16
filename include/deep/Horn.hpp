@@ -215,6 +215,8 @@ namespace ufo
       concatenateMaps(invVars, rules1.invVars, rules2.invVars);
     };
 
+    string getVarName() {return varname;} 
+
     bool isFapp (Expr e)
     {
       if (isOpX<FAPP>(e))
@@ -571,12 +573,14 @@ namespace ufo
       // outs() << "prefix rule: " << *prefixRule.body << "\n";
       Expr init = prefixRule.body;
 
+      outs() << "rule body: " << *rule.body << "\n";
+
       for (int i = 0; i < rule.srcVars.size(); i++)
       {
         Expr a = rule.srcVars[i];
         Expr b = rule.dstVars[i];
         Expr e, gt, ge, lt, le;
-        bool notAnIter = false;
+        bool isAnIter = false;
 
         bool iterDecreases = bind::isIntConst(a) && u.implies(rule.body, mk<GT>(a, b));
         bool iterIncreases = bind::isIntConst(a) && u.implies(rule.body, mk<LT>(a, b));
@@ -584,10 +588,10 @@ namespace ufo
         if (iterIncreases || iterDecreases)
         {
           findExpr<EQ>(b, rule.body, e, true);
-          // errs() << "\nfinding: " << *b << "\n\n";
+          errs() << "\nfinding: " << *b << "\n\n";
 
           e = ineqSimplifier(b, e);
-          // errs() << "found: " << *e << "\n\n";
+          errs() << "found: " << *e << "\n\n";
 
           Expr right = e->right();
           Expr initVal, transitionVal, limitVal;
@@ -599,11 +603,11 @@ namespace ufo
           // for now, assuming we have found the transitionval
           if (isOpX<AND>(e) || isOpX<OR>(e) || containsOp<ITE>(e)) hasTransitionVal = true;
 
-          // outs() << "right: " << *right << "\n";
+          outs() << "right: " << *right << "\n";
 
           if (right->arity() <= 1) 
           {
-            notAnIter = true;
+            isAnIter = false;
             goto L1;
           }
 
@@ -643,10 +647,11 @@ namespace ufo
               }
               initVal = newInit;
             }
-            
-            initVal = initVal->right();
-
-            if (initVal) hasInitVal = true;
+            if (initVal) 
+            {
+              hasInitVal = true;
+              initVal = initVal->right();
+            }
           }
 
           // outs() << "initVal: " << *initVal << "\n";
@@ -667,11 +672,21 @@ namespace ufo
           if (!hasTransitionVal)
           {
             transitionVal = right->arg(1);
+
+            // check if delta value is constant; Eq. 10, section 4
+            Expr replacedTrans = replaceAll(transitionVal, rule.srcVars, rule.dstVars);
+            if (!u.implies(rule.body, mk<EQ>(transitionVal, replacedTrans)))
+            {
+              transitionVal = NULL;
+              isAnIter = false;
+              goto L1;
+            }
             hasTransitionVal = true;
           }
 
           // outs() << "transitionVal: " << *transitionVal << "\n";
 
+          Expr limitEq;
           if (iterIncreases)
           {
             findExpr<LT>(initVar, rule.body, lt, true);
@@ -684,8 +699,11 @@ namespace ufo
             {
               // outs() << "lt: " << *lt << "\n";
               lt = ineqSimplifier(initVar, lt);
-              if (!(isOpX<AND>(lt) || isOpX<OR>(lt))) 
+              if (!(isOpX<AND>(lt) || isOpX<OR>(lt)))
+              {
                 limitVal = lt->arg(1);
+                limitEq = lt;
+              } 
               hasLimitVal = true;
             }
             if (le) 
@@ -694,7 +712,10 @@ namespace ufo
               add = mkMPZ(1, m_efac);
               le = ineqSimplifier(initVar, le);
               if (!(isOpX<AND>(le) || isOpX<OR>(le))) 
+              {
                 limitVal = le->arg(1);
+                limitEq = le;
+              }
               hasLimitVal = true;
             }
           }
@@ -709,8 +730,11 @@ namespace ufo
             {
               // outs() << "gt: " << *gt << "\n";
               gt = ineqSimplifier(initVar, gt);
-              if (!(isOpX<AND>(gt) || isOpX<OR>(gt))) 
+              if (!(isOpX<AND>(gt) || isOpX<OR>(gt)))
+              {
                 limitVal = gt->arg(1);
+                limitEq = gt;
+              } 
               hasLimitVal = true;
             }
             if (ge) 
@@ -719,7 +743,10 @@ namespace ufo
               add = mkMPZ(-1, m_efac);
               ge = ineqSimplifier(initVar, ge);
               if (!(isOpX<AND>(ge) || isOpX<OR>(ge)))
+              {
                 limitVal = ge->arg(1);
+                limitEq = ge;
+              }
               hasLimitVal = true;
             }
           }
@@ -728,13 +755,27 @@ namespace ufo
           {
             // outs() << "limitVal: " << *limitVal << "\n";
 
+            // check if limit value is constant; Eq. 8, section 4
+            Expr replacedLimit = replaceAll(limitVal, rule.srcVars, rule.dstVars);
+            bool constLimitValCheck = u.implies(rule.body, mk<EQ>(limitVal, replacedLimit));
+            
+            // check the case that iter does not exceed limit value during transition; Eq. 7, section 4
+            bool loopEndCheck = limitEq && !u.isSat(mk<AND>(mkNeg(limitEq), rule.body));
+
+            if (!constLimitValCheck || !loopEndCheck)
+            {
+              limitVal = NULL;
+              isAnIter = false;
+              goto L1;
+            }
+
             s.clear();
             filter(limitVal, IsConst(), inserter(s, s.begin()));
             if (!s.empty())
             {
               // outs() << "var: " << **s.begin() << "\n";
-
-              getExprEqualities(*s.begin(), rule);
+              for (auto &it : s)
+                getExprEqualities(it, rule);
               // outs() << "exprEqualities for " << **s.begin() << ": " << *exprEqualities[*s.begin()] << "\n";
             }
           }
@@ -743,7 +784,7 @@ namespace ufo
           // outs() << "has in transition: " << hasTransitionVal << "\n";
           // outs() << "has in final: " << hasLimitVal << "\n";
 
-          bool isAnIter = hasInitVal && hasTransitionVal && hasLimitVal;
+          isAnIter = hasInitVal && hasTransitionVal && hasLimitVal;
           if (isAnIter)
           {
             iter = i;
@@ -752,11 +793,9 @@ namespace ufo
             iterGrows = iterIncreases;
             numOfIters = numIterations(initVal, transitionVal, limitVal, add);
           }
-          else notAnIter = true;
         }
-        else notAnIter = true;
 
-L1:     if (notAnIter)
+L1:     if (!isAnIter)
         {
           if (bind::isIntConst(a)) varsInt.push_back(i);
           else if (bind::isBoolConst(a)) varsBool.push_back(i);

@@ -595,17 +595,49 @@ namespace ufo
 		ssa[num] = replaceAll(ssa[num], bnd.bindVars[num], loop.dstVars);
 	}
 
-	void createAlignment(CHCs &ruleManager, int coef, int constt)
+	void mergeIterationsQuery(HornRuleExt *query, int num, ExprVector &ssa, BndExpl &bnd, 
+		string varname, ExprVector &newVars)
 	{
-		// cout << "coef: " << coef << "\n";
-		// cout << "const: " << constt << "\n";
+		if (num <= 0) return;
+		// for (auto it : ssa)
+		// {
+		// 	outs() << "SSA: " << *it << "\n";
+		// }
+		ssa[0] = replaceAll(ssa[0], bnd.bindVars[0], query->srcVars);
+		for (int i = 0; i < bnd.bindVars[num].size(); i++)
+		{
+			Expr newVar = mkTerm<string>(varname+"query_var_"+lexical_cast<string>(i), query->body->getFactory());
+			newVar = cloneVar(bnd.bindVars[num][i], newVar);
+			newVars.push_back(newVar);
+			// outs() << "newVar: " << *newVar << "\n";
+			ssa[num-1] = replaceAll(ssa[num-1], bnd.bindVars[num][i], newVar);
+		}
+	}
+
+	void createAlignment(CHCs &ruleManager, int unrollTrans, int unrollFact, int unrollQuery, 
+		Expr& prefRuleBody, ExprVector& newVars)
+	{
+		if (!(unrollTrans == 0 && unrollQuery == 0))
+		{
+			cout << "unrollTrans: " << unrollTrans << "\n";
+			cout << "unrollFact: " << unrollFact << "\n";
+			cout << "unrollQuery: " << unrollQuery << "\n";
+		}
 
 		vector<int>& cycle = ruleManager.cycles[0];
 		HornRuleExt& rule = ruleManager.chcs[cycle[0]];
 		auto & prefix = ruleManager.prefixes[0];
 		HornRuleExt &prefixRule = ruleManager.chcs[prefix[0]];
 		Expr rel = rule.srcRelation;
+
+		HornRuleExt *query;
+		for (auto &it : ruleManager.outgs[rel])
+			if (ruleManager.chcs[it].isQuery)
+				query = &ruleManager.chcs[it];
+		
 		ruleManager.getDecl(rel, rel);
+
+		prefRuleBody = prefixRule.body;
 
 		BndExpl bnd(ruleManager);
 
@@ -613,39 +645,53 @@ namespace ufo
 
 		trace.push_back(prefix[0]);
 
-		for (int j = 0; j < constt; j++)
+		for (int j = 0; j < unrollFact; j++)
           for (int m = 0; m < cycle.size(); m++)
             trace.push_back(cycle[m]);
 
         ExprVector ssa;
         bnd.getSSA(trace, ssa);
 
-
-        mergeIterationsFact(prefixRule, constt, ssa, bnd);
-        // for (auto it : ssa)
-        // {
-        // 	outs() << "unrolling: " << *it << "\n";
-        // }
+        mergeIterationsFact(prefixRule, unrollFact, ssa, bnd);
 
 		trace.clear();
 
 		trace.push_back(prefix[0]);
 
-		for (int j = 0; j < coef-1; j++)
+		for (int j = 0; j < unrollQuery; j++)
           for (int m = 0; m < cycle.size(); m++)
             trace.push_back(cycle[m]);
 
         ExprVector ssa1;
         bnd.getSSA(trace, ssa1);
-        
-        mergeIterationsLoop(rule, coef-1, ssa1, bnd);
+
         ssa1.erase(ssa1.begin());
+        // ExprVector newVars;
+        mergeIterationsQuery(query, unrollQuery, ssa1, bnd, ruleManager.getVarName(), newVars);
 
-        if (constt > 0) prefixRule.body = conjoin(ssa, ruleManager.m_efac);
-		if (coef > 1) rule.body = mk<AND>(rule.body, conjoin(ssa1, ruleManager.m_efac));
+        trace.clear();
 
-        // prefixRule.printMemberVars();
-        // rule.printMemberVars();
+		trace.push_back(prefix[0]);
+
+		for (int j = 0; j < unrollTrans-1; j++)
+          for (int m = 0; m < cycle.size(); m++)
+            trace.push_back(cycle[m]);
+
+        ExprVector ssa2;
+        bnd.getSSA(trace, ssa2);
+
+        mergeIterationsLoop(rule, unrollTrans-1, ssa2, bnd);
+        ssa2.erase(ssa2.begin());
+
+        if (unrollFact > 0) prefRuleBody = conjoin(ssa, ruleManager.m_efac);
+		if (unrollTrans > 1) rule.body = mk<AND>(rule.body, conjoin(ssa2, ruleManager.m_efac));
+		if (unrollQuery > 0) 
+		{
+			query->body = replaceAll(query->body, query->srcVars, newVars);
+			query->body = mk<AND>(query->body, conjoin(ssa1, ruleManager.m_efac));
+		}
+		else newVars = query->srcVars;
+        query->printMemberVars();
 	}
 
 	bool findAlignment(CHCs &ruleManager1, CHCs &ruleManager2, SMTUtils &u)
@@ -722,11 +768,6 @@ namespace ufo
 			}
 			else pre = mk<TRUE>(fac);
 			// outs() << "pre: " << *pre << "\n";
-
-			Expr e = replaceAll(pre, rule1.dstVars, rule1.srcVars);
-			Expr post = replaceAll(e, rule2.dstVars, rule2.srcVars);
-			Expr negPost = mkNeg(post);
-			// outs() << "post: " << *post << "\n";
 
             // errs() << "\n\nassuming iters: " << *rule1.srcVars[iter1] << " and " << *rule2.srcVars[iter2] << "\n";
             Expr numIters1 = ruleManager1.numOfIters;
@@ -824,9 +865,9 @@ namespace ufo
 
               if (model) 
               {
-                // outs() << "model: " << *model << "\n";
+                outs() << "model: " << *model << "\n";
                 Expr minModels = u.getMinModelInts(coef1);
-                // outs() << "minModels: " << *minModels << "\n";
+                outs() << "minModels: " << *minModels << "\n";
 
                 findExpr<EQ>(coef1, minModels, minCoef1, true);
                 findExpr<EQ>(coef2, minModels, minCoef2, true);
@@ -855,19 +896,67 @@ namespace ufo
             }
             else outs() << "number of iterations were not found\n";
 
+            outs() << "copy " << *minConst1 << " iterations of loop 1 to fact\n";
+            outs() << "copy " << *minConst2 << " iterations of loop 2 to fact\n";
+            outs() << "we need " << *minCoef1 << " iterations of loop 1 to align\n";
+            outs() << "we need " << *minCoef2 << " iterations of loop 2 to align\n";
 
-            // outs() << "copy " << *minConst1 << " iterations of loop 1 to fact\n";
-            // outs() << "copy " << *minConst2 << " iterations of loop 2 to fact\n";
-            // outs() << "we need " << *minCoef1 << " iterations of loop 1 to align\n";
-            // outs() << "we need " << *minCoef2 << " iterations of loop 2 to align\n";
+            // outs() << "Fact 1: " << *prefixRule1.body << "\n";
+            // outs() << "Fact 2: " << *prefixRule2.body << "\n";
+            // outs() << "pre: " << *pre << "\n";
 
             int coef1Int = (int)lexical_cast<cpp_int>(minCoef1);
 			int const1Int = (int)lexical_cast<cpp_int>(minConst1);
 			int coef2Int = (int)lexical_cast<cpp_int>(minCoef2);
 			int const2Int = (int)lexical_cast<cpp_int>(minConst2);
 
-			createAlignment(ruleManager1, coef1Int, const1Int);
-			createAlignment(ruleManager2, coef2Int, const2Int);
+			vector<int> v1, v2;
+			vector<vector<int>> vComb;
+			for (int i = 0; i <= const1Int; i++) v1.push_back(i);
+			for (int i = 0; i <= const2Int; i++) v2.push_back(i);
+
+			for (auto &it : v1)
+				for (auto &it2 : v2)
+					vComb.push_back(vector<int>{it, it2});
+
+			// for (auto it : vComb)
+			// 	outs() << it[0] << " " << const1Int-it[0] << " " << it[1] << " " << const2Int-it[1] << "\n";
+
+			ExprVector varsQ, varsQ1;
+			for (auto &it : vComb)
+			{
+				Expr prefRuleBody1, prefRuleBody2;
+				ExprVector v;
+				createAlignment(ruleManager1, 0, it[0], 0, prefRuleBody1, v);
+				createAlignment(ruleManager2, 0, it[1], 0, prefRuleBody2, v);
+
+				// outs() << "prefRuleBody1: " << *prefRuleBody1 << "\n";
+				// outs() << "prefRuleBody2: " << *prefRuleBody2 << "\n";
+
+				Expr tempProdFact = mk<AND>(mk<AND>(prefRuleBody1, prefRuleBody2), pre);
+				Expr eq = mk<EQ>(prefixRule1.dstVars[ruleManager1.iter], prefixRule2.dstVars[ruleManager2.iter]);
+				// outs() << "tempProdFact: " << *tempProdFact << "\n";
+				// outs() << "eq: " << *eq << "\n";
+				bool impliesEq = u.implies(tempProdFact, eq);
+
+				outs() << "implies equal " << impliesEq << "\n";
+				if (impliesEq)
+				{
+					createAlignment(ruleManager1, coef1Int, it[0], const1Int-it[0], prefRuleBody1, varsQ);
+					prefixRule1.body = prefRuleBody1;
+					// for (auto it : v) outs() << "v: " << *it << "\n";
+
+					createAlignment(ruleManager2, coef2Int, it[1], const2Int-it[1], prefRuleBody2, varsQ1);					
+					// for (auto it : v1) outs() << "v1: " << *it << "\n";
+					prefixRule2.body = prefRuleBody2;
+					break;
+				}
+			}
+
+			Expr e = replaceAll(pre, rule1.dstVars, varsQ);
+			Expr post = replaceAll(e, rule2.dstVars, varsQ1);
+			Expr negPost = mkNeg(post);
+			// outs() << "post: " << *post << "\n";
 
 			CHCs ruleManagerProduct(ruleManager1, ruleManager2, "_pr_");
 
@@ -927,16 +1016,13 @@ namespace ufo
 		return false;
 	}
 
-	inline void createProduct(const char *chcfileSrc, const char *chcfileDst)
+	inline void createProductAligned(const char *chcfileSrc, const char *chcfileDst)
 	{
 		ExprFactory m_efac;
 		EZ3 z3(m_efac);
 
 		CHCs ruleManagerSrc(m_efac, z3, "_v1_");
 		ruleManagerSrc.parse(string(chcfileSrc));
-
-		// CHCs ruleManagerSrcOrig(m_efac, z3, "_v1_");
-		// ruleManagerSrcOrig.parse(string(chcfileSrc));
 
 		/*outs() << "eliminateQuantifiers:\n";
 		for (auto it : ruleManagerSrc.chcs)
@@ -961,9 +1047,6 @@ namespace ufo
 		CHCs ruleManagerDst(m_efac, z3, "_v2_");
 		ruleManagerDst.parse(string(chcfileDst));
 
-		// CHCs ruleManagerDstOrig(m_efac, z3, "_v2_");
-		// ruleManagerDstOrig.parse(string(chcfileDst));
-		
 		// for (auto it : ruleManagerDst.chcs) it.printMemberVars();
 
 		ruleManagerSrc.findIterators();
@@ -972,24 +1055,40 @@ namespace ufo
 		bool equiv = findAlignment(ruleManagerSrc, ruleManagerDst, ruleManagerSrc.u);
 		if (equiv) outs() << "programs are equivalent\n";
 		else outs() << "programs are not equivalent\n";
+  };
 
-		/*CHCs ruleManagerProduct(ruleManager1, ruleManager2, "_pr_");
+	inline void createProductBase(const char *chcfileSrc, const char *chcfileDst)
+	{
+		ExprFactory m_efac;
+		EZ3 z3(m_efac);
+
+		CHCs ruleManagerSrc(m_efac, z3, "_v1_");
+		ruleManagerSrc.parse(string(chcfileSrc));
+
+		// for (auto it : ruleManagerSrc.chcs) it.printMemberVars();
+
+		CHCs ruleManagerDst(m_efac, z3, "_v2_");
+		ruleManagerDst.parse(string(chcfileDst));
+		
+		// for (auto it : ruleManagerDst.chcs) it.printMemberVars();
+
+		CHCs ruleManagerProduct(ruleManagerSrc, ruleManagerDst, "_pr_");
 
 	    vector<vector<HornRuleExt>> queries(2);
 
 	    // get queries of both systems
-	    getQueries(ruleManager1.chcs, ruleManager2.chcs, queries);
+	    getQueries(ruleManagerSrc.chcs, ruleManagerDst.chcs, queries);
 
 	    if (queries[0].empty() || queries[1].empty())
 	    {
 	        outs() << "Product can not be found.\n";
-	        continue;
+	        exit(1);
 	    }
 
 	    // product of two CHC systems
 		Product(ruleManagerProduct, queries);
 
-		learnInvariantsPr(ruleManagerProduct, 2000000, false, false, currentMatching);*/
+		learnInvariantsPr(ruleManagerProduct, 2000000, false, false, mk<TRUE>(m_efac));
   };
 }
 
