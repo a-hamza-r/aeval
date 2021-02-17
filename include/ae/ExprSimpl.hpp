@@ -92,6 +92,33 @@ namespace ufo
     }
   }
 
+  inline static Expr distribDisjoin(Expr d1, Expr d2)
+  {
+    ExprSet dsj1, dsj2, comm;
+    getConj(d1, dsj1);
+    getConj(d2, dsj2);
+    for (auto it1 = dsj1.begin(); it1 != dsj1.end(); )
+    {
+      bool found = false;
+      for (auto it2 = dsj2.begin(); it2 != dsj2.end(); )
+      {
+        if (*it1 == *it2)
+        {
+          found = true;
+          comm.insert(*it1);
+          it1 = dsj1.erase(it1);
+          it2 = dsj2.erase(it2);
+          break;
+        }
+        else ++it2;
+      }
+      if (!found) ++it1;
+    }
+    comm.insert(mk<OR>(conjoin(dsj1, d1->getFactory()),
+                       conjoin(dsj2, d1->getFactory())));
+    return conjoin(comm, d1->getFactory());
+  }
+
   inline static void getCounters (Expr a, ExprVector &cntrs)
   {
     if (isOpX<SELECT>(a) || isOpX<STORE>(a)){
@@ -99,6 +126,16 @@ namespace ufo
     } else {
       for (unsigned i = 0; i < a->arity(); i++)
         getCounters(a->arg(i), cntrs);
+    }
+  }
+
+  inline static void getITEs (Expr a, ExprVector &ites)
+  {
+    if (isOpX<ITE>(a)){
+      ites.push_back(a);
+    } else {
+      for (unsigned i = 0; i < a->arity(); i++)
+        getITEs(a->arg(i), ites);
     }
   }
 
@@ -1439,12 +1476,34 @@ namespace ufo
     }
   }
 
+  // rewrites v1 to contain only v2
+  template<typename Range1, typename Range2> static void keepOnly(Range1& v1, Range2& v2){
+    for (auto it = v1.begin(); it != v1.end(); ){
+      if (find(v2.begin(), v2.end(), *it) == v2.end())
+        it = v1.erase(it);
+      else ++it;
+    }
+  }
+
   // is v1 a subset of v2?
   template<typename Range1, typename Range2> static bool isSubset(Range1& v1, Range2& v2){
     for (auto it = v1.begin(); it != v1.end(); ++it)
       if (find(v2.begin(), v2.end(), *it) == v2.end())
         return false;
     return true;
+  }
+
+  void getQVars (Expr exp, map<Expr, ExprVector>& vars);
+
+  bool hasOnlyVars(Expr fla, ExprVector& vars)
+  {
+    ExprSet allVars;
+    filter (fla, bind::IsConst (), inserter (allVars, allVars.begin()));
+    minusSets(allVars, vars);
+    map<Expr, ExprVector> qv;
+    getQVars (fla, qv);
+    for (auto & q : qv) minusSets(allVars, q.second);
+    return allVars.empty();
   }
 
   inline static bool isNumericConst(Expr e)
@@ -1570,9 +1629,10 @@ namespace ufo
   {
     ExprVector& vars;
     ExprMap& extraVars;
+    bool arrays;
 
-    FindNonlinAndRewrite (ExprVector& _vars, ExprMap& _extraVars) :
-      vars(_vars), extraVars(_extraVars) {};
+    FindNonlinAndRewrite (ExprVector& _vars, ExprMap& _extraVars, bool _arrays) :
+      vars(_vars), extraVars(_extraVars), arrays(_arrays) {};
 
     Expr operator() (Expr t)
     {
@@ -1623,7 +1683,7 @@ namespace ufo
         if (linPart == 1) return extraVars[multedVars];
         else return mk<MULT>( mkMPZ(linPart, t->getFactory()), extraVars[multedVars]);
       }
-      else if (isOpX<MOD>(t) || isOpX<IDIV>(t) || isOpX<DIV>(t))
+      else if (isOpX<MOD>(t) || isOpX<IDIV>(t) || isOpX<DIV>(t) || (arrays && isOpX<SELECT>(t)))
       {
         int indl = getVarIndex(t->left(), vars);
         int indr = getVarIndex(t->right(), vars);
@@ -1647,9 +1707,9 @@ namespace ufo
     }
   };
 
-  inline static Expr findNonlinAndRewrite (Expr exp, ExprVector& vars, ExprMap& extraVars)
+  inline static Expr findNonlinAndRewrite (Expr exp, ExprVector& vars, ExprMap& extraVars, bool arrays = false)
   {
-    RW<FindNonlinAndRewrite> mu(new FindNonlinAndRewrite(vars, extraVars));
+    RW<FindNonlinAndRewrite> mu(new FindNonlinAndRewrite(vars, extraVars, arrays));
     return dagVisit (mu, exp);
   }
 
@@ -1782,9 +1842,106 @@ namespace ufo
     else return NULL;
   }
 
+  inline static void cloneVector(ExprVector& src, ExprVector& dst, string new_prefix)
+  {
+    assert (dst.empty());
+    for (int i = 0; i < src.size(); i++)
+    {
+      Expr new_name = mkTerm<string> (new_prefix + lexical_cast<string>(src[i]), src[i]->getFactory());
+      dst.push_back(cloneVar(src[i], new_name));
+    }
+  }
+
   inline static bool isBool(Expr e)
   {
     return typeOf(e) == mk<BOOL_TY>(e->getFactory());
+  }
+
+  inline Expr rewriteDivConstraints(Expr fla)
+  {
+    // heuristic for the divisibility constraints
+    assert (isOp<ComparissonOp>(fla));
+    ExprVector plusOpsLeft;
+    ExprVector plusOpsRight;
+    getAddTerm(fla->left(), plusOpsLeft);
+    getAddTerm(fla->right(), plusOpsRight);
+    Expr lhs = NULL;
+    for (auto & a : plusOpsRight) plusOpsLeft.push_back(additiveInverse(a));
+    plusOpsRight.clear();
+    for (auto it1 = plusOpsLeft.begin(); it1 != plusOpsLeft.end(); )
+    {
+      if (isOpX<IDIV>(*it1))
+      {
+        lhs = *it1;
+        plusOpsLeft.erase(it1);
+        for (auto & a : plusOpsLeft) plusOpsRight.push_back(additiveInverse(a));
+        break;
+      }
+      if (isOpX<UN_MINUS>(*it1) && isOpX<IDIV>((*it1)->left()))
+      {
+        lhs = (*it1)->left();
+        plusOpsLeft.erase(it1);
+        for (auto & a : plusOpsLeft) plusOpsRight.push_back(a);
+        break;
+      }
+      ++it1;
+    }
+
+    if (lhs == NULL) return fla;
+    Expr rhs = mkplus(plusOpsRight, fla->getFactory());
+
+    if (isOpX<EQ>(fla))
+      return mk<AND>(mk<GEQ>(lhs->left(), mk<MULT>(lhs->right(), rhs)),
+        mk<GT>(mk<PLUS> (mk<MULT>(lhs->right(), rhs), lhs->right()), lhs->left()));
+    else if (isOpX<NEQ>(fla))
+      return mk<OR>(mk<GT>(mk<MULT>(lhs->right(), rhs), lhs->left()),
+        mk<GEQ>(lhs->left(), mk<PLUS> (mk<MULT>(lhs->right(), rhs), lhs->right())));
+    return fla;
+  }
+
+  inline Expr rewriteModConstraints(Expr fla)
+  {
+    // heuristic for the divisibility constraints
+    assert (isOp<ComparissonOp>(fla));
+    ExprVector plusOpsLeft;
+    ExprVector plusOpsRight;
+    getAddTerm(fla->left(), plusOpsLeft);
+    getAddTerm(fla->right(), plusOpsRight);
+    Expr lhs = NULL;
+    for (auto & a : plusOpsRight) plusOpsLeft.push_back(additiveInverse(a));
+    plusOpsRight.clear();
+    cpp_int c1, c2;
+    for (auto it1 = plusOpsLeft.begin(); it1 != plusOpsLeft.end(); )
+    {
+      if (isOpX<MOD>(*it1))
+      {
+        Expr d = simplifyArithm((*it1)->last());
+        if (isNumericConst(d))
+        {
+          lhs = replaceAll(*it1, (*it1)->last(), d);
+          c1 = lexical_cast<cpp_int>(d);
+          plusOpsLeft.erase(it1);
+          for (auto & a : plusOpsLeft) plusOpsRight.push_back(additiveInverse(a));
+          plusOpsLeft.clear();
+          break;
+        }
+      }
+      ++it1;
+    }
+    if (!plusOpsLeft.empty() || lhs == NULL) return fla;
+
+    Expr rhs = mkplus(plusOpsRight, fla->getFactory());
+    rhs = simplifyArithm(rhs);
+    if (isNumericConst(rhs)) c2 = lexical_cast<cpp_int>(rhs);
+    else return fla;
+
+    ExprSet dsjs;
+    for (auto i = 0; i < c1; i++)
+      if (evaluateCmpConsts(fla, i, c2))
+        dsjs.insert(mk<EQ>(lhs, mkMPZ(i, fla->getFactory())));
+
+    fla = disjoin(dsjs, fla->getFactory());
+    return fla;
   }
 
   inline static Expr convertToGEandGT(Expr fla)
@@ -1803,8 +1960,14 @@ namespace ufo
       if (isBool(lhs)) return
           mk<OR>(mk<AND>(lhs, rhs),
                  mk<AND>(mkNeg(lhs), mkNeg(rhs)));
-      else if (isNumeric(lhs)) return mk<AND>(
-          mk<GEQ>(lhs, rhs), mk<GEQ>(rhs, lhs));
+      else if (isNumeric(lhs)) {
+        // heuristic for the divisibility constraints
+        if (isOpX<IDIV>(rhs) || isOpX<IDIV>(lhs)) {
+          return rewriteDivConstraints(fla);
+        }
+        else
+          return mk<AND>(mk<GEQ>(lhs, rhs), mk<GEQ>(rhs, lhs));
+      }
       else return fla;
     }
 
@@ -1813,8 +1976,13 @@ namespace ufo
       if (isBool(lhs)) return
           mk<OR>(mk<AND>(lhs, mkNeg(rhs)),
                  mk<AND>(mkNeg(lhs), rhs));
-      else if (isNumeric(lhs)) return mk<OR>(
+      else  if (isNumeric(lhs)) {
+        if (isOpX<IDIV>(rhs) || isOpX<IDIV>(lhs)) {
+          return rewriteDivConstraints(fla);
+        }
+        else return mk<OR>(
           mk<GT>(lhs, rhs), mk<GT>(rhs, lhs));
+      }
       else return fla;
     }
 
@@ -3662,55 +3830,25 @@ namespace ufo
     return conjoin(cnjs, exp->getFactory());
   }
 
-  bool isConstExpr(Expr e) {
-    using namespace expr::op::bind;
-    if (isIntConst(e) || isBoolConst(e) || isRealConst(e)) return true;
-    return false;
-  }
-
-  bool isLitExpr(Expr e) {
-    int arity = e->arity();
-    if (isConstExpr(e)) return false;
-    if (arity == 0) return true;
-    bool res = true;
-    for (int i = 0; i < arity; i++) {
-      res = res && isLitExpr(e->arg(i));
-    }
-    return res;
-  }
-
-  bool isConstAddModExpr(Expr e) {
-    using namespace expr::op::bind;
-    if (isOp<PLUS>(e) || isOp<MINUS>(e) || isOp<MOD>(e)) {
-      if (isLitExpr(e->arg(0))) {
-        return isConstAddModExpr(e->arg(1));
-      }
-      if (isLitExpr(e->arg(1))) {
-        return isConstAddModExpr(e->arg(0));
-      }
-    }
-    return isConstExpr(e);
-  }
-
   bool isNonlinear(Expr e) {
     int arity = e->arity();
-    if (isOp<MOD>(e)) {
-      if (isLitExpr(e->arg(0))) {
-        return !(isLitExpr(e->arg(1)) || !isConstExpr(e->arg(1)));
-      }
-      if (isLitExpr(e->arg(1))) {
-        return !(isConstAddModExpr(e->arg(0)));
-      }
-      return true;
+    if (isOpX<MOD>(e) || isOpX<DIV>(e) || isOpX<IDIV>(e)) {
+      ExprVector av;
+      filter (e->right(), IsConst (), inserter(av, av.begin()));
+      if (av.size() > 0) return true;
+      else return isNonlinear(e->left());
     }
-    if (isOp<MULT>(e) || isOp<DIV>(e)) {
-      if (isLitExpr(e->arg(0))) {
-        return isNonlinear(e->arg(1));
+    else if (isOpX<MULT>(e))
+    {
+      int numVars = 0;
+      for (int i = 0; i < arity; i++)
+      {
+        if (isNonlinear(e->arg(i))) return true;
+        ExprVector av;
+        filter (e->arg(i), IsConst (), inserter(av, av.begin()));
+        if (av.size() > 0) numVars++;
       }
-      if (isLitExpr(e->arg(1))) {
-        return isNonlinear(e->arg(0));
-      }
-      return true;
+      return (numVars > 1);
     }
     bool res = false;
     for (int i = 0; i < arity; i++) {
@@ -3989,6 +4127,67 @@ namespace ufo
     for (auto & it : tmp) cnj.erase(it);
     cnj.insert(newCnjs.begin(), newCnjs.end());
     if (toRepeat) simplifyPropagate(cnj);
+  }
+
+  void getLiterals (Expr exp, ExprSet& lits);
+
+  // assumes no ITE (to be extended)
+  struct LitMiner : public std::unary_function<Expr, VisitAction>
+  {
+    ExprSet& lits;
+    LitMiner (ExprSet& _lits): lits(_lits) {};
+
+    VisitAction operator() (Expr exp)
+    {
+      if (isOpX<EQ>(exp) && isNumeric(exp->left()) && !containsOp<MOD>(exp))
+      {
+        getLiterals(mk<GEQ>(exp->left(), exp->right()), lits);
+        getLiterals(mk<LEQ>(exp->left(), exp->right()), lits);
+        return VisitAction::skipKids ();
+      }
+      if (isOpX<NEQ>(exp) && isNumeric(exp->left()) && !containsOp<MOD>(exp))
+      {
+        getLiterals(mk<GT>(exp->left(), exp->right()), lits);
+        getLiterals(mk<LT>(exp->left(), exp->right()), lits);
+        return VisitAction::skipKids ();
+      }
+      if (isOpX<IMPL>(exp))
+      {
+        getLiterals(mkNeg(exp->left()), lits);
+        getLiterals(exp->right(), lits);
+        return VisitAction::skipKids ();
+      }
+      if (isOpX<IFF>(exp))
+      {
+        getLiterals(mkNeg(exp->left()), lits);
+        getLiterals(exp->right(), lits);
+        getLiterals(mkNeg(exp->right()), lits);
+        getLiterals(exp->left(), lits);
+        return VisitAction::skipKids ();
+      }
+      if (bind::typeOf(exp) == mk<BOOL_TY>(exp->getFactory()) &&
+          !containsOp<AND>(exp) && !containsOp<OR>(exp))
+      {
+        if (isOp<ComparissonOp>(exp))
+        {
+          exp = rewriteDivConstraints(exp);
+          exp = rewriteModConstraints(exp);
+          if (isOpX<AND>(exp) || isOpX<OR>(exp))
+            getLiterals(exp, lits);
+          else lits.insert(exp);
+        }
+        else lits.insert(exp);
+        return VisitAction::skipKids ();
+      }
+      return VisitAction::doKids ();
+    }
+  };
+
+  inline void getLiterals (Expr exp, ExprSet& lits)
+  {
+    LitMiner trm (lits);
+    exp = boolop::nnf(simplifyBool(exp));
+    dagVisit (trm, exp);
   }
 }
 

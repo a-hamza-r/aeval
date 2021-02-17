@@ -706,10 +706,15 @@ namespace ufo
     }
   };
 
+  inline static bool qeUnsupported (Expr e)
+  {
+    return (isNonlinear(e) || containsOp<MOD>(e) || containsOp<DIV>(e) || containsOp<ARRAY_TY>(e));
+  }
+
   /**
    * Simple wrapper
    */
-  Expr eliminateQuantifiers(Expr cond, ExprSet& vars)
+  inline static Expr eliminateQuantifiers(Expr cond, ExprSet& vars)
   {
     ExprFactory &efac = cond->getFactory();
     SMTUtils u(efac);
@@ -718,7 +723,7 @@ namespace ufo
     Expr newCond = simplifyArithm(simpleQE(cond, vars));
 
     if (!emptyIntersect(newCond, vars) &&
-        !containsOp<FORALL>(cond) && !containsOp<EXISTS>(cond) && !isNonlinear(newCond))
+        !containsOp<FORALL>(cond) && !containsOp<EXISTS>(cond) && !qeUnsupported(newCond))
     {
       AeValSolver ae(mk<TRUE>(efac), newCond, vars); // exists quantified . formula
       if (ae.solve()) {
@@ -741,16 +746,32 @@ namespace ufo
       for (auto & a : qv)
         for (auto & b : a.second)
           for (auto it1 = av.begin(); it1 != av.end(); )
-            if (*it1 == b) { it1 = av.erase(it1); break; }
+            if (*it1 == b) {
+              it1 = av.erase(it1); break; }
             else ++it1;
 
       if (emptyIntersect(av, vars)) ++it;
-        else it = cnj.erase(it);
+      else it = cnj.erase(it);
     }
     return simplifyBool(conjoin(cnj, efac));
   };
 
-  Expr abduce (Expr goal, Expr assm)
+  inline static Expr eliminateQuantifiers(Expr cond, ExprVector& vars)
+  {
+    ExprSet varsSet;
+    for (auto & v : vars) varsSet.insert(v);
+    return eliminateQuantifiers(cond, varsSet);
+  }
+
+  inline static Expr keepQuantifiers(Expr cond, ExprVector& vars)
+  {
+    ExprSet varsSet;
+    filter (cond, bind::IsConst (), inserter(varsSet, varsSet.begin()));
+    minusSets(varsSet, vars);
+    return eliminateQuantifiers(cond, varsSet);
+  }
+
+  inline static Expr abduce (Expr goal, Expr assm)
   {
     ExprFactory &efac = goal->getFactory();
     SMTUtils u(efac);

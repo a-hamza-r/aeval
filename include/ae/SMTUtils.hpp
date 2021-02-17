@@ -20,10 +20,10 @@ namespace ufo
   public:
 
     SMTUtils (ExprFactory& _efac) :
-    efac(_efac),
-    z3(efac),
-    smt (z3)
-    {}
+      efac(_efac), z3(efac), smt (z3) {}
+
+    SMTUtils (ExprFactory& _efac, unsigned _to) :
+      efac(_efac), z3(efac), smt (z3, _to) {}
 
     Expr getModel(Expr v)
     {
@@ -36,11 +36,13 @@ namespace ufo
     {
       ExprVector eqs;
       ZSolver<EZ3>::Model m = smt.getModel();
+      bool res = true;
       for (auto & v : vars)
       {
         Expr e = m.eval(v);
         if (e == NULL)
         {
+          res = false;
           return NULL;
         }
         else if (e != v)
@@ -55,6 +57,7 @@ namespace ufo
           eqs.push_back(mk<EQ>(v, mkTerm (mpz_class (0), efac)));
         }
       }
+      if (!res) return NULL;
       return conjoin (eqs, efac);
     }
 
@@ -72,6 +75,31 @@ namespace ufo
       }
       boost::tribool res = smt.solve ();
       return res;
+    }
+
+    /**
+     * SMT-check
+     */
+    boost::tribool isSat(Expr a, Expr b, Expr c, Expr d, bool reset=true)
+    {
+      ExprSet cnjs;
+      getConj(a, cnjs);
+      getConj(b, cnjs);
+      getConj(c, cnjs);
+      getConj(d, cnjs);
+      return isSat(cnjs, reset);
+    }
+
+    /**
+     * SMT-check
+     */
+    boost::tribool isSat(Expr a, Expr b, Expr c, bool reset=true)
+    {
+      ExprSet cnjs;
+      getConj(a, cnjs);
+      getConj(b, cnjs);
+      getConj(c, cnjs);
+      return isSat(cnjs, reset);
     }
 
     /**
@@ -207,6 +235,27 @@ namespace ufo
       return ex;
     }
 
+    Expr removeITE(Expr ex)
+    {
+      ExprVector ites;
+      getITEs(ex, ites);
+      int sz = ites.size();
+      for (auto it = ites.begin(); it != ites.end();)
+      {
+        Expr tmp;
+        if (implies(ex, (*it)->left()))
+          tmp = (*it)->right();
+        else if (implies(ex, mk<NEG>((*it)->left())))
+          tmp = (*it)->last();
+        else {++it; continue; }
+
+        ex = replaceAll(ex, *it, tmp);
+        it = ites.erase(it);
+      }
+      if (sz == ites.size()) return ex;
+      else return simplifyBool(simplifyArithm(removeITE(ex)));
+    }
+
     /**
      * Remove some redundant conjuncts from the set of formulas
      */
@@ -334,6 +383,150 @@ namespace ufo
       else return "";
     }
 
+    template <typename Range1, typename Range2, typename Range3> bool
+      splitUnsatSets(Range1 & src, Range2 & dst1, Range3 & dst2)
+    {
+      if (isSat(src)) return false;
+
+      for (auto & a : src) dst1.push_back(a);
+
+      for (auto it = dst1.begin(); it != dst1.end(); )
+      {
+        dst2.push_back(*it);
+        it = dst1.erase(it);
+        if (isSat(dst1)) break;
+      }
+
+      // now dst1 is SAT, try to get more things from dst2 back to dst1
+
+      for (auto it = dst2.begin(); it != dst2.end(); )
+      {
+        if (!isSat(conjoin(dst1, efac), *it)) { ++it; continue; }
+        dst1.push_back(*it);
+        it = dst2.erase(it);
+      }
+
+      return true;
+    }
+
+    bool isModelSkippable(Expr model, ExprVector& vars, map<int, ExprVector>& cands)
+    {
+      if (model == NULL) return true;
+
+      for (auto v: vars)
+      {
+        if (!containsOp<ARRAY_TY>(v)) continue;
+
+        Expr tmp = getModel(v);
+        if (tmp != v && !isOpX<CONST_ARRAY>(tmp) && !isOpX<STORE>(tmp))
+        {
+          return true;
+        }
+      }
+
+//      for (auto & a : cands)
+//      {
+//        for (auto & b : a.second)
+//        {
+//          if (containsOp<FORALL>(b)) return true;
+//        }
+//      }
+      return false;
+    }
+
+    bool isModelSkippable(Expr v)
+    {
+      Expr tmp = getModel(v);
+      if (tmp == NULL) return true;
+      if (!containsOp<ARRAY_TY>(v)) return false;
+      if (tmp != v && !isNumeric(v) && !isOpX<CONST_ARRAY>(tmp) && !isOpX<STORE>(tmp)) return true;
+      return false;
+    }
+
+    bool isModelSkippable()
+    {
+      for (auto & v : allVars) if (isModelSkippable(v)) return true;
+      return false;
+    }
+
+    void insertUnique(Expr e, ExprSet& v)
+    {
+      for (auto & a : v)
+        if (isEquiv(a, e)) return;
+      v.insert(e);
+    }
+
+    Expr getTrueLiterals(Expr ex, Expr model)
+    {
+      ExprVector ites;
+      getITEs(ex, ites);
+      if (ites.empty())
+      {
+        ExprSet tmp;
+        getLiterals(ex, tmp);
+        for (auto it = tmp.begin(); it != tmp.end(); ){
+          if (isSat(model, (Expr)*it)) ++it;
+          else it = tmp.erase(it);
+        }
+        return conjoin(tmp, efac);
+      }
+      else
+      {
+        // eliminate ITEs first
+        for (auto it = ites.begin(); it != ites.end();)
+        {
+          if (isSat(model, (Expr)(*it)->left()))
+          {
+            ex = replaceAll(ex, *it, (*it)->right());
+            ex = mk<AND>(ex, (*it)->left());
+          }
+          else
+          {
+            ex = replaceAll(ex, *it, (*it)->last());
+            ex = mk<AND>(ex, mkNeg((*it)->left()));
+          }
+          it = ites.erase(it);
+        }
+        return getTrueLiterals(simplifyBool(simplifyArithm(ex)), model);
+      }
+    }
+
+    Expr getWeakerMBP(Expr mbp, Expr fla, ExprVector& srcVars)
+    {
+      if (containsOp<ARRAY_TY>(fla)) return mbp;
+
+      ExprSet cnjs;
+      getConj(mbp, cnjs);
+      if (cnjs.size() == 1) return mbp;
+
+      ExprSet varsSet;
+      filter (fla, bind::IsConst (), inserter(varsSet, varsSet.begin()));
+      minusSets(varsSet, srcVars);
+
+      ExprVector args;
+      for (auto & v : varsSet) args.push_back(v->left());
+      args.push_back(fla);
+      Expr efla = mknary<EXISTS>(args);
+
+      bool prog = true;
+      while (prog)
+      {
+        prog = false;
+        for (auto it = cnjs.begin(); it != cnjs.end();)
+        {
+          ExprVector cnjsTmp;
+          for (auto & a : cnjs) if (a != *it) cnjsTmp.push_back(a);
+          if (implies(conjoin(cnjsTmp, efac), efla))
+          {
+            prog = true;
+            it = cnjs.erase(it);
+          }
+          else ++it;
+        }
+      }
+      return conjoin(cnjs, efac);
+    }
+
     void print (Expr e)
     {
       if (isOpX<FORALL>(e) || isOpX<EXISTS>(e))
@@ -349,6 +542,12 @@ namespace ufo
         }
         outs () << ") ";
         print (e->last());
+        outs () << ")";
+      }
+      else if (isOpX<NEG>(e))
+      {
+        outs () << "(not ";
+        print(e->left());
         outs () << ")";
       }
       else if (isOpX<AND>(e))
@@ -417,31 +616,6 @@ namespace ufo
 //      smt.assertExpr(form);
 //      smt.toSmtLib (outs());
 //      outs().flush ();
-    }
-
-    template <typename Range> bool splitUnsatSets(Range & src, ExprVector & dst1, ExprVector & dst2)
-    {
-      if (isSat(src)) return false;
-
-      for (auto & a : src) dst1.push_back(a);
-
-      for (auto it = dst1.begin(); it != dst1.end(); )
-      {
-        dst2.push_back(*it);
-        it = dst1.erase(it);
-        if (isSat(dst1)) break;
-      }
-
-      // now dst1 is SAT, try to get more things from dst2 back to dst1
-
-      for (auto it = dst2.begin(); it != dst2.end(); )
-      {
-        if (!isSat(conjoin(dst1, efac), *it)) { ++it; continue; }
-        dst1.push_back(*it);
-        it = dst2.erase(it);
-      }
-
-      return true;
     }
   };
   

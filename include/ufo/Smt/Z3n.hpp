@@ -541,8 +541,12 @@ namespace ufo
     ZSolver (Z &z) :
       z3(z), ctx (z.get_ctx ()), solver (z.get_ctx ()), efac (z.get_efac ()) {}
 
-    ZSolver (Z &z, const char *logic) :
-      z3(z), ctx (z.get_ctx ()), solver (z.get_ctx (), logic), efac (z.get_efac ()) {}
+    ZSolver (Z &z, unsigned to) :
+    z3(z), ctx (z.get_ctx ()), solver (z.get_ctx ()), efac (z.get_efac ()) {
+      ZParams<Z> p(z);
+      p.set("timeout", to);
+      solver.set(p);
+    }
 
     Z& getContext () {return z3;}
     void set (const ZParams<Z> &p) { solver.set (p); }
@@ -1022,6 +1026,10 @@ namespace ufo
         for (unsigned i = 0; i < rules.size (); ++i){
           Expr rule = z3.toExpr (rules [i]);
           m_rules.push_back(rule);
+        }
+        for (unsigned i = 0; i < queries.size (); ++i){
+          Expr rule = z3.toExpr (queries [i]);
+          m_queries.push_back(rule);
         }
     }
   };
