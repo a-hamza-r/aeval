@@ -99,7 +99,7 @@ namespace ufo
       return conjoin(ssa, m_efac);
     }
 
-    void getSSA(vector<int>& trace, ExprVector& ssa)
+    void getSSA(vector<int>& trace, ExprVector& ssa, string bndVarPrefix="__bnd_var_")
     {
       ExprVector bindVars2;
       bindVars.clear();
@@ -113,6 +113,7 @@ namespace ufo
         bindVars2.clear();
         HornRuleExt& hr = ruleManager.chcs[step];
         Expr body = hr.body;
+
         if (!hr.isFact && extraLemmas != NULL) body = mk<AND>(extraLemmas, body);
 
         for (int i = 0; i < hr.srcVars.size(); i++)
@@ -133,7 +134,7 @@ namespace ufo
           }
           if (!kept)
           {
-            Expr new_name = mkTerm<string> ("__bnd_var_" + to_string(bindVar_index++), m_efac);
+            Expr new_name = mkTerm<string> (bndVarPrefix + to_string(bindVar_index++), m_efac);
             bindVars2.push_back(cloneVar(hr.dstVars[i],new_name));
           }
 
@@ -182,6 +183,73 @@ namespace ufo
           outs () << "Counterexample of length " << (cur_bnd - 1) << " found\n";
       }
       return unsat;
+    }
+
+    void exploreTracesCost(string init_cost, string final_cost, int unrolling)
+    {
+      Expr init_cost_var, final_cost_var;
+      // find var:
+      for (auto & hr : ruleManager.chcs)
+      {
+        if (hr.isQuery)
+        {
+          for (int i = 0; i < hr.locVars.size(); i++)
+          {
+            if (lexical_cast<string>(hr.locVars[i]) == init_cost)
+            {
+              init_cost_var = hr.locVars[i];
+            }
+            if (lexical_cast<string>(hr.locVars[i]) == final_cost)
+            {
+              final_cost_var = hr.locVars[i];
+            }
+          }
+        }
+      }
+      if (init_cost_var == NULL)
+      {
+        outs () << "Unable to locate cost var (" << init_cost << ")\n";
+        exit(0);
+      }
+
+      if (final_cost_var == NULL)
+      {
+        outs () << "Unable to locate cost var (" << final_cost << ")\n";
+        exit(0);
+      }
+
+      Expr init_assm = mk<EQ>(init_cost_var, bv::bvnum(0, bv::width(init_cost_var->first()->arg(1)), m_efac));
+      outs () << " init_assm = " << *init_assm << "\n";
+
+      int bnd = 1;
+      // unrolling: number of unrollings of the loops 
+      while (bnd < unrolling)
+      {
+        vector<vector<int>> traces;
+        vector<int> empttrace;
+
+        getAllTraces(mk<TRUE>(m_efac), ruleManager.failDecl, bnd, vector<int>(), traces);
+        
+        for (auto &a : traces)
+        {
+          outs () << "unrolling [ true";
+          for (int i = 1; i < a.size(); i++) outs () << " -> " << *ruleManager.chcs[a[i]].srcRelation;
+          outs () << " -> " << *ruleManager.chcs[a.back()].dstRelation << "]: ";
+
+          if (!u.isSat(toExpr(a), init_assm))
+          {
+            outs () << "UNSAT\n";
+
+            /*outs () << "UNSAT -- exiting\n";
+            return;*/
+          }
+          else
+          {
+            outs () << "final_cost = " << *u.getMaxModel(final_cost_var) << "\n";
+          }
+        }
+        bnd++;
+      }
     }
 
     bool kIndIter(int bnd1, int bnd2)
@@ -487,6 +555,13 @@ namespace ufo
           else if (isConst<ARRAY_TY> (var) && ruleManager.hasArrays[srcRel])
           {
             vars.push_back(mk<SELECT>(var, ruleManager.chcs[loop[0]].srcVars[ruleManager.iterator[srcRel]]));
+            // Expr ind;
+            // if (!ruleManager.arrayStores[i][j].empty())
+            //   ind = ruleManager.arrayStores[i][j].back();
+            // else
+            //   ind = ruleManager.arraySelects[i][j].back();
+            // errs() << "ind for array " << *ruleManager.chcs[i].srcVars[j] << " is " << *ind << "\n";
+            // vars.push_back(mk<SELECT>(var, ind));
             mainInds.push_back(-1);
             arrInds.push_back(i);
           }
@@ -500,6 +575,9 @@ namespace ufo
         vector<int> trace;
         Expr lastModel = mk<TRUE>(m_efac);
 
+        // if initVals is not empty, we do not add prefixes
+        // if (!initVals)
+        {
         for (int p = 0; p < prefix.size(); p++)
         {
           if (chcsConsidered[prefix[p]] == true)
@@ -509,6 +587,7 @@ namespace ufo
             trace.clear(); // to avoid CHCs at the beginning
           }
           trace.push_back(prefix[p]);
+        }
         }
 
         int l = trace.size() - 1; // starting index (before the loop)
@@ -533,6 +612,16 @@ namespace ufo
 
         ExprVector ssa;
         getSSA(trace, ssa);
+        // if (initVals) 
+        // {
+        //   // ssa[0] = mk<AND>(ssa[0], initVals);
+        //   ssa[0] = replaceAll(initVals, ruleManager.chcs[loop[0]].dstVars, bindVars[0]);
+        // }
+
+        // for (auto it : ssa)
+        // {
+        //   outs() << "ssa: " << *it << "\n";
+        // }
         bindVars.pop_back();
         int traceSz = trace.size();
 
@@ -582,7 +671,7 @@ namespace ufo
         for (; l < bindVars.size(); l = l + loop.size())
         {
           vector<double> model;
-//         outs () << "model for " << l << ": [";
+        outs () << "model for " << l << ": [";
           int ai = 0;
           bool toSkip = false;
           for (int i = 0; i < vars.size(); i++) {
@@ -597,6 +686,8 @@ namespace ufo
             }
             else
             {
+              // Expr ind = replaceAll(vars[j]->arg(1), ruleManager.chcs[loop[0]].srcVars, bindVars[l-1]);
+              // bvar = mk<SELECT>(bindVars[l][arrInds[ai]], ind);
               bvar = mk<SELECT>(bindVars[l][arrInds[ai]], bindVars[l-1][ruleManager.iterator[srcRel]]);
               ai++;
             }
@@ -621,16 +712,16 @@ namespace ufo
               value = lexical_cast<double>(m);
             }
             model.push_back(value);
-//           outs () << *bvar << " = " << *m << ", ";
+          outs () << *bvar << " = " << *m << ", ";
           }
           if (toSkip)
           {
-//            outs () << "\b\b   <  skipping  >      ]\n";
+           outs () << "\b\b   <  skipping  >      ]\n";
           }
           else
           {
             models[srcRel].push_back(model);
-//            outs () << "\b\b]\n";
+           outs () << "\b\b]\n";
           }
         }
 
@@ -659,6 +750,17 @@ namespace ufo
     BndExpl ds(ruleManager);
     ds.exploreTraces(bnd1, bnd2, true);
   };
+
+  inline void getCost(string smt, string init_cost, string final_cost, int unrolling)
+  {
+    ExprFactory m_efac;
+    EZ3 z3(m_efac);
+    CHCs ruleManager(m_efac, z3);
+    ruleManager.parse(smt);
+    BndExpl ds(ruleManager);
+    ds.exploreTracesCost(init_cost, final_cost, unrolling);
+  };
+
 
   inline bool kInduction(CHCs& ruleManager, int bnd)
   {

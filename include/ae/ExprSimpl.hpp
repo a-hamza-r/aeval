@@ -58,6 +58,18 @@ namespace ufo
     return emptyIntersect(a, bv);
   }
 
+          
+  void getConjAndDisj(Expr e, ExprSet& allExprs)
+  {
+    if (isOpX<AND>(e) || isOpX<OR>(e))
+    {
+      for (auto it = e->args_begin(); it != e->args_end(); it++)
+        getConjAndDisj(*it, allExprs);
+    }
+    else
+      allExprs.insert(e);
+  }
+
   // if at the end disjs is empty, then a == true
   inline static void getConj (Expr a, ExprSet &conjs)
   {
@@ -2480,6 +2492,15 @@ namespace ufo
   {
     QuantifiedVarsFilter qe (vars);
     dagVisit (qe, exp);
+  }
+
+    Expr static createQuantifiedFormulaRestr(Expr def, ExprVector& vars, bool forall = true)
+  {
+    ExprVector args;
+    for (auto & a : vars) args.push_back(a->last());
+    args.push_back(def);
+    if (forall) return mknary<FORALL>(args);
+    else return mknary<EXISTS>(args);
   }
 
   inline static void getQuantifiedFormulas (Expr a, ExprSet &flas)
