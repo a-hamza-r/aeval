@@ -3149,20 +3149,20 @@ namespace ufo
     for (auto& dcl: ruleManager.decls) ds.initializeDecl(dcl);
 
     // outs() << "after initializeDecl\n";
-//    for (int i = 0; i < ruleManager.cycles.size(); i++)
-//    {
-//      Expr pref = bnd.compactPrefix(i);
-//      Expr rel = ruleManager.chcs[ruleManager.cycles[i][0]].srcRelation;
-//      cands[ruleManager.chcs[ruleManager.cycles[i][0]].srcRelation].insert(pref);
-//      ExprSet tmp;
-//      getConj(pref, tmp);
-//      for (auto & t : tmp)
-//        if(hasOnlyVars(t, ruleManager.invVars[rel]))
-//          cands[rel].insert(t);
-//
-//      //if (ruleManager.hasArrays)
-//      ds.initArrayStuff(bnd, i, pref);
-//    }
+   for (int i = 0; i < ruleManager.cycles.size(); i++)
+   {
+     Expr pref = bnd.compactPrefix(i);
+     Expr rel = ruleManager.chcs[ruleManager.cycles[i][0]].srcRelation;
+     cands[ruleManager.chcs[ruleManager.cycles[i][0]].srcRelation].insert(pref);
+     ExprSet tmp;
+     getConj(pref, tmp);
+     for (auto & t : tmp)
+       if(hasOnlyVars(t, ruleManager.invVars[rel]))
+         cands[rel].insert(t);
+
+     //if (ruleManager.hasArrays)
+     ds.initArrayStuff(bnd, i, pref);
+   }
     // outs() << "after initArrayStuff\n";
 
       // for (auto it : cands)
