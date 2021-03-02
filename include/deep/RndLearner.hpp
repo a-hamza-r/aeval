@@ -507,7 +507,7 @@ namespace ufo
       }
 
       cands.clear();
-
+      sf.lf.nonlinVars.clear();
       if (sf.lf.nonlinVars.size() > 0)
       {
         if (printLog) outs() << "Multed vars: ";
