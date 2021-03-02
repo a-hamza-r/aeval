@@ -794,179 +794,6 @@ namespace ufo
       return true;
     }
 
-    bool containsNoOtherVars(Expr e, Expr a, Expr b, ExprVector& indxArgs)
-    {
-      ExprSet s;
-      if (isConst<ARRAY_TY>(a))
-      {
-        filter (e, bind::IsSelect(), inserter(s, s.begin()));
-        // for (auto it1 : s) errs() << "IsSelect: " << *it1 << "\n";
-        for (auto it : s)
-        {
-          if (!(it->arg(0) == a || it->arg(0) == b)) return false;
-          indxArgs.push_back(it->arg(1));
-        }
-        return true;
-      }
-      else
-      {
-        filter (e, bind::IsConst (), inserter(s, s.begin()));
-        return (s.size() == 2);
-      }
-    }
-
-
-    // AH: if I do not find a proper relation directly in the candidates, I need to create one
-    bool varsRelated(Expr a, Expr b, ExprSet& relations, Expr &requiredRel, Expr& indVar)
-    {
-      Expr argsRel, dummy;
-      for (auto it : relations)
-      {
-        ExprVector indxArgs;
-        it = simplifyArithm(it);
-        if (contains(it, a) && contains(it, b))
-        {
-          if (isConst<ARRAY_TY>(a)) 
-          {
-            if (containsNoOtherVars(it, a, b, indxArgs) && indxArgs.size() == 2) 
-            {
-              if (varsRelated(indxArgs[0], indxArgs[1], relations, argsRel, dummy))
-              {
-                requiredRel = it;
-                if (indxArgs[0] != indxArgs[1])
-                {
-                  ExprSet s{indxArgs[0]};
-                  requiredRel = ufo::eliminateQuantifiers(mk<AND>(it, argsRel), s);
-                  indVar = indxArgs[1];
-                }
-                return true;
-              } 
-            }
-          }
-          else
-          {
-            if (containsNoOtherVars(it, a, b, indxArgs)) 
-            {
-              requiredRel = it;
-              return true;
-            }
-          }
-        }
-      }
-      return false;
-
-    }
-
-    template <typename O> 
-    void getTypeVars(HornRuleExt &CHC, vector<int> &chc1Vars, vector<int> &chc2Vars, int rel1DeclSize)
-    {
-      for (int i = 0; i < CHC.dstVars.size(); i++)
-      {
-        Expr result;
-        if (isOpX<O>(bind::typeOf(CHC.dstVars[i])))
-        {
-          // use u.hasOneModel() instead of finding the equality
-          findExpr<EQ>(CHC.dstVars[i], CHC.body, result);
-          if (!result)
-          {
-            if (i < rel1DeclSize) chc1Vars.push_back(i);
-            else chc2Vars.push_back(i);
-          }
-        }
-      }
-    }
-
-    void combinations(vector<int> &vars1, vector<int> &vars2, vector<vector<int>> c, vector<int> vars2Used, vector<vector<vector<int>>> &combs, int pos)
-    {
-      if (c.size() >= vars1.size())
-      {
-        combs.push_back(c);
-        return;
-      }
-      for (int i = 0; i < vars2.size(); i++)
-      {
-        if (find(vars2Used.begin(), vars2Used.end(), i) == vars2Used.end())
-        {
-          vars2Used.push_back(i);
-          c.push_back(vector<int>{vars1[pos], vars2[i]});
-          combinations(vars1, vars2, c, vars2Used, combs, pos+1);
-          c.pop_back();
-          vars2Used.pop_back();
-        }
-      } 
-    }
-
-
-    // works if sizes of vars1 and vars2 are equal
-    void combinationsOfVars(vector<int> &vars1, vector<int> &vars2, vector<vector<vector<int>>> &combs)
-    {
-      for (int i = 0; i < vars2.size(); i++)
-      {
-        vector<int> vars2Used{i};
-        vector<int> v{vars1[0], vars2[i]};
-        vector<vector<int>> c{v};
-        combinations(vars1, vars2, c, vars2Used, combs, 1);
-      }
-    }
-
-    void joinVars(vector<vector<vector<int>>> &vec1, vector<vector<vector<int>>> &vec2, 
-      vector<vector<vector<int>>> &combs)
-    {
-      if (vec1.empty() || vec2.empty())
-      {
-        concatenateVectors(combs, vec1, vec2);
-      }
-      else 
-      {
-        for (auto &it : vec1)
-        {
-          for (auto &it2 : vec2)
-          {
-            vector<vector<int>> v;
-            concatenateVectors(v, it, it2);
-            combs.push_back(v);
-          }
-        }
-      }
-    }
-
-
-    Expr replaceWithSrcVars(Expr e, Expr rulesBody, ExprVector& vars, ExprVector& srcVars)
-    {
-      outs() << "trying to replace: " << *e << "\n";
-      Expr result, replaced = e;
-      ExprSet allExprs, allVars;
-
-      filter (e, IsConst(), inserter(allVars, allVars.begin()));
-
-      for (auto v : allVars)
-      {
-        auto it = find(vars.begin(), vars.end(), v);
-        if (it != vars.end())
-        {
-          int indx = it - vars.begin();
-          bool found = false;
-          findExpr<EQ>(v, rulesBody, result, true);
-          if (!result) continue;
-          getConjAndDisj(result, allExprs);
-          for (auto exp : allExprs)
-          {
-            if (contains(exp, srcVars[indx])) 
-            {
-              result = exp;
-              found = true;
-            }
-          }
-          if (!found) continue;
-
-          ExprSet s{v};
-          replaced = ufo::eliminateQuantifiers(mk<AND>(replaced, result), s);
-        }
-      }
-      outs() << "updated index is: " << *replaced << "\n";
-      return replaced;
-    }
-
     void mergeIterationsProduct(cpp_int numIterations, HornRuleExt& prodRule, Expr& rulesBody, 
       HornRuleExt& subRule, ExprSet& extraVars, int startInd)
     {
@@ -1027,296 +854,6 @@ namespace ufo
       }
     }
 
-    void align(int cycleNum, Expr const1, Expr const2, Expr coef1, Expr coef2)
-    {
-      vector<int> &cycle = ruleManager.cycles[cycleNum];
-      HornRuleExt &rule = ruleManager.chcs[cycle[0]];
-      vector<int> &prefix = ruleManager.prefixes[cycleNum];
-      HornRuleExt &prefixRule = ruleManager.chcs[prefix[0]];
-      Expr rel = rule.srcRelation;
-
-      ExprVector subRelations = ruleManager.productRelsToSrcDst[rel];
-      int chc1, chc2;
-      for (auto it2 : ruleManager.chcSrc->outgs[subRelations[0]])
-        if (ruleManager.chcSrc->chcs[it2].dstRelation == subRelations[0]) 
-        {
-          chc1 = it2;
-          break;
-        }
-      for (auto it2 : ruleManager.chcDst->outgs[subRelations[1]])
-        if (ruleManager.chcDst->chcs[it2].dstRelation == subRelations[1]) 
-        {
-          chc2 = it2;
-          break;
-        }
-      auto& rules1 = ruleManager.chcSrc->chcs[chc1];
-      auto& rules2 = ruleManager.chcDst->chcs[chc2];
-      
-      ExprSet vars(rules1.locVars.begin(), rules1.locVars.end());
-      rules1.body = ufo::eliminateQuantifiers(rules1.body, vars);
-
-      ExprSet vars1(rules2.locVars.begin(), rules2.locVars.end());
-      rules2.body = ufo::eliminateQuantifiers(rules2.body, vars1);
-
-      auto rulesBody = rule.body;
-      auto prefixBody = prefixRule.body;
-
-      ExprSet extraVars;
-      Expr rules1Body, rules2Body;
-
-      cpp_int numItersOfLoop1 = lexical_cast<cpp_int>(coef1);
-      cpp_int numItersOfLoop2 = lexical_cast<cpp_int>(coef2);
-
-      cpp_int copiesToPrefix1 = lexical_cast<cpp_int>(const1);
-      cpp_int copiesToPrefix2 = lexical_cast<cpp_int>(const2);
-
-      // cout << "numIterations1: " << numItersOfLoop1 << "\n";
-      // cout << "numIterations2: " << numItersOfLoop2 << "\n";
-
-      int rules1DeclSize = rules1.srcVars.size();
-
-      mergeIterationsProduct(numItersOfLoop1, rule, rulesBody, rules1, extraVars, 0);
-      mergeIterationsProduct(numItersOfLoop2, rule, rulesBody, rules2, extraVars, rules1DeclSize);
-
-      rule.body = ufo::eliminateQuantifiers(rule.body, extraVars);
-
-      rule.body = rulesBody;
-
-      // errs() << "\nold body: " << *rule.body << "\n";
-
-      // errs() << "\nnewly created body: " << *rule.body << "\n";
-
-      // errs() << "\nUpdated rule: ";
-      rule.printMemberVars();
-      extraVars.clear();
-
-      outs() << "prefixBody: " << *prefixBody << "\n";
-      mergeIterationsInFact(copiesToPrefix1, prefixBody, rules1, extraVars, 1);
-      mergeIterationsInFact(copiesToPrefix2, prefixBody, rules2, extraVars, 2);
-
-      prefixRule.locVars.insert(prefixRule.locVars.end(), extraVars.begin(), extraVars.end());
-
-
-      prefixRule.body = prefixBody;
-
-      prefixRule.printMemberVars();
-    }
-
-    int alignment(const vector<string> & behaviorfiles, BndExpl& bnd)
-    {
-      vector<bool> equivalentLoops;
-
-      int fileIndex = 0;
-      // currently we only have one loop each program
-      for (int i = 0; i < ruleManager.cycles.size(); i++)
-      {
-        outs() << "start to find alignment\n";
-        vector<vector<int>> iterPairs;
-        vector<vector<int>> nonIterPairs;
-        vector<int> &cycle = ruleManager.cycles[i];
-        HornRuleExt &rule = ruleManager.chcs[cycle[0]];
-        vector<int> &prefix = ruleManager.prefixes[i];
-        HornRuleExt &prefixRule = ruleManager.chcs[prefix[0]];
-        Expr rel = rule.srcRelation;
-        int invNum = getVarIndex(rel, decls);
-
-        vector<vector<int>>& itersForInv = iters[invNum];
-        // vector<vector<int>>& nonItersForInv = nonIters[invNum];
-
-        // matching all iters of one CHC system to all iters of other one
-          // could be a better way to match lesser iters
-        for (int j = 0; j < itersForInv[0].size(); j++)
-        {
-          for (int k = 0; k < itersForInv[1].size(); k++)
-          {
-            vector<int> v{itersForInv[0][j], itersForInv[1][k]};
-            iterPairs.push_back(v);
-          }
-        }
-
-        Expr init = bnd.compactPrefix(i);
-
-        for (auto &comb : nonIterCombinations[i])
-        {
-          Expr ruleBodyBackup = prefixRule.body;
-          Expr pre, post;
-
-          HornRuleExt* query = NULL;
-          for (auto num: ruleManager.outgs[rel])
-            if (ruleManager.chcs[num].isQuery) 
-              query = &ruleManager.chcs[num];
-
-          Expr prevAddToQuery;
-
-          bool skipComb = false;
-          if (comb[0][0] != -1)
-          {
-            for (auto &pair : comb)
-            {
-              Expr var = rule.srcVars[pair[0]];
-              Expr var1 = rule.srcVars[pair[1]];
-              
-              if ((!u.hasOneModel(var, init) && !u.hasOneModel(var1, init)) 
-                || (u.hasOneModel(var, init) && u.hasOneModel(var1, init)))
-              {
-                // errs() << "pair: " << pair[0] << " " << pair[1] << "\n";
-                if (!pre) pre = mk<EQ>(rule.dstVars[pair[0]], rule.dstVars[pair[1]]);
-                else pre = mk<AND>(pre, mk<EQ>(rule.dstVars[pair[0]], rule.dstVars[pair[1]]));
-              }
-              else
-              {
-                skipComb = true;
-                break;
-              }
-
-            }
-            if (skipComb) continue;
-
-            prefixRule.body = mk<AND>(prefixRule.body, pre);
-          }
-          else pre = mk<TRUE>(m_efac);
-
-          outs() << "pre: " << *pre << "\n";
-
-          if (query) post = replaceAll(pre, rule.dstVars, rule.srcVars);
-
-          for (auto it = iterPairs.begin(); it != iterPairs.end(); it++)
-          {
-            int indx1 = (*it)[0], indx2 = (*it)[1];
-            Expr iter1 = rule.srcVars[indx1], iter2 = rule.srcVars[indx2];
-            errs() << "\n\nassuming iters: " << *iter1 << " and " << *iter2 << "\n";
-            Expr numIters1 = numOfIters[invNum][indx1];
-            Expr numIters2 = numOfIters[invNum][indx2];
-            outs() << "numIters: " << *numIters1 << " and " << *numIters2 << "\n";
-
-            Expr coef1 = bind::intConst(mkTerm<string>("coef1", m_efac));
-            Expr coef2 = bind::intConst(mkTerm<string>("coef2", m_efac));
-
-            Expr const1 = bind::intConst(mkTerm<string>("const1", m_efac));
-            Expr const2 = bind::intConst(mkTerm<string>("const2", m_efac));
-            
-            Expr minCoef1, minCoef2, minConst1, minConst2;
-
-            Expr quantifiedFla;
-
-            if (!(numIters1 == mkMPZ(-1, m_efac) || numIters2 == mkMPZ(-1, m_efac))) 
-            {
-              Expr coefs = mk<AND>(mk<GT>(coef1, mkMPZ(0, m_efac)), mk<GT>(coef2, mkMPZ(0, m_efac)));
-              Expr consts = mk<AND>(mk<GEQ>(const1, mkMPZ(0, m_efac)), mk<GEQ>(const2, mkMPZ(0, m_efac)));
-
-              Expr numIters = bind::intConst(mkTerm<string>("numIters1", m_efac));
-              Expr numItersP = bind::intConst(mkTerm<string>("numIters2", m_efac));
-
-              Expr fla = mk<AND>(mk<EQ>(numIters, numIters1), mk<EQ>(numItersP, numIters2));
-
-              outs() << "fla: " << *fla << "\n";
-
-              ExprVector varsIters;
-              filter(fla, IsConst(), inserter(varsIters, varsIters.begin()));
-              
-              Expr newPre;
-
-              for (auto &p : comb)
-              {
-                Expr v = rule.srcVars[p[0]];
-                Expr v1 = rule.srcVars[p[1]];
-                if (find(varsIters.begin(), varsIters.end(), v) != varsIters.end()
-                 && find(varsIters.begin(), varsIters.end(), v1) != varsIters.end())
-                  if (newPre) 
-                  {
-                    newPre = mk<AND>(newPre, mk<EQ>(v, v1));
-                  }
-                  else 
-                  {
-                    newPre = mk<EQ>(v, v1);
-                  }
-              }
-
-              if (!newPre) newPre = mk<TRUE>(m_efac );
-
-              fla = mk<AND>(newPre, fla);
-              Expr implFla = mk<EQ>(mk<MULT>(coef2, mk<MINUS>(numIters, const1)), mk<MULT>(coef1, mk<MINUS>(numItersP, const2)));
-              
-              outs() << "fla: " << *fla << "\n";
-              for (auto it : varsIters) outs() << "var: " << *it << "\n";
-              
-              fla = mk<IMPL>(fla, implFla); 
-
-              quantifiedFla = createQuantifiedFormulaRestr(fla, varsIters);
-              quantifiedFla = mk<AND>(consts, mk<AND>(coefs, quantifiedFla));
-
-              Expr constsZero = mk<AND>(mk<EQ>(const1, mkMPZ(0, m_efac)), mk<EQ>(const2, mkMPZ(0, m_efac)));
-              Expr const1Zero = mk<EQ>(const1, mkMPZ(0, m_efac));
-              Expr const2Zero = mk<EQ>(const2, mkMPZ(0, m_efac));
-
-              outs() << "quantifiedFla 1 and 2: " << *mk<AND>(quantifiedFla, constsZero) << "\n";
-              
-              SMTUtils su(m_efac);
-              su.serialize_formula(quantifiedFla);
-
-              Expr model;
-              if (u.isSat(mk<AND>(quantifiedFla, constsZero))) model = u.getModel();
-              else if (u.isSat(mk<AND>(quantifiedFla, const1Zero))) model = u.getModel();
-              else if (u.isSat(mk<AND>(quantifiedFla, const2Zero))) model = u.getModel();
-              else if (u.isSat(quantifiedFla)) model = u.getModel();
-              else outs() << "Not satisfiable\n";
-
-              if (model) 
-              {
-                outs() << "model: " << *model << "\n";
-                Expr minModels = u.getMinModelInts(coef1);
-                outs() << "minModels: " << *minModels << "\n";
-
-                findExpr<EQ>(coef1, minModels, minCoef1, true);
-                findExpr<EQ>(coef2, minModels, minCoef2, true);
-                findExpr<EQ>(const1, minModels, minConst1, true);
-                findExpr<EQ>(const2, minModels, minConst2, true);
-
-                Expr vals = mk<AND>(minCoef1, minCoef2);
-
-                u.isSat(mk<AND>(quantifiedFla, vals));
-
-                if (minConst1->right() == mkMPZ(0, m_efac))
-                  minModels = u.getMinModelInts(const2);
-                else 
-                  minModels = u.getMinModelInts(const1);
-
-                minConst1 = NULL;
-                minConst2 = NULL;
-                findExpr<EQ>(const1, minModels, minConst1, true);
-                findExpr<EQ>(const2, minModels, minConst2, true);
-
-                minCoef1 = minCoef1->right();
-                minCoef2 = minCoef2->right();
-                minConst1 = minConst1->right();
-                minConst2 = minConst2->right();
-              }
-            }
-            else outs() << "number of iterations were not found\n";
-
-
-            outs() << "copy " << *minConst1 << " iterations of loop 1 to fact\n";
-            outs() << "copy " << *minConst2 << " iterations of loop 2 to fact\n";
-            outs() << "we need " << *minCoef1 << " iterations of loop 1 to align\n";
-            outs() << "we need " << *minCoef2 << " iterations of loop 2 to align\n";
-
-            // if (query) 
-            //   if (!prevAddToQuery) prevAddToQuery = mk<NEQ>(iter1, iter2);
-            //   else prevAddToQuery = mk<OR>(prevAddToQuery, mk<NEQ>(iter1, iter2));
-
-            align(i, minConst1, minConst2, minCoef1, minCoef2);
-
-            query->body = mk<AND>(query->body, mkNeg(post));
-            query->printMemberVars();
-
-            return -1;
-          }
-          prefixRule.body = ruleBodyBackup;
-        }
-      }
-      return 0;
-    }
-
     bool multiHoudini(vector<HornRuleExt*> worklist, bool recur = true)
     {
       if (!anyProgress(worklist)) return false;
@@ -1342,6 +879,8 @@ namespace ufo
           else
           {
             ExprVector& ev = candidatesTmp[ind];
+            outs() << "candidatesTmp:\n";
+            for(auto it : candidatesTmp[ind]) outs() << *it << "\n";
             ExprVector invVars;
             for (auto & a : invarVars[ind]) invVars.push_back(a.second);
             SamplFactory& sf = sfs[ind].back();
@@ -1452,7 +991,6 @@ namespace ufo
                          ExprSet& tmpRanges, ExprSet& concreteVals, int ind, int i = 0)
     {
       if (av.empty()) return false;
-
       ExprSet se;
       filter (replCand, bind::IsSelect (), inserter(se, se.begin()));
 
@@ -1601,8 +1139,9 @@ namespace ufo
         }
 
         // process all quantified seeds
-        for (auto & a : tmpArrCands)
+        /* for (auto & a : tmpArrCands)
         {
+          // outs() << "tmpArrCands: " << *a << "\n";
           if (u.isTrue(a) || u.isFalse(a)) continue;
           Expr replCand = replaceAllRev(a, sf.lf.nonlinVars);
           if (!u.isTrue(replCand) && !u.isFalse(replCand))
@@ -1613,7 +1152,6 @@ namespace ufo
             if (prepareArrCand (replCand, replLog, arrAccessVars[ind], tmpRanges, concreteVals, ind) &&
                (contains(replCand, iterators[ind]) || !emptyIntersect(replCand, arrAccessVars[ind])))
             {
-              /*
               // very cheeky heuristic: sometimes restrict, but sometimes extend the range
               // depending on existing constants
               if (u.isSat(conjoin(tmpRanges, m_efac), conjoin(arrIterRanges[ind], m_efac)))
@@ -1625,7 +1163,7 @@ namespace ufo
                 for (auto & a : tmpArrCands)
                   createGroundInstances (concreteVals, candsFromCode, a, iterators[ind]);
               }
-               */
+              
 
               // at this point it should not happen, but sometimes it does. To debug.
               if (!findInvVar(ind, replCand, arrAccessVars[ind])) continue;
@@ -1633,9 +1171,10 @@ namespace ufo
               for (auto iter : arrAccessVars[ind])
                 arrCands[ind].insert(replaceAll(replCand, iterators[ind], iter));
             }
-            // else candsFromCode.insert(a);
+            else candsFromCode.insert(a);
           }
-        }
+	}
+	*/
 
         // trick for tiling benchs
         /*ExprSet afs;
@@ -1661,7 +1200,6 @@ namespace ufo
           }
         }*/
       }
-      outs() << "after hasArrays\n";
       // process all quantifier-free seeds
       for (auto & cand : candsFromCode)
       {
@@ -1672,7 +1210,6 @@ namespace ufo
           /*propagate (ind, replCand, true);*/
         }
       }
-      outs() << "end\n";
     }
 
     void refreshCands(map<Expr, ExprSet>& cands)
@@ -1898,6 +1435,7 @@ namespace ufo
         if (!checkCHC(hr, candidates)) {
           if (!hr.isQuery)
           {
+            outs() << "rule is : " << (hr.isFact ? "fact" : "inductive") << "\n";
             outs() << "WARNING: Something went wrong" <<
               (ruleManager.hasArrays[hr.srcRelation] || ruleManager.hasArrays[hr.dstRelation] ?
               " (possibly, due to quantifiers)" : "") <<
@@ -1957,44 +1495,6 @@ namespace ufo
       return bool(!u.isSat(exprs));
     }
 
-    bool checkCHC1 (HornRuleExt& hr, Expr assump, ExprSet& annotations)
-    {
-      // outs()  << "CHECKING " << * hr.srcRelation << " -> "<< * hr.dstRelation << "\n";
-      ExprSet exprs;
-      // exprs.insert(hr.body);
-      exprs.insert(assump);
-
-      if (!hr.isFact)
-      {
-        int ind = getVarIndex(hr.srcRelation, decls);
-        // SamplFactory& sf = sfs[ind].back();
-        // ExprSet lms = sf.learnedExprs;
-        // for (auto & a : annotations) lms.insert(a);
-        for (auto a : annotations)
-        { 
-          for (auto & v : invarVars[ind]) a = replaceAll(a, v.second, hr.srcVars[v.first]);
-          exprs.insert(a);
-        }
-      }
-
-      if (!hr.isQuery)
-      {
-        int ind = getVarIndex(hr.dstRelation, decls);
-        ExprSet negged;
-        for (auto a : annotations)
-        {
-          for (auto & v : invarVars[ind]) a = replaceAll(a, v.second, hr.dstVars[v.first]);
-          negged.insert(mkNeg(a));
-        }
-        exprs.insert(disjoin(negged, m_efac));
-      }
-      // errs() << "exprs: " << "\n";
-      // for (auto it : exprs)
-      //   errs() << *it << "\n";
-      // errs() << "\n\n";
-      return bool(!u.isSat(exprs));
-    }
-
     // it used to be called initArrayStuff, but now it does more stuff than just for arrays
     void initializeAux(BndExpl& bnd, int cycleNum, Expr pref)
     {
@@ -2006,6 +1506,8 @@ namespace ufo
       assert(srcVars.size() == dstVars.size());
 
       int invNum = getVarIndex(rel, decls);
+
+      outs() << "pref: " << *pref << "\n";
 
       prefs[invNum] = pref;
       ssas[invNum] = replaceAll(bnd.toExpr(cycle), bnd.bindVars.back(), dstVars);
@@ -2047,9 +1549,13 @@ namespace ufo
       getConj(pref, ssa);
       for (auto & a : ssa)
       {
-        if (contains(a, iterators[invNum]) && isOpX<EQ>(a))
+        Expr normalized = ineqSimplifier(iterators[invNum], simplifyArithm(a));
+        outs() << "a: " << *a << "\n";
+        outs() << "normalized: " << *normalized << "\n";
+        outs() << "iterator: " << *iterators[invNum] << "\n";
+        if (isOpX<EQ>(normalized) && normalized->left() == iterators[invNum])
         {
-          preconds[invNum] = a;
+          preconds[invNum] = normalized;
           break;
         }
       }
@@ -2081,233 +1587,6 @@ namespace ufo
       Expr numIters = mk<PLUS>(mk<IDIV>(numer, transition), mk<ITE>(divisible, mkMPZ(0, fac), mkMPZ(1, fac)));
       outs() << "numIters: " << *numIters << "\n";
       return numIters;
-    }
-
-    void varsMetaInfo(BndExpl& bnd, int cycleNum)
-    {
-      vector<int>& cycle = ruleManager.cycles[cycleNum];
-      Expr rel = ruleManager.chcs[cycle[0]].srcRelation;
-      Expr rel1 = ruleManager.productRelsToSrcDst[rel][0];
-
-      ruleManager.chcSrc->getDecl(rel1, rel1);
-      int rel1DeclSize = rel1->arity() - 2;
-
-      int invNum = getVarIndex(rel, decls);
-      iters[cycleNum] = vector<vector<int>>{vector<int>(), vector<int>()};
-      Expr init = bnd.compactPrefix(cycleNum);
-      Expr initAndCycle = mk<AND>(init, ssas[invNum]);
-      vector<int> chc1VarsArray, chc2VarsArray, chc1VarsInt, chc2VarsInt, chc1VarsBool, chc2VarsBool;
-
-        errs() << *ssas[invNum] << "\n";
-      for (int i = 0; i < bnd.bindVars.back().size(); i++)
-      {
-        bool notAnIter = false; 
-        int addOne = 0;
-        Expr e, gt, ge, lt, le;
-        Expr a = ruleManager.chcs[cycle[0]].srcVars[i];
-        Expr b = bnd.bindVars.back()[i];
-        // errs() << "checking: " << *mk<LT>(a, b) << "\n";
-        // errs() << "and checking: " << *mk<GT>(a, b) << "\n";
-
-        bool iterDecreases = bind::isIntConst(a) && u.implies(ssas[invNum], mk<GT>(a, b));
-        bool iterIncreases = bind::isIntConst(a) && u.implies(ssas[invNum], mk<LT>(a, b));
-
-        // iterator either decreases or increases
-        if (iterDecreases || iterIncreases)
-        {
-          findExpr<EQ>(b, ssas[invNum], e, true);
-          errs() << "\nfinding: " << *b << "\n\n";
-          
-          e = ineqSimplifier(b, e);
-          errs() << "found: " << *e << "\n\n";
-
-          Expr right = e->right();
-          Expr initVal, transitionVal, limitVal;
-          int minusOrDiv = 0, plusOrMult = 0;
-          bool hasInitVal = false, hasTransitionVal = false, hasLimitVal = false;
-
-          // AH: handle the case where e is a conjunction or disjunction better
-          // for now, assuming we have found the transitionval
-          if (isOpX<AND>(e) || isOpX<OR>(e) || containsOp<ITE>(e)) hasTransitionVal = true;
-
-          if (iterDecreases)
-          {
-            // check if the operator is MINUS or DIV
-            if (isOpX<MINUS>(right)) minusOrDiv = 1;
-            else if (isOpX<PLUS>(right) && isOpX<MPZ>(right->arg(1)))
-            {
-              Expr negNum = mk<LT>(right->arg(1), mkMPZ(0, m_efac));
-              if (u.isSat(negNum)) minusOrDiv = 1;
-            }
-            // errs() << "minusOrDiv: " << minusOrDiv << "\n";
-          }
-          else if (isOpX<PLUS>(right)) plusOrMult = 1;
-
-          // check if it's a simple relation like (var - c) or (var + c), where c is a constant
-          // make sure the ordering of the occurence of both Exprs var and c are correct
-          // right->arg(0) should be the same as variable a in this code
-          if (isIntConst(right->arg(0)))
-          {
-            findExpr<EQ>(a, init, initVal, true);
-            initVal = ineqSimplifier(a, initVal);
-            ExprSet s;
-            Expr newInit;
-            // a hack
-            if (isOpX<AND>(initVal) || isOpX<OR>(initVal))
-            {
-              getConj(initVal, s);
-              for (auto &it : s)
-              {
-                if (!containsOp<MOD>(it)) 
-                {
-                  if (newInit) newInit = mk<AND>(newInit, it);
-                  else newInit = it;
-                }
-              }
-              initVal = newInit;
-            }
-            
-            initVal = initVal->right();
-
-            if (initVal) hasInitVal = true;
-          }
-          outs() << "initval: " << *initVal << "\n";
-          if (!hasTransitionVal)
-          {
-            transitionVal = right->arg(1);
-            hasTransitionVal = true;
-          }
-
-          if (iterIncreases)
-          {
-            findExpr<LT>(a, ssas[invNum], lt, true);
-            findExpr<LEQ>(a, ssas[invNum], le, true);
-
-            // make sure there is no case where both lt and le are not null
-            // cannot think of any but could be
-            // in case lt and le are either conjunction or disjunction, handle better
-            if (lt) 
-            {
-              lt = ineqSimplifier(a, lt);
-              if (!(isOpX<AND>(lt) || isOpX<OR>(lt))) 
-                limitVal = lt->arg(1);
-              hasLimitVal = true;
-            }
-            if (le) 
-            {
-              addOne = 1;
-              le = ineqSimplifier(a, le);
-              if (!(isOpX<AND>(le) || isOpX<OR>(le))) 
-                limitVal = le->arg(1);
-              hasLimitVal = true;
-            }
-          }
-          else 
-          {
-            findExpr<GT>(a, ssas[invNum], gt);
-            findExpr<GEQ>(a, ssas[invNum], ge);
-
-            // make sure there is no case where both gt and ge are not null
-            // cannot think of any but could be
-            if (gt) 
-            {
-              gt = ineqSimplifier(a, gt);
-              if (!(isOpX<AND>(gt) || isOpX<OR>(gt))) 
-                limitVal = gt->arg(1);
-              hasLimitVal = true;
-            }
-            if (ge) 
-            {
-              addOne = -1;
-              ge = ineqSimplifier(a, ge);
-              if (!(isOpX<AND>(ge) || isOpX<OR>(ge)))
-                limitVal = ge->arg(1);
-              hasLimitVal = true;
-            }
-          }
-
-          outs() << "has in init: " << hasInitVal << "\n";
-          outs() << "has in transition: " << hasTransitionVal << "\n";
-          outs() << "has in final: " << hasLimitVal << "\n";
-
-          bool isAnIter = hasInitVal && hasTransitionVal && hasLimitVal;
-          if (isAnIter)
-          {
-            if (i < rel1DeclSize)
-              iters[cycleNum][0].push_back(i);
-            else
-              iters[cycleNum][1].push_back(i);
-            
-            // if iter is increasing/decreasing
-            itersGrow[cycleNum][i] = iterIncreases;
-            numOfIters[cycleNum][i] = numIterations(initVal, transitionVal, limitVal, addOne);
-          }
-          else notAnIter = true;
-        }
-        else notAnIter = true;
-
-        // the variable is not an iter 
-        if (notAnIter)
-        {
-        outs() << "not an iter\n";
-          if (bind::isIntConst(a))
-          {
-            if (i < rel1DeclSize) chc1VarsInt.push_back(i);
-            else chc2VarsInt.push_back(i);
-          }
-          else if (bind::isBoolConst(a))
-          {
-            if (i < rel1DeclSize) chc1VarsBool.push_back(i);
-            else chc2VarsBool.push_back(i);
-          }
-          else if (isOpX<ARRAY_TY>(bind::typeOf(a)))
-          {
-            if (i < rel1DeclSize) chc1VarsArray.push_back(i);
-            else chc2VarsArray.push_back(i);
-          }
-        }
-      }
-
-      auto &chc = ruleManager.chcs[cycle[0]];
-
-      // errs() << "ARRAY1\n";
-      // for (auto it1 : chc1VarsArray) errs() << "var: " << *chc.dstVars[it1] << "\n";
-      // errs() << "ARRAY2\n";
-      // for (auto it1 : chc2VarsArray) errs() << "var: " << *chc.dstVars[it1] << "\n";
-
-      // errs() << "Int1\n";
-      // for (auto it1 : chc1VarsInt) errs() << "var: " << *chc.dstVars[it1] << "\n";
-      //   errs() << "Int2\n";
-      // for (auto it1 : chc2VarsInt) errs() << "var: " << *chc.dstVars[it1] << "\n";
-
-      // errs() << "Bool1\n";
-      // for (auto it1 : chc1VarsBool) errs() << "var: " << *chc.dstVars[it1] << "\n";
-      //   errs() << "Bool2\n";
-      // for (auto it1 : chc2VarsBool) errs() << "var: " << *chc.dstVars[it1] << "\n";
-
-      vector<vector<vector<int>>> combsArray, combsInt, combsBool, combs, combs1;
-      combinationsOfVars(chc1VarsArray, chc2VarsArray, combsArray);
-      combinationsOfVars(chc1VarsInt, chc2VarsInt, combsInt);
-      combinationsOfVars(chc1VarsBool, chc2VarsBool, combsBool);
-
-      joinVars(combsArray, combsInt, combs1);
-      joinVars(combs1, combsBool, combs);
-
-      // fix later
-      vector<vector<int>> v{{-1, -1}};
-      if (combs.empty()) combs.push_back(v);
-      nonIterCombinations[cycleNum] = combs;
-
-      // for (auto elems: nonIterCombinations[cycleNum])
-      // {
-      //   for (auto elems1 : elems)
-      //   {
-      //     errs() << "vars: " << *chc.dstVars[elems1[0]] << " and " << *chc.dstVars[elems1[1]] << "\n";
-      //   }
-      //   errs() << "\n\n";
-      // }
-
-      outs() << "done computing num iterations and info about non-iters\n";
     }
 
     void printSolution(bool simplify = true)
@@ -2372,19 +1651,24 @@ namespace ufo
       ds.mutateHeuristicEq(cands[rel], cands[rel], rel, true);
       ds.initializeAux(bnd, i, pref);
     }
-    if (enableDataLearning) ds.getDataCandidates(cands);
+    // if (enableDataLearning) ds.getDataCandidates(cands);
     for (auto& dcl: ruleManager.wtoDecls) ds.addCandidates(dcl, cands[dcl]);
+      outs() << "before getSeeds\n";
     for (auto& dcl: ruleManager.wtoDecls) ds.getSeeds(dcl, cands);
+      outs() << "after getSeeds\n";
     ds.refreshCands(cands);
     for (auto& dcl: ruleManager.decls) ds.doSeedMining(dcl->arg(0), cands[dcl->arg(0)], false);
+      outs() << "after doSeedMining\n";
     ds.calculateStatistics();
+      // outs() << "after calculateStatistics\n";
     ds.addPostConditionEqualities(currentMatching);
+      // outs() << "after addPostConditionEqualities\n";
     bool check = ds.bootstrap(doDisj);
-    if (!check)
-    {
-      std::srand(std::time(0));
-      check = ds.synthesize(maxAttempts, doDisj);
-    }
+    // if (!check)
+    // {
+    //   std::srand(std::time(0));
+    //   check = ds.synthesize(maxAttempts, doDisj);
+    // }
     return check;
   }
 }

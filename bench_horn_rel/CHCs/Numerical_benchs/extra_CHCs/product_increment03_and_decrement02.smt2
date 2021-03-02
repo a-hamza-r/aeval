@@ -1,0 +1,25 @@
+(declare-rel fail ())
+(declare-rel inv12 (Int Int))
+(declare-var x1 Int)
+(declare-var x2 Int)
+(declare-var x1p Int)
+(declare-var x2p Int)
+
+(rule (=> (and 
+	(= x1 0) 
+	(= x2 5)) 
+	(inv12 x1 x2)))
+(rule (=> (and 
+	(inv12 x1 x2)
+	(< x1 5)
+	(> x2 0)
+	(= x1p (+ x1 1))
+	(= x2p (- x2 1))) 
+	(inv12 x1p x2p)))
+(rule (=> (and 
+	(inv12 x1 x2)
+	(not (= (+ x1 x2) 5))   ; phi is (= (+ x1 x2) 5)
+	(> x1 5)
+	(< x2 0))
+	fail))
+(query fail)

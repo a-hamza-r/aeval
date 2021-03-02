@@ -47,12 +47,12 @@ namespace ufo
 		{
 			if (recursive && rel == dstRelation)
 			{
-				rules.getDecl(rel, decl);
+				decl = rules.getDecl(rel);
 				partitions.push_back(decl);
 			}
 			else if (!recursive && rel != dstRelation)
 			{
-				rules.getDecl(rel, decl);
+				decl = rules.getDecl(rel);
 				partitions.push_back(decl);
 			}
 		}
@@ -107,7 +107,7 @@ namespace ufo
 		}
 		else
 		{
-			rules.getDecl(chc.srcRelation, decl);
+			decl = rules.getDecl(chc.srcRelation);
 			transformed.push_back(bind::fapp(decl, chc.srcVars));
 		}
 	}
@@ -258,7 +258,7 @@ namespace ufo
 
 		Expr rel1 = predicates[0], rel2 = predicates[1];
 
-		rules.getDecl(rel1, rel1); rules.getDecl(rel2, rel2);
+		rel1 = rules.getDecl(rel1); rel2 = rules.getDecl(rel2);
 
 		// might have to do more handling, probably outside this method
 		if (!isFdecl(rel1) || !isFdecl(rel2)) return;
@@ -625,9 +625,9 @@ namespace ufo
 	{
 		if (!(unrollTrans == 0 && unrollQuery == 0))
 		{
-			// cout << "unrollTrans: " << unrollTrans << "\n";
-			// cout << "unrollFact: " << unrollFact << "\n";
-			// cout << "unrollQuery: " << unrollQuery << "\n";
+			cout << "unrollTrans: " << unrollTrans << "\n";
+			cout << "unrollFact: " << unrollFact << "\n";
+			cout << "unrollQuery: " << unrollQuery << "\n";
 		}
 
 		vector<int>& cycle = ruleManager.cycles[0];
@@ -641,7 +641,7 @@ namespace ufo
 			if (ruleManager.chcs[it].isQuery)
 				query = &ruleManager.chcs[it];
 		
-		ruleManager.getDecl(rel, rel);
+		rel = ruleManager.getDecl(rel);
 
 		prefRuleBody = prefixRule.body;
 
@@ -660,6 +660,8 @@ namespace ufo
 
         // AH: have to push extra vars to locVars
         mergeIterationsFact(prefixRule, unrollFact, ssa, bnd);
+
+        // prefixRule.printMemberVars();
 
 		trace.clear();
 
@@ -713,11 +715,14 @@ namespace ufo
 		else newVars = query->srcVars;
 		// outs() << "updated rule: ";
   //       rule.printMemberVars();
+		// outs() << "updated query: \n";
+		// query->printMemberVars();
 	}
 
-	bool findAlignment(CHCs &ruleManager1, CHCs &ruleManager2, SMTUtils &u)
+	bool findAlignment(CHCs &ruleManager1, CHCs &ruleManager2)
 	{
 		auto &fac = ruleManager1.m_efac;
+		SMTUtils u(fac);
 
 		vector<int> &cycle1 = ruleManager1.cycles[0];
 		HornRuleExt &rule1 = ruleManager1.chcs[cycle1[0]];
@@ -736,6 +741,10 @@ namespace ufo
 		Expr init2 = prefixRule2.body;
 
 		int iter1 = ruleManager1.iter, iter2 = ruleManager2.iter;
+		outs() << "\n\nassuming iters: " << *rule1.srcVars[iter1] << " and " << *rule2.srcVars[iter2] << "\n";
+	    Expr numIters1 = ruleManager1.numOfIters;
+	    Expr numIters2 = ruleManager2.numOfIters;
+	    outs() << "numIters: " << *numIters1 << " and " << *numIters2 << "\n";
 
 		vector<vector<vector<int>>> combsArray, combsInt, combsBool, nonIterCombinations, combs1;
 		combinationsOfVars(ruleManager1.varsArray, ruleManager2.varsArray, combsArray);
@@ -790,11 +799,6 @@ namespace ufo
 			else pre = mk<TRUE>(fac);
 			// outs() << "pre: " << *pre << "\n";
 
-            errs() << "\n\nassuming iters: " << *rule1.srcVars[iter1] << " and " << *rule2.srcVars[iter2] << "\n";
-            Expr numIters1 = ruleManager1.numOfIters;
-            Expr numIters2 = ruleManager2.numOfIters;
-            outs() << "numIters: " << *numIters1 << " and " << *numIters2 << "\n";
-
             Expr coef1 = bind::intConst(mkTerm<string>("coef1", fac));
             Expr coef2 = bind::intConst(mkTerm<string>("coef2", fac));
 
@@ -818,29 +822,32 @@ namespace ufo
               // outs() << "fla: " << *fla << "\n";
 
               ExprVector varsIters;
-              // Expr extraRels;
-
-             //  filter(fla, IsConst(), inserter(varsIters, varsIters.begin()));
               
-            	// for (auto &it : varsIters)
-            	// {
-            	// 	// outs() << "varsIters: " << *it << "\n";
-            	// 	if (ruleManager1.exprEqualities.find(it) != ruleManager1.exprEqualities.end())
-            	// 	{
-            	// 		if (extraRels) extraRels = mk<AND>(extraRels, ruleManager1.exprEqualities[it]);
-            	// 		else extraRels = ruleManager1.exprEqualities[it];
-            	// 	}
+              // used when local vars are present, extra equalities are needed then
+              /*Expr extraRels;
+              filter(fla, IsConst(), inserter(varsIters, varsIters.begin()));
+              
+            	for (auto &it : varsIters)
+            	{
+            		// outs() << "varsIters: " << *it << "\n";
+            		if (ruleManager1.exprEqualities.find(it) != ruleManager1.exprEqualities.end())
+            		{
+            			if (extraRels) extraRels = mk<AND>(extraRels, ruleManager1.exprEqualities[it]);
+            			else extraRels = ruleManager1.exprEqualities[it];
+            		}
 
-            	// 	if (ruleManager2.exprEqualities.find(it) != ruleManager2.exprEqualities.end())
-            	// 	{
-            	// 		if (extraRels) extraRels = mk<AND>(extraRels, ruleManager2.exprEqualities[it]);
-            	// 		else extraRels = ruleManager2.exprEqualities[it];
-            	// 	}
-            	// }
+            		if (ruleManager2.exprEqualities.find(it) != ruleManager2.exprEqualities.end())
+            		{
+            			if (extraRels) extraRels = mk<AND>(extraRels, ruleManager2.exprEqualities[it]);
+            			else extraRels = ruleManager2.exprEqualities[it];
+            		}
+            	}
 
-            	// outs() << "extraRels: " << *extraRels << "\n";
+            	outs() << "extraRels: " << *extraRels << "\n";
 
-              Expr newPre/* = extraRels*/;
+              Expr newPre = extraRels;*/
+
+              Expr newPre;
 
               for (auto &p : comb)
               {
@@ -874,7 +881,7 @@ namespace ufo
               Expr const1Zero = mk<EQ>(const1, mkMPZ(0, fac));
               Expr const2Zero = mk<EQ>(const2, mkMPZ(0, fac));
 
-              // outs() << "quantifiedFla: " << *quantifiedFla << "\n";
+              outs() << "quantifiedFla: " << *quantifiedFla << "\n";
               
               // ruleManager1.u.serialize_formula(quantifiedFla);
 
@@ -918,13 +925,15 @@ namespace ufo
             }
             else outs() << "number of iterations were not found\n";
 
-            outs() << "copy " << *minConst1 << " iterations of loop 1 to fact\n";
-            outs() << "copy " << *minConst2 << " iterations of loop 2 to fact\n";
+            outs() << "copy " << *minConst1 << " iterations of loop 1 to fact and query combined\n";
+            outs() << "copy " << *minConst2 << " iterations of loop 2 to fact and query combined\n";
             outs() << "we need " << *minCoef1 << " iterations of loop 1 to align\n";
             outs() << "we need " << *minCoef2 << " iterations of loop 2 to align\n";
 
-            // outs() << "Fact 1: " << *prefixRule1.body << "\n";
-            // outs() << "Fact 2: " << *prefixRule2.body << "\n";
+            outs() << "Fact 1: " << *prefixRule1.body << "\n";
+            outs() << "Fact 2: " << *prefixRule2.body << "\n";
+            // outs() << "fact 1 sanity check: " << bool(u.isSat(prefixRule1.body)) << "\n";
+            // outs() << "fact 2 sanity check: " << bool(u.isSat(prefixRule2.body)) << "\n";
             // outs() << "pre: " << *pre << "\n";
 
             int coef1Int = (int)lexical_cast<cpp_int>(minCoef1);
@@ -955,19 +964,39 @@ namespace ufo
 				// outs() << "prefRuleBody1: " << *prefRuleBody1 << "\n";
 				// outs() << "prefRuleBody2: " << *prefRuleBody2 << "\n";
 
-				Expr tempProdFact = mk<AND>(mk<AND>(prefRuleBody1, prefRuleBody2), pre);
-				Expr eq = mk<EQ>(prefixRule1.dstVars[ruleManager1.iter], prefixRule2.dstVars[ruleManager2.iter]);
+				Expr preRelev = mk<TRUE>(fac);
+				Expr iterF = prefixRule1.dstVars[ruleManager1.iter], iterFVal;
+				Expr iterS = prefixRule2.dstVars[ruleManager2.iter], iterSVal;
+
+				// make it such that we do not have to pass rules everytime, since it is already a method for rulemanager?
+				ruleManager1.findInitialValue(iter1, prefixRule1, rule1, iterFVal);
+				ruleManager2.findInitialValue(iter2, prefixRule2, rule2, iterSVal);
+
+				for (auto &pair : comb)
+				{
+					if (contains(iterFVal, rule1.srcVars[pair[0]]) || contains(iterSVal, rule2.srcVars[pair[1]]))
+						preRelev = mk<AND>(preRelev, mk<EQ>(rule1.dstVars[pair[0]], rule2.dstVars[pair[1]]));
+				}
+				// outs() << "pre relevant: " << *preRelev << "\n";
+
+				// AH: revisit; pre does not need to be added, but some variables might? like count variable
+				Expr tempProdFact = mk<AND>(mk<AND>(prefRuleBody1, prefRuleBody2), preRelev);
+				Expr eq = mk<EQ>(iterF, iterS);
 				// outs() << "tempProdFact: " << *tempProdFact << "\n";
+				// outs() << "sanity check: " << bool(u.isSat(tempProdFact)) << "\n";
 				// outs() << "eq: " << *eq << "\n";
 				bool impliesEq = u.implies(tempProdFact, eq);
 
 				if (impliesEq)
 				{
+
+					// outs() << "actual\n";
 					createAlignment(ruleManager1, coef1Int, it[0], const1Int-it[0], prefRuleBody1, varsQ);
 					prefixRule1.body = prefRuleBody1;
 					// outs() << "Updated prefix rule1: " << *prefRuleBody1 << "\n";
 					// for (auto it : v) outs() << "v: " << *it << "\n";
 
+					// outs() << "actual\n";
 					createAlignment(ruleManager2, coef2Int, it[1], const2Int-it[1], prefRuleBody2, varsQ1);					
 					prefixRule2.body = prefRuleBody2;
 					// outs() << "Updated prefix rule2: " << *prefRuleBody2 << "\n";
@@ -1001,7 +1030,7 @@ namespace ufo
 			HornRuleExt *fact, *query, *ind;
 			for (auto &it : ruleManagerProduct.chcs)
 			{
-				// it.printMemberVars();
+				it.printMemberVars();
 				if (it.isFact) fact = &it;
 				if (it.isQuery) query = &it;
 				if (it.isInductive) ind = &it;
@@ -1068,17 +1097,17 @@ namespace ufo
 			}
 		}*/
 
-		// for (auto it : ruleManagerSrc.chcs) it.printMemberVars();
+		for (auto it : ruleManagerSrc.chcs) it.printMemberVars();
 
 		CHCs ruleManagerDst(m_efac, z3, "_v2_");
 		ruleManagerDst.parse(string(chcfileDst), false);
 
-		// for (auto it : ruleManagerDst.chcs) it.printMemberVars();
+		for (auto it : ruleManagerDst.chcs) it.printMemberVars();
 
 		ruleManagerSrc.findIterators();
 		ruleManagerDst.findIterators();
 
-		bool equiv = findAlignment(ruleManagerSrc, ruleManagerDst, ruleManagerSrc.u);
+		bool equiv = findAlignment(ruleManagerSrc, ruleManagerDst);
 		if (equiv) outs() << "programs are equivalent\n";
 		else outs() << "programs are not equivalent\n";
   };

@@ -1,0 +1,17 @@
+(declare-rel fail ())
+(declare-rel init ())
+(declare-rel inv (Int ))
+(declare-var x Int)
+(declare-var x1 Int)
+
+(rule (=> (and
+	(= x 0))
+	(inv x)))
+(rule (=> (and (inv x)
+	(< x 10)
+	(= x1 (ite (= x 1) (+ x 1) x)))
+	(inv x1)))
+(rule (=> (and (inv x)
+	(>= x 10))
+	fail))
+(query fail)
