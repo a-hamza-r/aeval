@@ -818,8 +818,6 @@ namespace ufo
           extraVars.insert(var);
         }
 
-        // outs() << "rulesBody: " << *rulesBody << "\n";
-        // outs() << "subRulesBody: " << *subRulesBody << "\n";
         rulesBody = mk<AND>(rulesBody, subRulesBody);
       }
     }
@@ -848,8 +846,6 @@ namespace ufo
           extraVars.insert(var);
         }
 
-        // outs() << "prefixBody: " << *prefixBody << "\n";
-        // outs() << "subRulesBody: " << *subRulesBody << "\n";
         prefixBody = mk<AND>(prefixBody, subRulesBody);
       }
     }
@@ -879,8 +875,8 @@ namespace ufo
           else
           {
             ExprVector& ev = candidatesTmp[ind];
-            outs() << "candidatesTmp:\n";
-            for(auto it : candidatesTmp[ind]) outs() << *it << "\n";
+            // outs() << "candidates:\n";
+            // for(auto &it : candidatesTmp[ind]) outs() << *it << "\n";
             ExprVector invVars;
             for (auto & a : invarVars[ind]) invVars.push_back(a.second);
             SamplFactory& sf = sfs[ind].back();
@@ -895,7 +891,7 @@ namespace ufo
                 if (hr.isFact)
                 {
                   Expr failedCand = normalizeDisj(*it, invVars);
-               outs () << "failed cand for " << *hr.dstRelation << ": " << *failedCand << "\n";
+               // outs () << "failed cand for " << *hr.dstRelation << ": " << *failedCand << "\n";
                   Sampl& s = sf.exprToSampl(failedCand);
                   sf.assignPrioritiesForFailed();
                 }
@@ -1321,8 +1317,30 @@ namespace ufo
         }
     }
 
-    bool bootstrap(bool doDisj)
+    bool bootstrap(bool doDisj, Expr eqs=NULL, bool keepOnlyEqualities=false)
     {
+      for (int i = 0; i < invNumber; i++)
+      {
+        // keep only equalities in the candidates
+        if (keepOnlyEqualities)
+        {
+          for (auto it = candidates[i].begin(); it != candidates[i].end(); )
+          {
+            if (isOpX<EQ>(*it) && ((isIntConst((*it)->right()) && isIntConst((*it)->left())) 
+              || ((isConst<ARRAY_TY> ((*it)->right())) && (isConst<ARRAY_TY> ((*it)->left()))))) it++;
+            else it = candidates[i].erase(it);
+          }
+        }
+
+        // add equalities that match variables of two programs
+        if (eqs)
+        {
+          ExprSet s;
+          getConj(eqs, s);
+          for (auto &eq : s) candidates[i].push_back(eq);
+        }
+      }
+
       filterUnsat();
 
       if (multiHoudini(ruleManager.wtoCHCs))
@@ -1435,7 +1453,6 @@ namespace ufo
         if (!checkCHC(hr, candidates)) {
           if (!hr.isQuery)
           {
-            outs() << "rule is : " << (hr.isFact ? "fact" : "inductive") << "\n";
             outs() << "WARNING: Something went wrong" <<
               (ruleManager.hasArrays[hr.srcRelation] || ruleManager.hasArrays[hr.dstRelation] ?
               " (possibly, due to quantifiers)" : "") <<
@@ -1475,6 +1492,7 @@ namespace ufo
         {
           for (auto & v : invarVars[ind]) a = replaceAll(a, v.second, hr.srcVars[v.first]);
           exprs.insert(a);
+          // outs() << "candidate: " << *a << "\n";
         }
       }
 
@@ -1506,8 +1524,6 @@ namespace ufo
       assert(srcVars.size() == dstVars.size());
 
       int invNum = getVarIndex(rel, decls);
-
-      outs() << "pref: " << *pref << "\n";
 
       prefs[invNum] = pref;
       ssas[invNum] = replaceAll(bnd.toExpr(cycle), bnd.bindVars.back(), dstVars);
@@ -1550,9 +1566,6 @@ namespace ufo
       for (auto & a : ssa)
       {
         Expr normalized = ineqSimplifier(iterators[invNum], simplifyArithm(a));
-        outs() << "a: " << *a << "\n";
-        outs() << "normalized: " << *normalized << "\n";
-        outs() << "iterator: " << *iterators[invNum] << "\n";
         if (isOpX<EQ>(normalized) && normalized->left() == iterators[invNum])
         {
           preconds[invNum] = normalized;
@@ -1608,16 +1621,6 @@ namespace ufo
         assert(hasOnlyVars(res, ruleManager.invVars[rel]));
       }
     }
-
-     void addPostConditionEqualities(Expr currentMatching)
-    {
-      ExprSet s;
-      getConj(currentMatching, s);
-      for (auto &it : s)
-      {
-        candidates[0].push_back(it);
-      }
-    }
   };
 
   inline bool learnInvariantsPr(CHCs &ruleManager, unsigned maxAttempts, unsigned to, bool freqs, bool aggp,
@@ -1653,17 +1656,14 @@ namespace ufo
     }
     // if (enableDataLearning) ds.getDataCandidates(cands);
     for (auto& dcl: ruleManager.wtoDecls) ds.addCandidates(dcl, cands[dcl]);
-      outs() << "before getSeeds\n";
     for (auto& dcl: ruleManager.wtoDecls) ds.getSeeds(dcl, cands);
-      outs() << "after getSeeds\n";
     ds.refreshCands(cands);
     for (auto& dcl: ruleManager.decls) ds.doSeedMining(dcl->arg(0), cands[dcl->arg(0)], false);
-      outs() << "after doSeedMining\n";
     ds.calculateStatistics();
-      // outs() << "after calculateStatistics\n";
-    ds.addPostConditionEqualities(currentMatching);
-      // outs() << "after addPostConditionEqualities\n";
-    bool check = ds.bootstrap(doDisj);
+
+    // call bootstrap with option to only consider equalities as candidates for finding invariant
+    // also add equalities for variable matchings
+    bool check = ds.bootstrap(doDisj, currentMatching, true);
     // if (!check)
     // {
     //   std::srand(std::time(0));

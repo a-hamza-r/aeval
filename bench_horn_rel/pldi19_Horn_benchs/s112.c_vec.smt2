@@ -80,7 +80,7 @@
 		(= a_i6 (+ (select a_array6 (- i 7)) (select b_array (- i 6))))
 		(= a_array7 (store a_array6 (- i 6) a_i6))
 
-		(= a_i7 (+ (select a_array7 (- i7 1)) (select b_array (- i 7))))
+		(= a_i7 (+ (select a_array7 (- i 1)) (select b_array (- i 7))))
 		(= a_array8 (store a_array7 (- i 7) a_i7))
 	)
 	(loop a_array8 b_array (- i 8) count)

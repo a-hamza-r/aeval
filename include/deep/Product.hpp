@@ -279,7 +279,7 @@ namespace ufo
 		
 		if (calculateRulesOfP) 
 		{
-			// errs() << "Rules of relation: " << *rel1->arg(0) << "\n";
+			// outs() << "Rules of relation: " << *rel1->arg(0) << "\n";
 			rules.rulesOfPredicate(rel1, rulesOfCurrentP);
 
 			for (auto &it : rulesOfCurrentP) 
@@ -292,7 +292,7 @@ namespace ufo
 
 			rulesOfCurrentP.clear();
 
-			// errs() << "Rules of relation: " << *rel2->arg(0) << "\n";
+			// outs() << "Rules of relation: " << *rel2->arg(0) << "\n";
 			rules.rulesOfPredicate(rel2, rulesOfCurrentP);
 
 			for (auto &it : rulesOfCurrentP) 
@@ -331,12 +331,12 @@ namespace ufo
 
 		concatenateVectors(newProductRule.locVars, chc1.locVars, chc2.locVars);
 
-		// errs() << "Taking product of two CHCs: \n";
+		// outs() << "Taking product of two CHCs: \n";
 		// rules.print(chc1);
 		// rules.print(chc2);
-		// errs() << "The product is: \n";
+		// outs() << "The product is: \n";
 		// rules.print(newProductRule);
-		// errs() << "\n";
+		// outs() << "\n";
 
 		// do not push if one is inductive and other one is not. Push in all other cases
 		// make sure this condition is correct generically
@@ -457,7 +457,7 @@ namespace ufo
 			C_a = worklist[0];
 			worklist.erase(worklist.begin());
 
-			// errs() << "current worklist item popped: \n";
+			// outs() << "current worklist item popped: \n";
 			// C_a.printMemberVars();
 
 			// AH: In the original algorithm, the operation PARTITION is used that is defined: 
@@ -469,14 +469,14 @@ namespace ufo
 
 			if (partition.size() >= 2) 
 			{
-				// errs() << "Non-recursive partition is: " << *partition[0]->arg(0) 
+				// outs() << "Non-recursive partition is: " << *partition[0]->arg(0) 
 				//     << " and " << *partition[1]->arg(0) << "\n";
 
 				productRelationSymbols(partition, freshP, rulesOfP, product, true, toRemoveCHCs);
 
 				C_a.srcRelation = freshP->arg(0);
 
-				// errs() << "We push rules of p " << *C_a.srcRelation << " to worklist:\n";
+				// outs() << "We push rules of p " << *C_a.srcRelation << " to worklist:\n";
 				worklist.insert(worklist.end(), rulesOfP.begin(), rulesOfP.end());
 				// for (auto it : rulesOfP)
 				//     product.print(it);
@@ -484,7 +484,7 @@ namespace ufo
 
 			if (isOpX<AND>(C_a.srcRelation))
 			{
-				// errs() << "Non-linear CHC:\n";
+				// outs() << "Non-linear CHC:\n";
 				// product.print(C_a);
 			}
 			else 
@@ -494,9 +494,9 @@ namespace ufo
 				
 				product.chcs.push_back(C_a);
 				
-				// errs() << "Updated CHC added to CHCs: \n";
+				// outs() << "Updated CHC added to CHCs: \n";
 				// product.print(C_a);
-				// errs() << "\n";
+				// outs() << "\n";
 			}
 		}
 
@@ -517,10 +517,10 @@ namespace ufo
 
 		product.wtoSort();
 
-		// errs() << "\nFinal system:\n";
+		// outs() << "\nFinal system:\n";
 		// product.print();
 
-		// errs() << "Printing all rules and member vars:\n";
+		// outs() << "Printing all rules and member vars:\n";
 		// for (auto &hr : product.chcs) {
 		// 	hr.printMemberVars();
 			
@@ -530,7 +530,7 @@ namespace ufo
 			SMTUtils su(hr.body->getFactory());
 			su.serialize_formula(q);*/
 		// }
-		errs() << "\n--------------------------CALCULATING PRODUCT DONE-----------------------------\n\n";
+		outs() << "\n--------------------------CALCULATING PRODUCT DONE-----------------------------\n\n";
 	}
 
 	void combinations(vector<int> &vars1, vector<int> &vars2, vector<vector<int>> c, vector<int> vars2Used, vector<vector<vector<int>>> &combs, int pos)
@@ -623,12 +623,12 @@ namespace ufo
 	void createAlignment(CHCs &ruleManager, int unrollTrans, int unrollFact, int unrollQuery, 
 		Expr& prefRuleBody, ExprVector& newVars)
 	{
-		if (!(unrollTrans == 0 && unrollQuery == 0))
-		{
-			cout << "unrollTrans: " << unrollTrans << "\n";
-			cout << "unrollFact: " << unrollFact << "\n";
-			cout << "unrollQuery: " << unrollQuery << "\n";
-		}
+		// if (!(unrollTrans == 0 && unrollQuery == 0))
+		// {
+		// 	cout << "unrollTrans: " << unrollTrans << "\n";
+		// 	cout << "unrollFact: " << unrollFact << "\n";
+		// 	cout << "unrollQuery: " << unrollQuery << "\n";
+		// }
 
 		vector<int>& cycle = ruleManager.cycles[0];
 		HornRuleExt& rule = ruleManager.chcs[cycle[0]];
@@ -645,6 +645,7 @@ namespace ufo
 
 		prefRuleBody = prefixRule.body;
 
+		// merge iterations to the fact, given the unrollFact value
 		BndExpl bnd(ruleManager);
 
 		vector<int> trace;
@@ -660,11 +661,9 @@ namespace ufo
 
         // AH: have to push extra vars to locVars
         mergeIterationsFact(prefixRule, unrollFact, ssa, bnd);
-
-        // prefixRule.printMemberVars();
-
 		trace.clear();
 
+		// merge iterations to the query, given the unrollquery value
 		trace.push_back(prefix[0]);
 
 		for (int j = 0; j < unrollQuery; j++)
@@ -682,9 +681,9 @@ namespace ufo
         mergeIterationsQuery(query, unrollQuery, ssa1, bnd, ruleManager.getVarName(), newVars);
 
         query->locVars.insert(query->locVars.end(), s1.begin(), s1.end());
-
         trace.clear();
 
+        // unroll the inductive rule unrollTrans times
 		trace.push_back(prefix[0]);
 
 		for (int j = 0; j < unrollTrans-1; j++)
@@ -699,12 +698,11 @@ namespace ufo
         ExprVector s2;
         filter(conjoin(ssa2, ruleManager.m_efac), IsConst(), inserter(s2, s2.begin()));
 
-        // for (auto it : s2) outs() << *it << "\n";
-
         mergeIterationsLoop(rule, unrollTrans-1, ssa2, bnd);
 
         rule.locVars.insert(rule.locVars.end(), s2.begin(), s2.end());
 
+        // make required changes to the CHC system
         if (unrollFact > 0) prefRuleBody = conjoin(ssa, ruleManager.m_efac);
 		if (unrollTrans > 1) rule.body = mk<AND>(rule.body, conjoin(ssa2, ruleManager.m_efac));
 		if (unrollQuery > 0) 
@@ -713,10 +711,6 @@ namespace ufo
 			query->body = mk<AND>(query->body, conjoin(ssa1, ruleManager.m_efac));
 		}
 		else newVars = query->srcVars;
-		// outs() << "updated rule: ";
-  //       rule.printMemberVars();
-		// outs() << "updated query: \n";
-		// query->printMemberVars();
 	}
 
 	bool findAlignment(CHCs &ruleManager1, CHCs &ruleManager2)
@@ -744,7 +738,7 @@ namespace ufo
 		outs() << "\n\nassuming iters: " << *rule1.srcVars[iter1] << " and " << *rule2.srcVars[iter2] << "\n";
 	    Expr numIters1 = ruleManager1.numOfIters;
 	    Expr numIters2 = ruleManager2.numOfIters;
-	    outs() << "numIters: " << *numIters1 << " and " << *numIters2 << "\n";
+	    // outs() << "numIters: " << *numIters1 << " and " << *numIters2 << "\n";
 
 		vector<vector<vector<int>>> combsArray, combsInt, combsBool, nonIterCombinations, combs1;
 		combinationsOfVars(ruleManager1.varsArray, ruleManager2.varsArray, combsArray);
@@ -762,11 +756,12 @@ namespace ufo
 		// {
 		//   for (auto elems1 : elems)
 		//   {
-		//     errs() << "vars: " << *rule1.dstVars[elems1[0]] << " and " << *rule2.dstVars[elems1[1]] << "\n";
+		//     outs() << "vars: " << *rule1.dstVars[elems1[0]] << " and " << *rule2.dstVars[elems1[1]] << "\n";
 		//   }
-		//   errs() << "\n\n";
+		//   outs() << "\n\n";
 		// }
 
+		// check for all combinations of variables, such that we match same type of variables
 		for (auto &comb : nonIterCombinations)
 		{
 			Expr pre;
@@ -781,7 +776,6 @@ namespace ufo
 					if ((!u.hasOneModel(var, init1) && !u.hasOneModel(var1, init2)) 
 						|| (u.hasOneModel(var, init1) && u.hasOneModel(var1, init2)))
 					{
-						// errs() << "pair: " << pair[0] << " " << pair[1] << "\n";
 						if (!pre) pre = mk<EQ>(rule1.dstVars[pair[0]], rule2.dstVars[pair[1]]);
 						else pre = mk<AND>(pre, mk<EQ>(rule1.dstVars[pair[0]], rule2.dstVars[pair[1]]));
 					}
@@ -793,12 +787,10 @@ namespace ufo
 
 				}
 				if (skipComb) continue;
-
-				// prefixRule.body = mk<AND>(prefixRule.body, pre);
 			}
 			else pre = mk<TRUE>(fac);
-			// outs() << "pre: " << *pre << "\n";
 
+			// create a quantified formula for optimization query
             Expr coef1 = bind::intConst(mkTerm<string>("coef1", fac));
             Expr coef2 = bind::intConst(mkTerm<string>("coef2", fac));
 
@@ -808,6 +800,28 @@ namespace ufo
             Expr minCoef1, minCoef2, minConst1, minConst2;
 
             Expr quantifiedFla;
+
+            Expr preRelev = mk<TRUE>(fac), preRelev2 = mk<TRUE>(fac);
+			Expr iterF = prefixRule1.dstVars[ruleManager1.iter], iterFVal;
+			Expr iterS = prefixRule2.dstVars[ruleManager2.iter], iterSVal;
+
+			// AH: make it such that we do not have to pass rules everytime, since it is already a method for rulemanager?
+			ruleManager1.findInitialValue(iter1, prefixRule1, rule1, iterFVal);
+			ruleManager2.findInitialValue(iter2, prefixRule2, rule2, iterSVal);
+
+			// add any variables that are needed in the quantified formula
+			for (auto &pair : comb)
+			{
+				// checks if initial values of iterators depend on any variables; also constant values are also added to pre
+				// we might as well check that the pair[1] variable is also constant, similar to third check
+				if ((contains(iterFVal, rule1.srcVars[pair[0]]) || contains(iterSVal, rule2.srcVars[pair[1]])
+				|| u.implies(rule1.body, mk<EQ>(rule1.srcVars[pair[0]], rule1.dstVars[pair[0]])) 
+				&& (!isOpX<ARRAY_TY>(bind::typeOf(rule1.srcVars[pair[0]]))))) 
+				{
+					preRelev = mk<AND>(preRelev, mk<EQ>(rule1.dstVars[pair[0]], rule2.dstVars[pair[1]]));
+					preRelev2 = mk<AND>(preRelev2, mk<EQ>(rule1.srcVars[pair[0]], rule2.srcVars[pair[1]]));
+				}
+			}
 
             if (!(numIters1 == mkMPZ(-1, fac) || numIters2 == mkMPZ(-1, fac))) 
             {
@@ -819,14 +833,12 @@ namespace ufo
 
               Expr fla = mk<AND>(mk<EQ>(numIters, numIters1), mk<EQ>(numItersP, numIters2));
 
-              // outs() << "fla: " << *fla << "\n";
-
               ExprVector varsIters;
               
               // used when local vars are present, extra equalities are needed then
               /*Expr extraRels;
               filter(fla, IsConst(), inserter(varsIters, varsIters.begin()));
-              
+             
             	for (auto &it : varsIters)
             	{
             		// outs() << "varsIters: " << *it << "\n";
@@ -847,29 +859,10 @@ namespace ufo
 
               Expr newPre = extraRels;*/
 
-              Expr newPre;
-
-              for (auto &p : comb)
-              {
-                Expr v = rule1.srcVars[p[0]];
-                Expr v1 = rule2.srcVars[p[1]];
-                if (!isOpX<ARRAY_TY>(bind::typeOf(v)))
-                {
-                  if (newPre) newPre = mk<AND>(newPre, mk<EQ>(v, v1));
-                  else newPre = mk<EQ>(v, v1);
-                }
-              }
-
-              if (!newPre) newPre = mk<TRUE>(fac);
-              outs() << "newPre: " << *newPre << "\n";
-              // newPre = mk<AND>(newPre, mk<AND>(rule1.body, rule2.body));
-
-              fla = mk<AND>(newPre, fla);
+              fla = mk<AND>(preRelev2, fla);
               Expr implFla = mk<EQ>(mk<MULT>(coef2, mk<MINUS>(numIters, const1)), 
               	mk<MULT>(coef1, mk<MINUS>(numItersP, const2)));
               
-              // outs() << "fla: " << *fla << "\n";
-              // varsIters.clear();
               filter(fla, IsConst(), inserter(varsIters, varsIters.begin()));
               
               fla = mk<IMPL>(fla, implFla); 
@@ -881,22 +874,21 @@ namespace ufo
               Expr const1Zero = mk<EQ>(const1, mkMPZ(0, fac));
               Expr const2Zero = mk<EQ>(const2, mkMPZ(0, fac));
 
-              outs() << "quantifiedFla: " << *quantifiedFla << "\n";
-              
-              // ruleManager1.u.serialize_formula(quantifiedFla);
-
               Expr model;
               if (u.isSat(mk<AND>(quantifiedFla, constsZero))) model = u.getModel();
               else if (u.isSat(mk<AND>(quantifiedFla, const1Zero))) model = u.getModel();
               else if (u.isSat(mk<AND>(quantifiedFla, const2Zero))) model = u.getModel();
               else if (u.isSat(quantifiedFla)) model = u.getModel();
-              else outs() << "Not satisfiable\n";
+              else 
+              {
+              	outs() << "Not satisfiable\n";
+              	continue;
+              }
 
               if (model) 
               {
-                outs() << "model: " << *model << "\n";
                 Expr minModels = u.getMinModelInts(coef1);
-                outs() << "minModels: " << *minModels << "\n";
+                // outs() << "minModels: " << *minModels << "\n";
 
                 findExpr<EQ>(coef1, minModels, minCoef1, true);
                 findExpr<EQ>(coef2, minModels, minCoef2, true);
@@ -923,24 +915,24 @@ namespace ufo
                 minConst2 = minConst2->right();
               }
             }
-            else outs() << "number of iterations were not found\n";
+            else 
+            {
+            	outs() << "number of iterations were not found\n";
+            	continue;
+            }
 
             outs() << "copy " << *minConst1 << " iterations of loop 1 to fact and query combined\n";
             outs() << "copy " << *minConst2 << " iterations of loop 2 to fact and query combined\n";
             outs() << "we need " << *minCoef1 << " iterations of loop 1 to align\n";
             outs() << "we need " << *minCoef2 << " iterations of loop 2 to align\n";
 
-            outs() << "Fact 1: " << *prefixRule1.body << "\n";
-            outs() << "Fact 2: " << *prefixRule2.body << "\n";
-            // outs() << "fact 1 sanity check: " << bool(u.isSat(prefixRule1.body)) << "\n";
-            // outs() << "fact 2 sanity check: " << bool(u.isSat(prefixRule2.body)) << "\n";
-            // outs() << "pre: " << *pre << "\n";
-
             int coef1Int = (int)lexical_cast<cpp_int>(minCoef1);
 			int const1Int = (int)lexical_cast<cpp_int>(minConst1);
 			int coef2Int = (int)lexical_cast<cpp_int>(minCoef2);
 			int const2Int = (int)lexical_cast<cpp_int>(minConst2);
 
+
+			// Currently, it does all combinations to check the number of iterations to be added to fact and query
 			vector<int> v1, v2;
 			vector<vector<int>> vComb;
 			for (int i = 0; i <= const1Int; i++) v1.push_back(i);
@@ -953,63 +945,46 @@ namespace ufo
 			// for (auto it : vComb)
 			// 	outs() << it[0] << " " << const1Int-it[0] << " " << it[1] << " " << const2Int-it[1] << "\n";
 
+			bool impliesEq = false;
 			ExprVector varsQ, varsQ1;
 			for (auto &it : vComb)
 			{
+				// check if adding certain iterations to query will make the initial values of iterators equal
+				// it is not greedy approach currently
 				Expr prefRuleBody1, prefRuleBody2;
 				ExprVector v;
 				createAlignment(ruleManager1, 0, it[0], 0, prefRuleBody1, v);
 				createAlignment(ruleManager2, 0, it[1], 0, prefRuleBody2, v);
 
-				// outs() << "prefRuleBody1: " << *prefRuleBody1 << "\n";
-				// outs() << "prefRuleBody2: " << *prefRuleBody2 << "\n";
-
-				Expr preRelev = mk<TRUE>(fac);
-				Expr iterF = prefixRule1.dstVars[ruleManager1.iter], iterFVal;
-				Expr iterS = prefixRule2.dstVars[ruleManager2.iter], iterSVal;
-
-				// make it such that we do not have to pass rules everytime, since it is already a method for rulemanager?
-				ruleManager1.findInitialValue(iter1, prefixRule1, rule1, iterFVal);
-				ruleManager2.findInitialValue(iter2, prefixRule2, rule2, iterSVal);
-
-				for (auto &pair : comb)
-				{
-					if (contains(iterFVal, rule1.srcVars[pair[0]]) || contains(iterSVal, rule2.srcVars[pair[1]]))
-						preRelev = mk<AND>(preRelev, mk<EQ>(rule1.dstVars[pair[0]], rule2.dstVars[pair[1]]));
-				}
-				// outs() << "pre relevant: " << *preRelev << "\n";
-
-				// AH: revisit; pre does not need to be added, but some variables might? like count variable
 				Expr tempProdFact = mk<AND>(mk<AND>(prefRuleBody1, prefRuleBody2), preRelev);
 				Expr eq = mk<EQ>(iterF, iterS);
-				// outs() << "tempProdFact: " << *tempProdFact << "\n";
-				// outs() << "sanity check: " << bool(u.isSat(tempProdFact)) << "\n";
-				// outs() << "eq: " << *eq << "\n";
-				bool impliesEq = u.implies(tempProdFact, eq);
+				impliesEq = u.implies(tempProdFact, eq);
 
 				if (impliesEq)
 				{
-
-					// outs() << "actual\n";
+					// actual alignment created here
 					createAlignment(ruleManager1, coef1Int, it[0], const1Int-it[0], prefRuleBody1, varsQ);
 					prefixRule1.body = prefRuleBody1;
-					// outs() << "Updated prefix rule1: " << *prefRuleBody1 << "\n";
-					// for (auto it : v) outs() << "v: " << *it << "\n";
 
-					// outs() << "actual\n";
 					createAlignment(ruleManager2, coef2Int, it[1], const2Int-it[1], prefRuleBody2, varsQ1);					
 					prefixRule2.body = prefRuleBody2;
-					// outs() << "Updated prefix rule2: " << *prefRuleBody2 << "\n";
-					// for (auto it : v1) outs() << "v1: " << *it << "\n";
+
+					// break out of the loop if for any alignment, we have iterators initially equal;
+					// consequently, all remaining iterations are added to query; 
+					// support checking other combinations
 					break;
 				}
 			}
 
+			// if iterator values do not match for any number of iterations, no alignment found
+			if (!impliesEq) continue;
+
+			// create precondition and postcondition
 			Expr e = replaceAll(pre, rule1.dstVars, varsQ);
 			Expr post = replaceAll(e, rule2.dstVars, varsQ1);
 			Expr negPost = mkNeg(post);
-			// outs() << "post: " << *post << "\n";
 
+			// create the product 
 			CHCs ruleManagerProduct(ruleManager1, ruleManager2, "_pr_");
 
 		    vector<vector<HornRuleExt>> queries(2);
@@ -1026,11 +1001,10 @@ namespace ufo
 		    // product of two CHC systems
 			Product(ruleManagerProduct, queries);
 
-			// outs() << "product rules: \n";
 			HornRuleExt *fact, *query, *ind;
 			for (auto &it : ruleManagerProduct.chcs)
 			{
-				it.printMemberVars();
+				// it.printMemberVars();
 				if (it.isFact) fact = &it;
 				if (it.isQuery) query = &it;
 				if (it.isInductive) ind = &it;
@@ -1038,39 +1012,35 @@ namespace ufo
 			fact->body = mk<AND>(fact->body, pre);
 			query->body = simplifyBool(mk<AND>(query->body, negPost));
 
-      outs () << "   check fact sanity:  "  << bool(u.isSat(fact->body)) << "\n";
-      outs () << "   check query sanity:  "  << bool(u.isSat(query->body)) << "\n";
-      outs () << "   check ind sanity:  "  << bool(u.isSat(ind->body)) << "\n";
+			outs () << "   check fact sanity:  "  << bool(u.isSat(fact->body)) << "\n";
+			outs () << "   check query sanity:  "  << bool(u.isSat(query->body)) << "\n";
+			outs () << "   check ind sanity:  "  << bool(u.isSat(ind->body)) << "\n";
 
 			outs() << "------------------------CREATING ALIGNED PROGRAM DONE-----------------------------\n\n";
 
-//      ruleManagerProduct.print();
-			// for (auto &it : ruleManagerProduct.chcs)
-			// {
-			// 	it.printMemberVars();
-			// }
+			Expr currentMatching = mk<TRUE>(fac);
+				int sz = rule1.srcVars.size();
+			for (auto &pair : comb)
+			{
+			Expr eq = mk<EQ>(ind->srcVars[pair[0]], ind->srcVars[sz+pair[1]]);
+			currentMatching = mk<AND>(currentMatching, eq);
+			}
 
-      Expr currentMatching = mk<TRUE>(fac);
-			int sz = rule1.srcVars.size();
-      for (auto &pair : comb)
-      {
-        Expr eq = mk<EQ>(ind->srcVars[pair[0]], ind->srcVars[sz+pair[1]]);
-        currentMatching = mk<AND>(currentMatching, eq);
-      }
+			// GF: hack to create pairs (to revisit) -- visited, works well
+			for (int i = 0; i < sz; i++)
+				if (bind::typeOf(ind->srcVars[i]) == bind::typeOf(ind->srcVars[sz + i]))
+					currentMatching = mk<AND>(currentMatching, mk<EQ>(ind->srcVars[i], (ind->srcVars[sz + i])));
 
-      // GF: hack to create pairs (to revisit)
-      for (int i = 0; i < sz; i++)
-        if (bind::typeOf(ind->srcVars[i]) == bind::typeOf(ind->srcVars[sz + i]))
-          currentMatching = mk<AND>(currentMatching, mk<EQ>(ind->srcVars[i], (ind->srcVars[sz + i])));
-
-			// outs() << "currentMatching: " << *currentMatching << "\n";
-
+			// call the function with all default values for arguments that are not relevant
+			// probably, do a cleaner way of calling the function
 		    if (learnInvariantsPr(ruleManagerProduct, 2000000, 100, false, 
 		    	false, true, false, false, false, false, false, false, currentMatching)) return true;
 		}
 		return false;
 	}
 
+
+	// Create an aligned product program
 	inline void createProductAligned(const char *chcfileSrc, const char *chcfileDst)
 	{
 		ExprFactory m_efac;
@@ -1097,12 +1067,12 @@ namespace ufo
 			}
 		}*/
 
-		for (auto it : ruleManagerSrc.chcs) it.printMemberVars();
+		// for (auto it : ruleManagerSrc.chcs) it.printMemberVars();
 
 		CHCs ruleManagerDst(m_efac, z3, "_v2_");
 		ruleManagerDst.parse(string(chcfileDst), false);
 
-		for (auto it : ruleManagerDst.chcs) it.printMemberVars();
+		// for (auto it : ruleManagerDst.chcs) it.printMemberVars();
 
 		ruleManagerSrc.findIterators();
 		ruleManagerDst.findIterators();
@@ -1112,6 +1082,8 @@ namespace ufo
 		else outs() << "programs are not equivalent\n";
   };
 
+
+  	// create a product with no alignment
 	inline void createProductBase(const char *chcfileSrc, const char *chcfileDst)
 	{
 		ExprFactory m_efac;

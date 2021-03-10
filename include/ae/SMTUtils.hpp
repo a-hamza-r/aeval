@@ -112,6 +112,7 @@ namespace ufo
         smt.assertExpr(c);
       }
       boost::tribool res = smt.solve ();
+      // smt.toSmtLib (outs());
       return res;
     }
 

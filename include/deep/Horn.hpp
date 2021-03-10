@@ -127,30 +127,30 @@ namespace ufo
 
     void printMemberVars()
     {
-      errs() << "\nStarting to print a HornRuleExt: \n";
-      errs() << "body: " << *body << "\n";
-      errs() << "head: " << *head << "\n";
+      outs() << "\nStarting to print a HornRuleExt: \n";
+      outs() << "body: " << *body << "\n";
+      outs() << "head: " << *head << "\n";
 
-      errs() << "srcVars: ";
+      outs() << "srcVars: ";
       for (auto it = srcVars.begin(); it != srcVars.end(); it++)
-        errs() << **it << " ";
-      errs() << "\n";
+        outs() << **it << " ";
+      outs() << "\n";
 
-      errs() << "dstVars: ";
+      outs() << "dstVars: ";
       for (auto it = dstVars.begin(); it != dstVars.end(); it++)
-        errs() << **it << " ";
-      errs() << "\n";
+        outs() << **it << " ";
+      outs() << "\n";
 
-      errs() << "locVars: ";
+      outs() << "locVars: ";
       for (auto it = locVars.begin(); it != locVars.end(); it++)
-        errs() << **it << " ";
-      errs() << "\n";
+        outs() << **it << " ";
+      outs() << "\n";
 
-      errs() << "srcRelation: " << *srcRelation << "\n";
-      errs() << "dstRelation: " << *dstRelation << "\n";
-      errs() << "isFact: " << isFact << "\n";
-      errs() << "isQuery: " << isQuery << "\n";
-      errs() << "isInductive: " << isInductive << "\n";
+      outs() << "srcRelation: " << *srcRelation << "\n";
+      outs() << "dstRelation: " << *dstRelation << "\n";
+      outs() << "isFact: " << isFact << "\n";
+      outs() << "isQuery: " << isQuery << "\n";
+      outs() << "isInductive: " << isInductive << "\n";
     }
   };
 
@@ -540,7 +540,6 @@ namespace ufo
       findExpr<EQ>(iter, init, initVal, true);
       if (initVal)
       {
-        // outs() << "initVal first: " << *initVal << "\n";
         Expr newInit;
         // a hack to avoid mod operations
         if (isOpX<AND>(initVal))
@@ -549,22 +548,23 @@ namespace ufo
           getConj(initVal, s);
           for (auto &it : s)
           {
-            if (!containsOp<MOD>(it) && isOpX<EQ>(it))  
+            Expr normalized = ineqSimplifier(iter, simplifyArithm(it));
+            if (isOpX<EQ>(normalized) && normalized->left() == iter)  
             {
               // if multiple equalities are found, just return; support more
               if (newInit) return false;
-              else newInit = it;
+              else newInit = normalized;
             }
           }
           initVal = newInit;
         }
         if (initVal) 
         {
-          initVal = ineqSimplifier(iter, initVal);
+          // initVal = ineqSimplifier(iter, initVal);
           initVal = initVal->right();
+          // assigns non-primed variables
           initVal = replaceAll(initVal, rule.dstVars, rule.srcVars);
           // outs() << "initVal: " << *initVal << "\n";
-          // returns non-primed variables
           return true;
 
           // use when local vars are not eliminated, so extra equalities need to be calculated
@@ -597,12 +597,12 @@ namespace ufo
       Expr b = rule.dstVars[i];
 
       findExpr<EQ>(b, rule.body, e, true);
-      errs() << "\nfinding: " << *b << "\n\n";
+      // errs() << "\nfinding: " << *b << "\n\n";
 
       if (!e) return false;
 
       e = ineqSimplifier(b, e);
-      errs() << "found: " << *e << "\n\n";
+      // errs() << "found: " << *e << "\n\n";
 
       getConjAndDisj(e, allExprs);
       for (auto &it : allExprs)
@@ -614,6 +614,7 @@ namespace ufo
         }
       }
 
+      // Cases when transition can't be found: multiple transition rels, no transition rel, contains an ITE
       if (multipleTransVal || !allExprsConj || allExprsConj->right()->arity() <= 1 || containsOp<ITE>(allExprsConj)) 
         return false;
 
@@ -625,7 +626,7 @@ namespace ufo
       else 
         transitionVal = right->arg(0);
 
-      // check if delta value is constant; Eq. 10, section 4
+      // check if delta value is constant; Eq. 10, section 4 in paper
       Expr replacedTrans = replaceAll(transitionVal, rule.srcVars, rule.dstVars);
       if (!u.implies(rule.body, mk<EQ>(transitionVal, replacedTrans)))
       {
@@ -633,7 +634,7 @@ namespace ufo
         return false;
       }
 
-      outs() << "transitionVal: " << *transitionVal << "\n";
+      // outs() << "transitionVal: " << *transitionVal << "\n";
       return true;
     }
 
@@ -654,24 +655,14 @@ namespace ufo
         // in case lt and le are either conjunction or disjunction, handle better
         if (lt) 
         {
-          // outs() << "lt: " << *lt << "\n";
           lt = ineqSimplifier(a, lt);
-          if (!(isOpX<AND>(lt) || isOpX<OR>(lt)))
-          {
-            limitVal = lt->arg(1);
-            limitEq = lt;
-          } 
+          if (!(isOpX<AND>(lt) || isOpX<OR>(lt))) limitEq = lt;
         }
         if (le) 
         {
-          // outs() << "le: " << *le << "\n";
           add = mkMPZ(1, m_efac);
           le = ineqSimplifier(a, le);
-          if (!(isOpX<AND>(le) || isOpX<OR>(le))) 
-          {
-            limitVal = le->arg(1);
-            limitEq = le;
-          }
+          if (!(isOpX<AND>(le) || isOpX<OR>(le))) limitEq = le;
         }
       }
       else 
@@ -683,30 +674,21 @@ namespace ufo
         // cannot think of any but could be
         if (gt) 
         {
-          // outs() << "gt: " << *gt << "\n";
           gt = ineqSimplifier(a, gt);
-          if (!(isOpX<AND>(gt) || isOpX<OR>(gt)))
-          {
-            limitVal = gt->arg(1);
-            limitEq = gt;
-          } 
+          if (!(isOpX<AND>(gt) || isOpX<OR>(gt))) limitEq = gt;
         }
         if (ge) 
         {
-          // outs() << "ge: " << *ge << "\n";
           add = mkMPZ(-1, m_efac);
           ge = ineqSimplifier(a, ge);
-          if (!(isOpX<AND>(ge) || isOpX<OR>(ge)))
-          {
-            limitVal = ge->arg(1);
-            limitEq = ge;
-          }
+          if (!(isOpX<AND>(ge) || isOpX<OR>(ge))) limitEq = ge;
         }
       }
 
-      if (limitVal) 
+      if (limitEq) 
       {
-        outs() << "limitVal: " << *limitVal << "\n";
+        limitVal = limitEq->arg(1);
+        // outs() << "limitVal: " << *limitVal << "\n";
 
         // check if limit value is constant; Eq. 8, section 4
         Expr replacedLimit = replaceAll(limitVal, rule.srcVars, rule.dstVars);
@@ -746,9 +728,6 @@ namespace ufo
 
       int invNum = getVarIndex(rel, decls);
 
-      // outs() << "prefix rule: " << *prefixRule.body << "\n";
-      // outs() << "rule body: " << *rule.body << "\n";
-
       for (int i = 0; i < rule.srcVars.size(); i++)
       {
         Expr a = rule.srcVars[i];
@@ -770,10 +749,6 @@ namespace ufo
 
           bool hasLimitVal = findFinalValue(i, rule, limitVal, add, iterIncreases);
 
-          outs() << "has in init: " << hasInitVal << "\n";
-          outs() << "has in transition: " << hasTransitionVal << "\n";
-          outs() << "has in final: " << hasLimitVal << "\n";
-
           isAnIter = hasInitVal && hasTransitionVal && hasLimitVal;
           if (isAnIter)
           {
@@ -785,6 +760,7 @@ namespace ufo
           }
         }
 
+        // if not an iter, collect info about the type of variables
         if (!isAnIter)
         {
           if (bind::isIntConst(a)) varsInt.push_back(i);
