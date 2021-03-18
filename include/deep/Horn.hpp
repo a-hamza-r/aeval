@@ -96,6 +96,7 @@ namespace ufo
     ExprVector srcVars;
     ExprVector dstVars;
     ExprVector locVars;
+    ExprVector dstQueryVars;
 
     Expr body;
     Expr head;
@@ -411,7 +412,7 @@ namespace ufo
         {
           Expr head = hr.head->left();
           renameFdecl(head);
-          if (hr.head->left()->arity() == 2 &&
+          if (head->arity() == 2 &&
               (find(fp.m_queries.begin(), fp.m_queries.end(), r->right()) !=
                fp.m_queries.end())) 
             addFailDecl(head->left());
@@ -456,10 +457,17 @@ namespace ufo
         {
           for (auto it = hr.head->args_begin()+1, end = hr.head->args_end(); it != end; ++it)
             origDstSymbs.push_back(*it);
-          Expr head = hr.head->left();
-          renameFdecl(head);
+	  Expr head = hr.head->left();
+	  renameFdecl(head);
           hr.head = head;
         }
+	// added for proper renaming of query predicate
+	else 
+	{
+		Expr head = hr.head->left();
+		renameFdecl(head);
+		hr.head = bind::fapp(head, ExprVector());
+	}
 
         allOrigSymbs.insert(allOrigSymbs.end(), origDstSymbs.begin(), origDstSymbs.end());
         simplBoolReplCnj(allOrigSymbs, lin);
@@ -485,6 +493,33 @@ namespace ufo
       // sort rules
       wtoSort();
     }
+
+	void removePostLoop()
+	{
+		vector<HornRuleExt>::iterator query, postLoop;
+		bool postLoopFound = false;
+		for (auto it = chcs.begin(); it != chcs.end(); it++)
+		{
+			if (it->isQuery) query = it;
+			else if (!it->isFact && !it->isInductive) 
+			{
+				postLoopFound = true;
+				postLoop = it;
+			}
+		}
+		if (!postLoopFound) return;
+		HornRuleExt &q = *query, &pl = *postLoop;
+		Expr body = replaceAll(q.body, q.srcVars, pl.dstVars);
+		pl.body = mk<AND>(pl.body, body);
+		pl.dstQueryVars = pl.dstVars;
+		pl.dstVars.clear();
+		pl.head = q.head;
+		removeDecl(pl.dstRelation);
+		pl.dstRelation = q.dstRelation;
+		pl.isQuery = true;
+
+		chcs.erase(query);
+	}
 
     Expr numIterations(Expr init, Expr transition, Expr final, Expr add)
     {

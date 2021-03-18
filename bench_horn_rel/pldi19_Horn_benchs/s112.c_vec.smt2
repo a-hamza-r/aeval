@@ -1,4 +1,5 @@
 (declare-rel loop ((Array Int Int) (Array Int Int) Int Int))
+(declare-rel postLoop ((Array Int Int) (Array Int Int) Int Int))
 (declare-rel exit ())
 (declare-var i Int )
 (declare-var i1 Int )
@@ -80,7 +81,7 @@
 		(= a_i6 (+ (select a_array6 (- i 7)) (select b_array (- i 6))))
 		(= a_array7 (store a_array6 (- i 6) a_i6))
 
-		(= a_i7 (+ (select a_array7 (- i 1)) (select b_array (- i 7))))
+		(= a_i7 (+ (select a_array7 (- i 8)) (select b_array (- i 7))))
 		(= a_array8 (store a_array7 (- i 7) a_i7))
 	)
 	(loop a_array8 b_array (- i 8) count)
@@ -109,8 +110,13 @@
 
 		(= a_i6 (+ (select a_array6 (- i 7)) (select b_array (- i 6))))
 		(= a_array7 (store a_array6 (- i 6) a_i6))
-		
-		(not (>= (- i 7) 1))
+	)
+	(postLoop a_array7 b_array (- i 7) count)
+))
+(rule (=> 
+	(and
+		(postLoop a_array b_array i count)
+		(not (>= i 1))
 	)
 	exit
 ))

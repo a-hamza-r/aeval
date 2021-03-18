@@ -236,7 +236,8 @@ namespace ufo
 			queryPr.dstVars = ExprVector();
 			concatenateVectors(queryPr.srcVars, query1.srcVars, query2.srcVars);
 			concatenateVectors(queryPr.locVars, query1.locVars, query2.locVars);
-
+			concatenateVectors(queryPr.dstQueryVars, query1.dstQueryVars, query2.dstQueryVars);
+			
 			queryPr.isFact = false;
 			queryPr.isQuery = true;
 			queryPr.isInductive = false;
@@ -601,8 +602,7 @@ namespace ufo
 		ssa[num-1] = replaceAll(ssa[num-1], bnd.bindVars[num], loop.dstVars);
 	}
 
-	void mergeIterationsQuery(HornRuleExt *query, int num, ExprVector &ssa, BndExpl &bnd, 
-		string varname, ExprVector &newVars)
+	void mergeIterationsQuery(HornRuleExt *query, int num, ExprVector &ssa, BndExpl &bnd, string varname)
 	{
 		if (num <= 0) return;
 		// for (auto it : ssa)
@@ -614,14 +614,15 @@ namespace ufo
 		{
 			Expr newVar = mkTerm<string>(varname+"query_var_"+lexical_cast<string>(i), query->body->getFactory());
 			newVar = cloneVar(bnd.bindVars[num][i], newVar);
-			newVars.push_back(newVar);
+
+			// make sure dstQueryVars are empty before pushing vars, or handle the case when we need to push to non-empty vector
+			query->dstQueryVars.push_back(newVar);
 			// outs() << "newVar: " << *newVar << "\n";
 			ssa[num-1] = replaceAll(ssa[num-1], bnd.bindVars[num][i], newVar);
 		}
 	}
 
-	void createAlignment(CHCs &ruleManager, int unrollTrans, int unrollFact, int unrollQuery, 
-		Expr& prefRuleBody, ExprVector& newVars)
+	void createAlignment(CHCs &ruleManager, int unrollTrans, int unrollFact, int unrollQuery, Expr& prefRuleBody)
 	{
 		// if (!(unrollTrans == 0 && unrollQuery == 0))
 		// {
@@ -656,8 +657,10 @@ namespace ufo
           for (int m = 0; m < cycle.size(); m++)
             trace.push_back(cycle[m]);
 
+	string s = ruleManager.getVarName();
+
         ExprVector ssa;
-        bnd.getSSA(trace, ssa, "_pr_bnd_var_");
+        bnd.getSSA(trace, ssa, s+"bnd_var_");
 
         // AH: have to push extra vars to locVars
         mergeIterationsFact(prefixRule, unrollFact, ssa, bnd);
@@ -671,14 +674,14 @@ namespace ufo
             trace.push_back(cycle[m]);
 
         ExprVector ssa1;
-        bnd.getSSA(trace, ssa1, "_pr_bnd_var_");
+        bnd.getSSA(trace, ssa1, s+"bnd_var_");
 
         ssa1.erase(ssa1.begin());
 
         ExprVector s1;
         filter(conjoin(ssa1, ruleManager.m_efac), IsConst(), inserter(s1, s1.begin()));
 
-        mergeIterationsQuery(query, unrollQuery, ssa1, bnd, ruleManager.getVarName(), newVars);
+        mergeIterationsQuery(query, unrollQuery, ssa1, bnd, ruleManager.getVarName());
 
         query->locVars.insert(query->locVars.end(), s1.begin(), s1.end());
         trace.clear();
@@ -691,7 +694,7 @@ namespace ufo
             trace.push_back(cycle[m]);
 
         ExprVector ssa2;
-        bnd.getSSA(trace, ssa2, "_pr_bnd_var_");
+        bnd.getSSA(trace, ssa2, s+"bnd_var_");
 
         ssa2.erase(ssa2.begin());
 
@@ -707,10 +710,9 @@ namespace ufo
 		if (unrollTrans > 1) rule.body = mk<AND>(rule.body, conjoin(ssa2, ruleManager.m_efac));
 		if (unrollQuery > 0) 
 		{
-			query->body = replaceAll(query->body, query->srcVars, newVars);
+			query->body = replaceAll(query->body, query->srcVars, query->dstQueryVars);
 			query->body = mk<AND>(query->body, conjoin(ssa1, ruleManager.m_efac));
 		}
-		else newVars = query->srcVars;
 	}
 
 	bool findAlignment(CHCs &ruleManager1, CHCs &ruleManager2)
@@ -738,7 +740,7 @@ namespace ufo
 		outs() << "\n\nassuming iters: " << *rule1.srcVars[iter1] << " and " << *rule2.srcVars[iter2] << "\n";
 	    Expr numIters1 = ruleManager1.numOfIters;
 	    Expr numIters2 = ruleManager2.numOfIters;
-	    // outs() << "numIters: " << *numIters1 << " and " << *numIters2 << "\n";
+	    //outs() << "numIters: " << *numIters1 << " and " << *numIters2 << "\n";
 
 		vector<vector<vector<int>>> combsArray, combsInt, combsBool, nonIterCombinations, combs1;
 		combinationsOfVars(ruleManager1.varsArray, ruleManager2.varsArray, combsArray);
@@ -887,24 +889,29 @@ namespace ufo
 
               if (model) 
               {
+	      // iterative solving optimization query to get all minmodels
+		// verify if I need to find minimum coef1 and coef2 separately
                 Expr minModels = u.getMinModelInts(coef1);
-                // outs() << "minModels: " << *minModels << "\n";
-
+		
                 findExpr<EQ>(coef1, minModels, minCoef1, true);
                 findExpr<EQ>(coef2, minModels, minCoef2, true);
-                findExpr<EQ>(const1, minModels, minConst1, true);
+		findExpr<EQ>(const1, minModels, minConst1, true);
                 findExpr<EQ>(const2, minModels, minConst2, true);
 
-                Expr vals = mk<AND>(minCoef1, minCoef2);
+                u.isSat(mk<AND>(quantifiedFla, mk<AND>(minCoef1, minCoef2)));
 
-                u.isSat(mk<AND>(quantifiedFla, vals));
+		//minModels = u.getMinModelsInts(coef2);
+		
+                	
+                //u.isSat(mk<AND>(quantifiedFla, mk<AND>(minCoef1, minCoef2)));
 
-                if (minConst1->right() == mkMPZ(0, fac))
+                
+		if (minConst1->right() == mkMPZ(0, fac))
                   minModels = u.getMinModelInts(const2);
-                else 
+		else 
                   minModels = u.getMinModelInts(const1);
-
-                minConst1 = NULL;
+                
+		minConst1 = NULL;
                 minConst2 = NULL;
                 findExpr<EQ>(const1, minModels, minConst1, true);
                 findExpr<EQ>(const2, minModels, minConst2, true);
@@ -942,19 +949,17 @@ namespace ufo
 				for (auto &it2 : v2)
 					vComb.push_back(vector<int>{it, it2});
 
-			// for (auto it : vComb)
-			// 	outs() << it[0] << " " << const1Int-it[0] << " " << it[1] << " " << const2Int-it[1] << "\n";
+			 //for (auto it : vComb)
+			 //	outs() << it[0] << " " << const1Int-it[0] << " " << it[1] << " " << const2Int-it[1] << "\n";
 
 			bool impliesEq = false;
-			ExprVector varsQ, varsQ1;
 			for (auto &it : vComb)
 			{
 				// check if adding certain iterations to query will make the initial values of iterators equal
 				// it is not greedy approach currently
 				Expr prefRuleBody1, prefRuleBody2;
-				ExprVector v;
-				createAlignment(ruleManager1, 0, it[0], 0, prefRuleBody1, v);
-				createAlignment(ruleManager2, 0, it[1], 0, prefRuleBody2, v);
+				createAlignment(ruleManager1, 0, it[0], 0, prefRuleBody1);
+				createAlignment(ruleManager2, 0, it[1], 0, prefRuleBody2);
 
 				Expr tempProdFact = mk<AND>(mk<AND>(prefRuleBody1, prefRuleBody2), preRelev);
 				Expr eq = mk<EQ>(iterF, iterS);
@@ -963,10 +968,10 @@ namespace ufo
 				if (impliesEq)
 				{
 					// actual alignment created here
-					createAlignment(ruleManager1, coef1Int, it[0], const1Int-it[0], prefRuleBody1, varsQ);
+					createAlignment(ruleManager1, coef1Int, it[0], const1Int-it[0], prefRuleBody1);
 					prefixRule1.body = prefRuleBody1;
 
-					createAlignment(ruleManager2, coef2Int, it[1], const2Int-it[1], prefRuleBody2, varsQ1);					
+					createAlignment(ruleManager2, coef2Int, it[1], const2Int-it[1], prefRuleBody2);					
 					prefixRule2.body = prefRuleBody2;
 
 					// break out of the loop if for any alignment, we have iterators initially equal;
@@ -979,10 +984,25 @@ namespace ufo
 			// if iterator values do not match for any number of iterations, no alignment found
 			if (!impliesEq) continue;
 
+			HornRuleExt *query1, *query2;
+			for (auto &it : ruleManager1.chcs) 
+			{
+				if (it.isQuery) query1 = &it; 
+			}
+
+			for (auto &it : ruleManager2.chcs)
+			{
+				if (it.isQuery) query2 = &it;
+			}
+
 			// create precondition and postcondition
-			Expr e = replaceAll(pre, rule1.dstVars, varsQ);
-			Expr post = replaceAll(e, rule2.dstVars, varsQ1);
+			Expr post;
+			if (!query1->dstQueryVars.empty()) post = replaceAll(pre, rule1.dstVars, query1->dstQueryVars);
+			else post = replaceAll(pre, rule1.dstVars, rule1.srcVars); 
+			if (!query2->dstQueryVars.empty()) post = replaceAll(post, rule2.dstVars, query2->dstQueryVars);
+			else post = replaceAll(post, rule2.dstVars, rule2.srcVars); 
 			Expr negPost = mkNeg(post);
+
 
 			// create the product 
 			CHCs ruleManagerProduct(ruleManager1, ruleManager2, "_pr_");
@@ -1004,7 +1024,7 @@ namespace ufo
 			HornRuleExt *fact, *query, *ind;
 			for (auto &it : ruleManagerProduct.chcs)
 			{
-				// it.printMemberVars();
+				//it.printMemberVars();
 				if (it.isFact) fact = &it;
 				if (it.isQuery) query = &it;
 				if (it.isInductive) ind = &it;
@@ -1048,7 +1068,8 @@ namespace ufo
 
 		CHCs ruleManagerSrc(m_efac, z3, "_v1_");
 		ruleManagerSrc.parse(string(chcfileSrc), false);
-
+		
+		ruleManagerSrc.removePostLoop();
 		/*outs() << "eliminateQuantifiers:\n";
 		for (auto it : ruleManagerSrc.chcs)
 		{
@@ -1067,18 +1088,19 @@ namespace ufo
 			}
 		}*/
 
-		// for (auto it : ruleManagerSrc.chcs) it.printMemberVars();
+		//for (auto it : ruleManagerSrc.chcs) it.printMemberVars();
 
 		CHCs ruleManagerDst(m_efac, z3, "_v2_");
 		ruleManagerDst.parse(string(chcfileDst), false);
 
-		// for (auto it : ruleManagerDst.chcs) it.printMemberVars();
+		ruleManagerDst.removePostLoop();
+		//for (auto it : ruleManagerDst.chcs) it.printMemberVars();
 
 		ruleManagerSrc.findIterators();
 		ruleManagerDst.findIterators();
 
 		bool equiv = findAlignment(ruleManagerSrc, ruleManagerDst);
-		if (equiv) outs() << "programs are equivalent\n";
+		if (equiv) outs() << "\nprograms are equivalent\n";
 		else outs() << "programs are not equivalent\n";
   };
 

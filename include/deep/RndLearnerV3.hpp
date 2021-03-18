@@ -858,13 +858,14 @@ namespace ufo
       for (auto &h: worklist)
       {
         HornRuleExt& hr = *h;
-
         if (hr.isQuery) continue;
 
         if (!checkCHC(hr, candidatesTmp))
         {
           bool res2 = true;
           int ind = getVarIndex(hr.dstRelation, decls);
+           //outs() << "candidates: \n";
+	   //for(auto &it : candidatesTmp[ind]) outs() << *it << "\n";
           Expr model = u.getModel(hr.dstVars);
           if (u.isModelSkippable(model, hr.dstVars, candidatesTmp))
           {
@@ -875,8 +876,6 @@ namespace ufo
           else
           {
             ExprVector& ev = candidatesTmp[ind];
-            // outs() << "candidates:\n";
-            // for(auto &it : candidatesTmp[ind]) outs() << *it << "\n";
             ExprVector invVars;
             for (auto & a : invarVars[ind]) invVars.push_back(a.second);
             SamplFactory& sf = sfs[ind].back();
@@ -1342,7 +1341,6 @@ namespace ufo
       }
 
       filterUnsat();
-
       if (multiHoudini(ruleManager.wtoCHCs))
       {
         assignPrioritiesForLearned();
@@ -1450,6 +1448,8 @@ namespace ufo
       for (int i = ruleManager.wtoCHCs.size() - 1; i >= 0; i--)
       {
         auto & hr = *ruleManager.wtoCHCs[i];
+//	outs() << "horn rule: " << (hr.isFact ? "fact" : (hr.isQuery ? "query" : "ind")) << "\n";
+//	hr.printMemberVars();
         if (!checkCHC(hr, candidates)) {
           if (!hr.isQuery)
           {
@@ -1490,9 +1490,12 @@ namespace ufo
         for (auto & a : annotations[ind]) lms.insert(a);
         for (auto a : lms)
         {
-          for (auto & v : invarVars[ind]) a = replaceAll(a, v.second, hr.srcVars[v.first]);
+		if (hr.isQuery && !hr.dstQueryVars.empty()) 
+          		for (auto & v : invarVars[ind]) a = replaceAll(a, v.second, hr.dstQueryVars[v.first]);
+		else
+			for (auto & v : invarVars[ind]) a = replaceAll(a, v.second, hr.srcVars[v.first]);
           exprs.insert(a);
-          // outs() << "candidate: " << *a << "\n";
+           //outs() << "candidate: " << *a << "\n";
         }
       }
 
