@@ -817,8 +817,8 @@ namespace ufo
 				// checks if initial values of iterators depend on any variables; also constant values are also added to pre
 				// we might as well check that the pair[1] variable is also constant, similar to third check
 				if ((contains(iterFVal, rule1.srcVars[pair[0]]) || contains(iterSVal, rule2.srcVars[pair[1]])
-				|| u.implies(rule1.body, mk<EQ>(rule1.srcVars[pair[0]], rule1.dstVars[pair[0]])) 
-				&& (!isOpX<ARRAY_TY>(bind::typeOf(rule1.srcVars[pair[0]]))))) 
+				|| u.implies(rule1.body, mk<EQ>(rule1.srcVars[pair[0]], rule1.dstVars[pair[0]]))) 
+				&& (!isOpX<ARRAY_TY>(bind::typeOf(rule1.srcVars[pair[0]])))) 
 				{
 					preRelev = mk<AND>(preRelev, mk<EQ>(rule1.dstVars[pair[0]], rule2.dstVars[pair[1]]));
 					preRelev2 = mk<AND>(preRelev2, mk<EQ>(rule1.srcVars[pair[0]], rule2.srcVars[pair[1]]));

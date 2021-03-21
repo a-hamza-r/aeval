@@ -231,6 +231,7 @@ namespace ufo
           return relationDecl;
         }
       }
+      return NULL;
     }
 
     void removeDecl(Expr relation)
