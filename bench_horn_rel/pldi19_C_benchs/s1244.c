@@ -1,0 +1,18 @@
+#include "declarations.h"
+
+
+TYPE s1244(int count) {
+	for (int i = 0; i < count*8-1; i++) {
+		a[i] = b[i] + c[i] * c[i] + b[i]*b[i] + c[i];
+		d[i] = a[i] + a[i+1];
+	}
+  return 0;
+}
+
+
+int nondet();
+
+int main() {
+	int count = nondet();
+	s1244(count);
+}
