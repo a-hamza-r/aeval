@@ -1,5 +1,7 @@
 #include "declarations.h"
 
+//	control loops
+//	vector times vector times vector
 
 TYPE vtvtv(int count) {
   for (int i = 0; i < count*8; i++) {

@@ -1,5 +1,6 @@
 #include "declarations.h"
 
+//	node splitting
 
 TYPE s242(int count) {
 	for (int i = 1; i < count*8; ++i) {

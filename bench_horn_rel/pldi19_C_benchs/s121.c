@@ -1,5 +1,7 @@
 #include "declarations.h"
 
+//	induction variable recognition
+//	loop with possible ambiguity because of scalar store
 
 TYPE s121(int count) {
   for (int i = 0; i < count*8-1; i++) {

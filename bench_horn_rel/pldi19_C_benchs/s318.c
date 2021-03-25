@@ -1,5 +1,7 @@
 #include "declarations.h"
 
+//  reductions
+//  isamax, max absolute value, increments not equal to 1
 
 TYPE s318(int count) {
   int k = 0;

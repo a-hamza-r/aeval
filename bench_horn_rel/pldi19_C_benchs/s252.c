@@ -1,5 +1,7 @@
 #include "declarations.h"
 
+//	scalar and array expansion
+//	loop with ambiguous scalar temporary
 
 TYPE s252(int count) {
 	for (int i = 0; i < count*8-1; i++){

@@ -1,5 +1,7 @@
 #include "declarations.h"
 
+//	scalar and array expansion
+//	wrap-around scalar under an if
 
 TYPE s261(int count) {
 	for (int i = 1; i < count; ++i) {

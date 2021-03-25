@@ -1,5 +1,7 @@
 #include "declarations.h"
 
+//  induction variable recognition
+//  induction variable with multiple increments
 
 TYPE s127(int count) {
   int j = -1;

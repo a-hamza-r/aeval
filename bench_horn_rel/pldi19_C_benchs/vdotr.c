@@ -1,5 +1,7 @@
 #include "declarations.h"
 
+//	control loops
+//	vector dot product reduction
 
 TYPE vdotr(int count) {
   TYPE sum = 0;

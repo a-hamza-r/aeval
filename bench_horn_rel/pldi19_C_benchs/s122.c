@@ -1,5 +1,8 @@
 #include "declarations.h"
 
+//	induction variable recognition
+//	variable lower and upper bound, and stride
+//	reverse data access and jump in data access
 
 TYPE s122(int count) {
   int k = 0;

@@ -1,5 +1,6 @@
 #include "declarations.h"
 
+//	wavefronts, it will make jump in data access
 
 TYPE s2111(int count) {
 	for (int j = 1; j < count; j++) {

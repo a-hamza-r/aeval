@@ -1,5 +1,7 @@
 #include "declarations.h"
 
+//	control flow
+//	simple loop with dependent conditional
 
 TYPE s273(int count) {
 	for (int i = 0; i < count*8; i++) {

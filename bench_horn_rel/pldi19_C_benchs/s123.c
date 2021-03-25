@@ -1,5 +1,8 @@
 #include "declarations.h"
 
+//	induction variable recognition
+//	induction variable under an if
+//	not vectorizable, the condition cannot be speculated
 
 TYPE s123(int count) {
 	int j = -1;

@@ -1,5 +1,7 @@
 #include "declarations.h"
 
+//	linear dependence testing
+//	no dependence - vectorizable
 
 TYPE s111(int count) {
   for (int i = 1; i < count*8; i+=2) {

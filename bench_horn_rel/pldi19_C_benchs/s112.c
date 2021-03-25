@@ -1,5 +1,7 @@
 #include "declarations.h"
 
+//	linear dependence testing
+//	loop reversal
 
 TYPE s112(int count) {
   for (int i = count*8-1; i >= 1; i--) {

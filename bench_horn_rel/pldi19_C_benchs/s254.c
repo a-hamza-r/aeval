@@ -1,5 +1,7 @@
 #include "declarations.h"
 
+//	scalar and array expansion
+//	carry around variable
 
 TYPE s254(int count) {
 	x = b[count*8-1];

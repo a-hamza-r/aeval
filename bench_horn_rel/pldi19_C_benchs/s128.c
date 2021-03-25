@@ -1,5 +1,8 @@
 #include "declarations.h"
 
+//	induction variables
+//	coupled induction variables
+//	jump in data access
 
 TYPE s128(int count) {
 	int j = -1, k;

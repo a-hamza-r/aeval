@@ -1,5 +1,8 @@
 #include "declarations.h"
 
+//	nonlinear dependence testing
+//	walk a row in a symmetric packed array
+//	element a(i,j) for (int j>i) stored in location j*(j-1)/2+i
 
 TYPE s141(int count) {
 	int k;

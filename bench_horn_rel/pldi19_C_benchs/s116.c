@@ -1,5 +1,6 @@
 #include "declarations.h"
 
+//  linear dependence testing
 
 TYPE s116(int count) {
   for (int i = 0; i < count*8-5; i+=5) {

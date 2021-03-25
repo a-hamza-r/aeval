@@ -1,5 +1,7 @@
 #include "declarations.h"
 
+//	linear dependence testing
+//	no dependence - vectorizable
 
 TYPE s1119(int count) {
 	for (int i = 1; i < count; i++) {

@@ -1,5 +1,7 @@
 #include "declarations.h"
 
+//  reductions
+//  if to max with index reductio 1 dimension
 
 TYPE s315(int count) {
   TYPE x;

@@ -1,5 +1,8 @@
 #include "declarations.h"
 
+//	diagonals
+//	main diagonal calculation
+//	jump in data access
 
 TYPE s2101(int count) {
 	for (int i = 0; i < count; i++) {

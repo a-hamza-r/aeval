@@ -1,5 +1,7 @@
 #include "declarations.h"
 
+//	node splitting
+//	preloading necessary to allow vectorization
 
 TYPE s241(int count) {
 	for (int i = 0; i < count*8-1; i++) {

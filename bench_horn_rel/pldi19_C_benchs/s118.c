@@ -1,5 +1,7 @@
 #include "declarations.h"
 
+//	linear dependence testing
+//	potential dot product recursion
 
 TYPE s118(int count) {
 	for (int i = 1; i < count; i++) {

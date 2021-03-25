@@ -1,5 +1,7 @@
 #include "declarations.h"
 
+//	control loops
+//	vector plus vector times scalar
 
 TYPE vpvts(int count, TYPE k) {
   for (int i = 0; i < count*8; i++) {

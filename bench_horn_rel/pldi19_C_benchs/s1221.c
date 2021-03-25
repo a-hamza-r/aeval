@@ -1,5 +1,6 @@
 #include "declarations.h"
 
+//	run-time symbolic resolution
 
 TYPE s1221(int count) {
   for (int i = 4; i < count*8; i++) {

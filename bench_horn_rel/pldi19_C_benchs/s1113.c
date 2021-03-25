@@ -1,5 +1,7 @@
 #include "declarations.h"
 
+//	linear dependence testing
+//	one iteration dependency on a(coumt*4) but still vectorizable
 
 TYPE s1113(int count) {
 	for (int i = 0; i < count*8; i++) {

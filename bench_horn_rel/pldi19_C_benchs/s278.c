@@ -1,5 +1,7 @@
 #include "declarations.h"
 
+//	control flow
+//	if/goto to block if-then-else
 
 TYPE s278(int count) {
 	for (int i = 0; i < count*8; i++) {

@@ -1,5 +1,7 @@
 #include "declarations.h"
 
+//	induction variable recognition
+//	induction variable in two loops; collapsing possible
 
 TYPE s000(int count) {
 	int k = -1;

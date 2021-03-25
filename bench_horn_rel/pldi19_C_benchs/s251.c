@@ -1,5 +1,7 @@
 #include "declarations.h"
 
+//	scalar and array expansion
+//	scalar expansion
 
 TYPE s251(int count) {
   TYPE s;

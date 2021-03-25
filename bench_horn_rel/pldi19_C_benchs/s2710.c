@@ -1,5 +1,7 @@
 #include "declarations.h"
 
+//  control flow
+//  scalar and vector ifs
 
 // doesn't vectorize
 TYPE s2710(int count, int x) {

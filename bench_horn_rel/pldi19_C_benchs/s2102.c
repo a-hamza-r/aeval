@@ -1,5 +1,7 @@
 #include "declarations.h"
 
+//	diagonals
+//	identity matrix, best results vectorize both inner and outer loops
 
 TYPE s2102(int count) {
 	for (int i = 0; i < count; i++) {

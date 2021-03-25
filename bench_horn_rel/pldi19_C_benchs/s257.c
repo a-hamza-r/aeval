@@ -1,7 +1,9 @@
 #include "declarations.h"
 
+//	scalar and array expansion
+//	array expansion
 
-TYPE s000(int count) {
+TYPE s257(int count) {
 	for (int i = 1; i < count; i++) {
 		for (int j = 0; j < count; j++) {
 			a[i] = aa[j][i] - a[i-1];
@@ -16,5 +18,5 @@ int nondet();
 
 int main() {
 	int count = nondet();
-	s000(count);
+	s257(count);
 }

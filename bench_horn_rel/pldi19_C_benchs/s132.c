@@ -1,5 +1,7 @@
 #include "declarations.h"
 
+//	global data flow analysis
+//	loop with multiple dimension ambiguous subscripts
 
 TYPE s132(int count) {
 	int m = 0;

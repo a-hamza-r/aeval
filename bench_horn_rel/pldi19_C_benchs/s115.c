@@ -1,5 +1,8 @@
 #include "declarations.h"
 
+//	linear dependence testing
+//	triangular saxpy loop
+
 TYPE s115(int count) {
   for (int j = 0; j < count; j++) {
     for (int i = j+1; i < count; i++) {

@@ -1,5 +1,8 @@
 #include "declarations.h"
 
+//	linear dependence testing
+//	transpose vectorization
+//	Jump in data access - not vectorizable
 
 TYPE s114(int count) {
 	for (int i = 0; i < count; i++) {

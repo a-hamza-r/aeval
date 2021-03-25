@@ -1,5 +1,7 @@
 #include "declarations.h"
 
+//	loop distribution
+//	partial loop vectorizatio recurrence in middle
 
 TYPE s222(int count) {
 	for (int i = 1; i < count*8; i++) {

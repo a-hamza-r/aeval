@@ -1,5 +1,7 @@
 #include "declarations.h"
 
+//	node splitting
+//	cycle with ture and anti dependency
 
 TYPE s1244(int count) {
 	for (int i = 0; i < count*8-1; i++) {

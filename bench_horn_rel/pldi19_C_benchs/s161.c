@@ -1,5 +1,8 @@
 #include "declarations.h"
 
+//	control flow
+//	tests for recognition of loop independent dependences
+//	between statements in mutually exclusive regions.
 
 TYPE s161(int count) {
 	for (int i = 0; i < LEN-1; ++i) {

@@ -1,5 +1,8 @@
 #include "declarations.h"
 
+//	crossing thresholds
+//	index set splitting
+//	reverse data access
 
 TYPE s1281(int count) {
 	for (int i = 0; i < count*8; i++) {

@@ -1,5 +1,7 @@
 #include "declarations.h"
 
+//	control flow
+//	if around inner loop, interchanging needed
 
 TYPE s275(int count) {
 	for (int i = 0; i < count; i++) {

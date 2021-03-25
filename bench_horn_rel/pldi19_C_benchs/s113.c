@@ -1,5 +1,7 @@
 #include "declarations.h"
 
+//	linear dependence testing
+//	a(i)=a(1) but no actual dependence cycle
 
 TYPE s113(int count) {
 	for (int i = 1; i < count*8; i++) {

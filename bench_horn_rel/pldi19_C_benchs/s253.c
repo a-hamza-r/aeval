@@ -1,5 +1,7 @@
 #include "declarations.h"
 
+//	scalar and array expansion
+//	scalar expansio assigned under if
 
 TYPE s253(int count) {
 	for (int i = 0; i < count*8; i++) {

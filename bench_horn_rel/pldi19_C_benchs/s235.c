@@ -1,5 +1,7 @@
 #include "declarations.h"
 
+//	loop interchanging
+//	imperfectly nested loops
 
 TYPE s235(int count) {
 	for (int i = 0; i < count; i++) {

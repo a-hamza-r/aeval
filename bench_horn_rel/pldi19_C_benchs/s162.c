@@ -1,5 +1,7 @@
 #include "declarations.h"
 
+//	control flow
+//	deriving assertions
 
 TYPE s162(int count) {
   for (int i = 0; i < count*8-1; i++) {

@@ -1,5 +1,7 @@
 #include "declarations.h"
 
+//  loop rerolling
+//  unrolled saxpy
 
 TYPE s351(int count) {
 	TYPE alpha = c[0];

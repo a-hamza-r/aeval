@@ -1,5 +1,7 @@
 #include "declarations.h"
 
+//	loop interchange
+//	interchanging of triangular loops
 
 TYPE s1232(int count) {
 	for (int j = 0; j < count; j++) {

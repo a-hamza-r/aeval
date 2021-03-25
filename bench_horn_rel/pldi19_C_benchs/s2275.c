@@ -1,5 +1,6 @@
 #include "declarations.h"
 
+//	loop distribution is needed to be able to interchange
 
 TYPE s2275(int count) {
 	for (int i = 0; i < count; i++) {

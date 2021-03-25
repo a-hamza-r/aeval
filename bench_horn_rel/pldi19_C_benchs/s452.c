@@ -1,5 +1,7 @@
 #include "declarations.h"
 
+//	intrinsic functions
+//	seq function
 
 TYPE s452(int count) {
   for (int i = 0; i < count*8; i++) {

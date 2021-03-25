@@ -1,5 +1,7 @@
 #include "declarations.h"
 
+//	statement reordering
+//	statement reordering allows vectorization
 
 TYPE s211(int count) {
 	for (int i = 1; i < count*8-1; i++) {

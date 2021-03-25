@@ -1,5 +1,7 @@
 #include "declarations.h"
 
+//	scalar and array expansion
+//	array expansion
 
 TYPE s256(int count) {
 	for (int i = 0; i < count; i++) {

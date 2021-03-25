@@ -1,5 +1,7 @@
 #include "declarations.h"
 
+//	statement reordering
+//	dependency needing temporary
 
 TYPE s1213(int count) {
 	for (int i = 1; i < count*8-1; i++) {

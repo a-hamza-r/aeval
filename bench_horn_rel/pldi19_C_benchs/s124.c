@@ -1,5 +1,7 @@
 #include "declarations.h"
 
+//	induction variable recognition
+//	induction variable under both sides of if (same value)
 
 TYPE s124(int count) {
 	int j = -1;

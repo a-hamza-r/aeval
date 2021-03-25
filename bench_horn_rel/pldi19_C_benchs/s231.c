@@ -1,7 +1,9 @@
 #include "declarations.h"
 
+//	loop interchange
+//	loop with data dependency
 
-TYPE s000(int count) {
+TYPE s231(int count) {
 	for (int i = 0; i < count; ++i) {
 		for (int j = 1; j < count; j++) {
 			aa[j][i] = aa[j - 1][i] + bb[j][i];
@@ -15,5 +17,5 @@ int nondet();
 
 int main() {
 	int count = nondet();
-	s000(count);
+	s231(count);
 }

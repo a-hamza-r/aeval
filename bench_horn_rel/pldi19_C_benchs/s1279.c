@@ -1,5 +1,7 @@
 #include "declarations.h"
 
+//	control flow
+//	vector if/gotos
 
 TYPE s1279(int count) {
 	for (int i = 0; i < count*8; i++) {

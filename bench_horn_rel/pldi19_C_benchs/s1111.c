@@ -1,5 +1,7 @@
 #include "declarations.h"
 
+//	no dependence - vectorizable
+//	jump in data access
 
 TYPE s1111(int count) {
   for (int i = 0; i < count*4; i++) {

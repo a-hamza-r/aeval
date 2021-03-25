@@ -1,5 +1,6 @@
 #include "declarations.h"
 
+//	induction varibale recognition
 
 TYPE s453(int count) {
   TYPE s = 0;

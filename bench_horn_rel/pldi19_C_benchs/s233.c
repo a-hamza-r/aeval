@@ -1,5 +1,7 @@
 #include "declarations.h"
 
+//	loop interchange
+//	interchanging with one of two inner loops
 
 TYPE s233(int count) {
 	for (int i = 1; i < count; i++) {

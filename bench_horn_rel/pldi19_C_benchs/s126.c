@@ -1,5 +1,7 @@
 #include "declarations.h"
 
+//	induction variable recognition
+//	induction variable in two loops; recurrence in inner loop
 
 TYPE s126(int count) {
 	int k = 1;

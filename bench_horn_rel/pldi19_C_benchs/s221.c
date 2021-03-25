@@ -1,5 +1,7 @@
 #include "declarations.h"
 
+//	loop distribution
+//	loop that is partially recursive
 
 TYPE s221(int count) {
 	for (int i = 1; i < count*8; i++) {

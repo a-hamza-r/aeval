@@ -1,5 +1,8 @@
 #include "declarations.h"
 
+//	loop peeling
+//	wrap around variable, 2 levels
+//	similar to S291
 
 TYPE s292(int count) {
 	int im1 = count*8-1;

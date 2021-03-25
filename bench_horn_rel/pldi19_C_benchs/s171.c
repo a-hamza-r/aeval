@@ -1,5 +1,7 @@
 #include "declarations.h"
 
+//	symbolics
+//	symbolic dependence tests
 
 TYPE s171(int count, int inc) {
 	for (int i = 0; i < count*8; i++) {

@@ -1,5 +1,7 @@
 #include "declarations.h"
 
+//	control flow
+//	semantic if removal
 
 TYPE s2711(int count) {
 	for (int i = 0; i < count*8; i++) {

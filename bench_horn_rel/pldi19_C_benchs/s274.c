@@ -1,5 +1,7 @@
 #include "declarations.h"
 
+//	control flow
+//	complex loop with dependent conditional
 
 TYPE s274(int count) {
 	for (int i = 0; i < LEN; i++) {

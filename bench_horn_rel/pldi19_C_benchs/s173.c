@@ -1,5 +1,7 @@
 #include "declarations.h"
 
+//	symbolics
+//	expression in loop bounds and subscripts
 
 TYPE s173(int count) {
   int k = count*4;

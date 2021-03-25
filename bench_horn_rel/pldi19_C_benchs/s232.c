@@ -1,5 +1,7 @@
 #include "declarations.h"
 
+//	loop interchange
+//	interchanging of triangular loops
 
 TYPE s232(int count) {
 	for (int j = 1; j < LEN2; j++) {

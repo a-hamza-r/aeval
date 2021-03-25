@@ -1,5 +1,7 @@
 #include "declarations.h"
 
+//	scalar and array expansion
+//	scalar expansion
 
 TYPE s2251(int count) {
 	float s = (float)0.0;

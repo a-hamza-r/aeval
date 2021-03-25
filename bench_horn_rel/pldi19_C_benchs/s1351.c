@@ -1,5 +1,6 @@
 #include "declarations.h"
 
+//  induction pointer recognition
 
 TYPE s1351(int count) {
   TYPE* __restrict__ A = a;

@@ -1,5 +1,7 @@
 #include "declarations.h"
 
+//	control flow
+//	loop with singularity handling
 
 TYPE s271(int count) {
 	for (int i = 0; i < count*8; i++) {

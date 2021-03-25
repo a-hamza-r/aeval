@@ -1,5 +1,7 @@
 #include "declarations.h"
 
+//	scalar and array expansion
+//	wrap-around scalar under an if
 
 TYPE s258(int count) {
 	s = 0.;

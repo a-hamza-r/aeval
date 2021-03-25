@@ -1,5 +1,7 @@
 #include "declarations.h"
 
+//	symbolics
+//	convolution
 
 /** vectorizes with gcc */
 TYPE s176(int count) {

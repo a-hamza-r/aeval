@@ -1,5 +1,7 @@
 #include "declarations.h"
 
+//	global data flow analysis
+//	forward substitution
 
 TYPE s131(int count) {
 	int m = 1;

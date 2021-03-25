@@ -1,5 +1,7 @@
 #include "declarations.h"
 
+//	control flow
+//	test for dependences arising from guard variable computation.
 
 TYPE s277(int count) {
 	for (int i = 0; i < count*8-1; i++) {
