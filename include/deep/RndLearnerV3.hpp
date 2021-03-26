@@ -39,11 +39,6 @@ namespace ufo
     map<int, ExprSet> qvars;
     map<int, bool> iterGrows;
 
-    map<int, vector<vector<int>>> iters;  // contains all vars that have a behavior of iterator
-    map<int, map<int, bool>> itersGrow;  // whether the iters are increasing or decreasing
-    map<int, map<int, Expr>> numOfIters;  // contains all vars that have a behavior of iterator
-    map<int, vector<vector<vector<int>>>> nonIterCombinations;
-
     public:
 
     RndLearnerV3 (ExprFactory &efac, EZ3 &z3, CHCs& r, unsigned to, bool freqs, bool aggp,
@@ -794,62 +789,6 @@ namespace ufo
       return true;
     }
 
-    void mergeIterationsProduct(cpp_int numIterations, HornRuleExt& prodRule, Expr& rulesBody, 
-      HornRuleExt& subRule, ExprSet& extraVars, int startInd)
-    {
-      Expr var, var1, new_name;
-      for (auto l = 1; l < numIterations; l++)
-      {
-        Expr subRulesBody = subRule.body;
-        for (int v = 0; v < subRule.srcVars.size(); v++)
-        {
-          // every time, introduce a new variable and replace dstVars of rulesPr with new variable var
-          // replace rules1 srcVars with the new var and dstVars with current dstVars of rulesPr (before updating)
-          // and add the rules1 body to rulesPr body
-          new_name = mkTerm<string>("_pr_"+lexical_cast<string>(startInd+v)+"_"+lexical_cast<string>(l), m_efac);
-          var = cloneVar(subRule.srcVars[v], new_name);
-          var1 = prodRule.dstVars[startInd+v];
-          
-          subRulesBody = replaceAll(subRulesBody, subRule.srcVars[v], var);
-          subRulesBody = replaceAll(subRulesBody, subRule.dstVars[v], var1);
-
-          rulesBody = replaceAll(rulesBody, prodRule.dstVars[startInd+v], var);
-
-          extraVars.insert(var);
-        }
-
-        rulesBody = mk<AND>(rulesBody, subRulesBody);
-      }
-    }
-
-    void mergeIterationsInFact(cpp_int numIterations, Expr& prefixBody, HornRuleExt& subRule, ExprSet& extraVars, int ver)
-    {
-      Expr var, var1, new_name;
-      for (auto l = 0; l < numIterations; l++)
-      {
-        Expr subRulesBody = subRule.body;
-        for (int v = 0; v < subRule.srcVars.size(); v++)
-        {
-          // every time, introduce a new variable and replace dstVars of rulesPr with new variable var
-          // replace rules1 srcVars with the new var and dstVars with current dstVars of rulesPr (before updating)
-          // and add the rules1 body to rulesPr body
-          new_name = mkTerm<string>("_v"+lexical_cast<string>(ver)+"_"+lexical_cast<string>(v)+"_"
-            +lexical_cast<string>(l), m_efac);
-          var = cloneVar(subRule.srcVars[v], new_name);
-          var1 = subRule.dstVars[v];
-          
-          subRulesBody = replaceAll(subRulesBody, subRule.srcVars[v], var);
-          subRulesBody = replaceAll(subRulesBody, subRule.dstVars[v], var1);
-
-          prefixBody = replaceAll(prefixBody, subRule.dstVars[v], var);
-
-          extraVars.insert(var);
-        }
-
-        prefixBody = mk<AND>(prefixBody, subRulesBody);
-      }
-    }
-
     bool multiHoudini(vector<HornRuleExt*> worklist, bool recur = true)
     {
       if (!anyProgress(worklist)) return false;
@@ -858,14 +797,13 @@ namespace ufo
       for (auto &h: worklist)
       {
         HornRuleExt& hr = *h;
+
         if (hr.isQuery) continue;
 
         if (!checkCHC(hr, candidatesTmp))
         {
           bool res2 = true;
           int ind = getVarIndex(hr.dstRelation, decls);
-           //outs() << "candidates: \n";
-	   //for(auto &it : candidatesTmp[ind]) outs() << *it << "\n";
           Expr model = u.getModel(hr.dstVars);
           if (u.isModelSkippable(model, hr.dstVars, candidatesTmp))
           {
@@ -986,6 +924,7 @@ namespace ufo
                          ExprSet& tmpRanges, ExprSet& concreteVals, int ind, int i = 0)
     {
       if (av.empty()) return false;
+
       ExprSet se;
       filter (replCand, bind::IsSelect (), inserter(se, se.begin()));
 
@@ -1063,10 +1002,6 @@ namespace ufo
           for (auto & a : invarVars[ind]) invAndIterVarsAll.push_back(a.second);
           invAndIterVarsAll.push_back(qVar);
 
-          // outs() << "before fla\n";
-          // outs() << "iterator: " << *iterators[ind] << "\n";
-          // outs() << "iterator grows: " << iterGrows[ind] << "\n";
-          // outs() << "pre: " << *pre << "\n";
           Expr fla;
           if (pre->right() == iterators[ind])
             fla = (iterGrows[ind]) ? mk<GEQ>(qVar, pre->left()) :
@@ -1075,7 +1010,6 @@ namespace ufo
             fla = (iterGrows[ind]) ? mk<GEQ>(qVar, pre->right()) :
                                      mk<LEQ>(qVar, pre->right());
 
-          // outs() << "Fla: " << *fla << "\n";
           ExprSet tmp;
           getConj(postconds[ind], tmp);
           for (auto it = tmp.begin(); it != tmp.end(); )
@@ -1134,9 +1068,9 @@ namespace ufo
         }
 
         // process all quantified seeds
-        /* for (auto & a : tmpArrCands)
+        /* 
+        for (auto & a : tmpArrCands)
         {
-          // outs() << "tmpArrCands: " << *a << "\n";
           if (u.isTrue(a) || u.isFalse(a)) continue;
           Expr replCand = replaceAllRev(a, sf.lf.nonlinVars);
           if (!u.isTrue(replCand) && !u.isFalse(replCand))
@@ -1158,7 +1092,6 @@ namespace ufo
                 for (auto & a : tmpArrCands)
                   createGroundInstances (concreteVals, candsFromCode, a, iterators[ind]);
               }
-              
 
               // at this point it should not happen, but sometimes it does. To debug.
               if (!findInvVar(ind, replCand, arrAccessVars[ind])) continue;
@@ -1168,11 +1101,12 @@ namespace ufo
             }
             else candsFromCode.insert(a);
           }
-	}
-	*/
+        }
+	   */
 
         // trick for tiling benchs
-        /*ExprSet afs;
+        /*
+        ExprSet afs;
         for (auto & a : tmpArrFuns)
         {
           ExprVector vars;
@@ -1193,7 +1127,8 @@ namespace ufo
               arrCands[ind].insert(qcandTmp);
             }
           }
-        }*/
+        }
+      */
       }
       // process all quantifier-free seeds
       for (auto & cand : candsFromCode)
@@ -1448,8 +1383,6 @@ namespace ufo
       for (int i = ruleManager.wtoCHCs.size() - 1; i >= 0; i--)
       {
         auto & hr = *ruleManager.wtoCHCs[i];
-//	outs() << "horn rule: " << (hr.isFact ? "fact" : (hr.isQuery ? "query" : "ind")) << "\n";
-//	hr.printMemberVars();
         if (!checkCHC(hr, candidates)) {
           if (!hr.isQuery)
           {
@@ -1495,7 +1428,6 @@ namespace ufo
 		else
 			for (auto & v : invarVars[ind]) a = replaceAll(a, v.second, hr.srcVars[v.first]);
           exprs.insert(a);
-           //outs() << "candidate: " << *a << "\n";
         }
       }
 
@@ -1588,21 +1520,6 @@ namespace ufo
         SamplFactory& sf = sfs[i].back();
         u.removeRedundantConjuncts(sf.learnedExprs);
       }
-    }
-
-    Expr numIterations(Expr init, Expr transition, Expr final, int add)
-    {
-      auto &fac = init->getFactory();
-      if (!(init && transition && final)) return mkMPZ(-1, fac);
-      Expr numer = mk<MINUS>(final, init);
-      // works this way
-      if (add == 1) numer = mk<PLUS>(numer, mkMPZ(1, fac));
-      else if (add == -1) numer = mk<PLUS>(numer, mkMPZ(-1, fac));
-      Expr divisible = mk<EQ>(mk<MOD>(numer, transition), mkMPZ(0, fac));
-
-      Expr numIters = mk<PLUS>(mk<IDIV>(numer, transition), mk<ITE>(divisible, mkMPZ(0, fac), mkMPZ(1, fac)));
-      outs() << "numIters: " << *numIters << "\n";
-      return numIters;
     }
 
     void printSolution(bool simplify = true)

@@ -249,6 +249,17 @@ namespace ufo
 		}
 	}
 
+    void rulesOfPredicate(Expr &predicateDecl, vector<HornRuleExt> &rulesOfP, CHCs &rules)
+    {
+      for (auto it = rules.chcs.begin(); it != rules.chcs.end(); it++)
+      {
+          if (predicateDecl == it->head || predicateDecl == it->dstRelation)
+          {
+            rulesOfP.push_back(*it);
+          }
+      }
+    }
+
 
 	void productRelationSymbols(ExprVector predicates, Expr &predicateP, vector<HornRuleExt> &rulesOfP, 
 		CHCs &rules, bool calculateRulesOfP, vector<ExprVector> &toRemoveCHCs)
@@ -281,7 +292,7 @@ namespace ufo
 		if (calculateRulesOfP) 
 		{
 			// outs() << "Rules of relation: " << *rel1->arg(0) << "\n";
-			rules.rulesOfPredicate(rel1, rulesOfCurrentP);
+			rulesOfPredicate(rel1, rulesOfCurrentP, rules);
 
 			for (auto &it : rulesOfCurrentP) 
 			{
@@ -294,7 +305,7 @@ namespace ufo
 			rulesOfCurrentP.clear();
 
 			// outs() << "Rules of relation: " << *rel2->arg(0) << "\n";
-			rules.rulesOfPredicate(rel2, rulesOfCurrentP);
+			rulesOfPredicate(rel2, rulesOfCurrentP, rules);
 
 			for (auto &it : rulesOfCurrentP) 
 			{
@@ -657,10 +668,13 @@ namespace ufo
           for (int m = 0; m < cycle.size(); m++)
             trace.push_back(cycle[m]);
 
-	string s = ruleManager.getVarName();
+		string s = ruleManager.getVarName();
 
         ExprVector ssa;
-        bnd.getSSA(trace, ssa, s+"bnd_var_");
+        bnd.getSSA(trace, ssa);
+
+        ExprVector factBndVars;
+        filter(conjoin(ssa, ruleManager.m_efac), IsConst(), inserter(factBndVars, factBndVars.begin()));
 
         // AH: have to push extra vars to locVars
         mergeIterationsFact(prefixRule, unrollFact, ssa, bnd);
@@ -674,16 +688,15 @@ namespace ufo
             trace.push_back(cycle[m]);
 
         ExprVector ssa1;
-        bnd.getSSA(trace, ssa1, s+"bnd_var_");
+        bnd.getSSA(trace, ssa1);
 
         ssa1.erase(ssa1.begin());
 
-        ExprVector s1;
-        filter(conjoin(ssa1, ruleManager.m_efac), IsConst(), inserter(s1, s1.begin()));
+		ExprVector queryBndVars;
+        filter(conjoin(ssa1, ruleManager.m_efac), IsConst(), inserter(queryBndVars, queryBndVars.begin()));
 
         mergeIterationsQuery(query, unrollQuery, ssa1, bnd, ruleManager.getVarName());
 
-        query->locVars.insert(query->locVars.end(), s1.begin(), s1.end());
         trace.clear();
 
         // unroll the inductive rule unrollTrans times
@@ -694,26 +707,341 @@ namespace ufo
             trace.push_back(cycle[m]);
 
         ExprVector ssa2;
-        bnd.getSSA(trace, ssa2, s+"bnd_var_");
+        bnd.getSSA(trace, ssa2);
 
         ssa2.erase(ssa2.begin());
 
-        ExprVector s2;
-        filter(conjoin(ssa2, ruleManager.m_efac), IsConst(), inserter(s2, s2.begin()));
+		ExprVector ruleBndVars;
+        filter(conjoin(ssa2, ruleManager.m_efac), IsConst(), inserter(ruleBndVars, ruleBndVars.begin()));
 
         mergeIterationsLoop(rule, unrollTrans-1, ssa2, bnd);
 
-        rule.locVars.insert(rule.locVars.end(), s2.begin(), s2.end());
-
         // make required changes to the CHC system
-        if (unrollFact > 0) prefRuleBody = conjoin(ssa, ruleManager.m_efac);
-		if (unrollTrans > 1) rule.body = mk<AND>(rule.body, conjoin(ssa2, ruleManager.m_efac));
+        if (unrollFact > 0) 
+        {
+        	prefRuleBody = conjoin(ssa, ruleManager.m_efac);
+	        for (auto &var : factBndVars)
+			{
+				Expr new_name = mkTerm<string>(s+lexical_cast<string>(var), ruleManager.m_efac);
+        		Expr var1 = cloneVar(var, new_name);
+        		prefRuleBody = replaceAll(prefRuleBody, var, var1);
+			}
+        }
+		if (unrollTrans > 1) 
+		{
+			Expr addToRule = conjoin(ssa2, ruleManager.m_efac);
+	        for (auto &var : ruleBndVars)
+			{
+				Expr new_name = mkTerm<string>(s+lexical_cast<string>(var), ruleManager.m_efac);
+        		Expr var1 = cloneVar(var, new_name);
+        		addToRule = replaceAll(addToRule, var, var1);
+        		rule.body = replaceAll(rule.body, var, var1);
+        		rule.locVars.push_back(var1);
+			}
+			rule.body = mk<AND>(rule.body, addToRule);
+		}
 		if (unrollQuery > 0) 
 		{
+			Expr addToQuery = conjoin(ssa1, ruleManager.m_efac);
+	        
+			for (auto &var : queryBndVars)
+			{
+				Expr new_name = mkTerm<string>(s+lexical_cast<string>(var), ruleManager.m_efac);
+        		Expr var1 = cloneVar(var, new_name);
+        		addToQuery = replaceAll(addToQuery, var, var1);
+        		query->locVars.push_back(var1);
+			}
 			query->body = replaceAll(query->body, query->srcVars, query->dstQueryVars);
-			query->body = mk<AND>(query->body, conjoin(ssa1, ruleManager.m_efac));
+			query->body = mk<AND>(query->body, addToQuery);
 		}
 	}
+
+	void getExprEqualities(Expr var, HornRuleExt& rule, CHCs &ruleManager)
+    {
+      Expr body = rule.body;
+      ExprSet s;
+      Expr final;
+      getConj(body, s);
+      for (auto &e : s)
+      {
+        bool skip = false;
+        if (contains(e, var) && !containsOp<ARRAY_TY>(e) && containsOp<EQ>(e))
+        {
+          ExprSet ss;
+          filter(e, IsConst(), inserter(ss, ss.begin()));
+          for (auto &it : ss)
+          {
+            if (find(rule.dstVars.begin(), rule.dstVars.end(), it) != rule.dstVars.end())
+            {
+              skip = true;
+              break;
+            }
+          }
+          if (skip) continue;
+          else 
+          { 
+            if (final) final = mk<AND>(final, e);
+            else final = e;
+          }
+        }
+      }
+      ruleManager.exprEqualities[var] = final;
+    }
+
+
+    Expr numIterations(Expr init, Expr transition, Expr final, Expr add)
+    {
+      auto &fac = init->getFactory();
+      if (!(init && transition && final)) return mkMPZ(-1, fac);
+      Expr numer = mk<MINUS>(final, init);
+      // works this way
+      if (add) numer = mk<PLUS>(numer, add);
+      Expr divisible = mk<EQ>(mk<MOD>(numer, transition), mkMPZ(0, fac));
+
+      Expr numIters = mk<PLUS>(mk<IDIV>(numer, transition), mk<ITE>(divisible, mkMPZ(0, fac), mkMPZ(1, fac)));
+      // outs() << "numIters: " << *numIters << "\n";
+      return numIters;
+    }
+
+	bool findInitialValue(int i, HornRuleExt& initRule, HornRuleExt& rule, Expr &initVal, SMTUtils &u)
+    {
+      Expr init = initRule.body;
+      Expr iter = rule.dstVars[i];
+
+      findExpr<EQ>(iter, init, initVal, true);
+      if (initVal)
+      {
+        Expr newInit;
+        // a hack to avoid mod operations
+        if (isOpX<AND>(initVal))
+        {
+          ExprSet s;
+          getConj(initVal, s);
+          for (auto &it : s)
+          {
+            Expr normalized = ineqSimplifier(iter, simplifyArithm(it));
+            if (isOpX<EQ>(normalized) && normalized->left() == iter)  
+            {
+              // if multiple equalities are found, just return; support more
+              if (newInit) return false;
+              else newInit = normalized;
+            }
+          }
+          initVal = newInit;
+        }
+        if (initVal) 
+        {
+          // initVal = ineqSimplifier(iter, initVal);
+          initVal = initVal->right();
+          // assigns non-primed variables
+          initVal = replaceAll(initVal, rule.dstVars, rule.srcVars);
+          // outs() << "initVal: " << *initVal << "\n";
+          return true;
+
+          // use when local vars are not eliminated, so extra equalities need to be calculated
+          // initVar is then the iterator
+          /*getExprEqualities(initVar, rule);
+          outs() << "exprEqualities for " << *initVar << ": " << *exprEqualities[initVar] << "\n";
+
+          ExprSet s;
+          filter(initVal, IsConst(), inserter(s, s.begin()));
+          if (!s.empty())
+          {
+            // outs() << "var: " << **s.begin() << "\n";
+
+            getExprEqualities(*s.begin(), rule);
+            // outs() << "exprEqualities for " << **s.begin() << ": " << *exprEqualities[*s.begin()] << "\n";
+          }*/
+
+        }
+      }
+      return false;
+    }
+
+    bool findTransitionValue(int i, HornRuleExt& rule, Expr& transitionVal, SMTUtils &u)
+    {
+      ExprSet allExprs;
+      Expr allExprsConj, e;
+      bool multipleTransVal = false;
+
+      Expr a = rule.srcVars[i];
+      Expr b = rule.dstVars[i];
+
+      findExpr<EQ>(b, rule.body, e, true);
+      // errs() << "\nfinding: " << *b << "\n\n";
+
+      if (!e) return false;
+
+      e = ineqSimplifier(b, e);
+      // errs() << "found: " << *e << "\n\n";
+
+      getConjAndDisj(e, allExprs);
+      for (auto &it : allExprs)
+      {
+        if (contains(it, a)) 
+        {
+          if (allExprsConj) multipleTransVal = true;
+          else allExprsConj = it;
+        }
+      }
+
+      // Cases when transition can't be found: multiple transition rels, no transition rel, contains an ITE
+      if (multipleTransVal || !allExprsConj || allExprsConj->right()->arity() <= 1 || containsOp<ITE>(allExprsConj)) 
+        return false;
+
+      Expr right = allExprsConj->right();
+
+      // assuming no local vars
+      if (right->arg(0) == a)
+        transitionVal = right->arg(1);
+      else 
+        transitionVal = right->arg(0);
+
+      // check if delta value is constant; Eq. 10, section 4 in paper
+      Expr replacedTrans = replaceAll(transitionVal, rule.srcVars, rule.dstVars);
+      if (!u.implies(rule.body, mk<EQ>(transitionVal, replacedTrans)))
+      {
+        transitionVal = NULL;
+        return false;
+      }
+
+      // outs() << "transitionVal: " << *transitionVal << "\n";
+      return true;
+    }
+
+    bool findFinalValue(int i, HornRuleExt& rule, Expr& limitVal, Expr& add, bool iterIncreases, SMTUtils &u)
+    {
+      Expr a = rule.srcVars[i];
+      Expr b = rule.dstVars[i];
+
+      Expr limitEq;
+      Expr gt, ge, lt, le;
+      if (iterIncreases)
+      {
+        findExpr<LT>(a, rule.body, lt, true);
+        findExpr<LEQ>(a, rule.body, le, true);
+
+        // make sure there is no case where both lt and le are not null
+        // cannot think of any but could be
+        // in case lt and le are either conjunction or disjunction, handle better
+        if (lt) 
+        {
+          lt = ineqSimplifier(a, lt);
+          if (!(isOpX<AND>(lt) || isOpX<OR>(lt))) limitEq = lt;
+        }
+        if (le) 
+        {
+          add = mkMPZ(1, a->getFactory());
+          le = ineqSimplifier(a, le);
+          if (!(isOpX<AND>(le) || isOpX<OR>(le))) limitEq = le;
+        }
+      }
+      else 
+      {
+        findExpr<GT>(a, rule.body, gt);
+        findExpr<GEQ>(a, rule.body, ge);
+
+        // make sure there is no case where both gt and ge are not null
+        // cannot think of any but could be
+        if (gt) 
+        {
+          gt = ineqSimplifier(a, gt);
+          if (!(isOpX<AND>(gt) || isOpX<OR>(gt))) limitEq = gt;
+        }
+        if (ge) 
+        {
+          add = mkMPZ(-1, a->getFactory());
+          ge = ineqSimplifier(a, ge);
+          if (!(isOpX<AND>(ge) || isOpX<OR>(ge))) limitEq = ge;
+        }
+      }
+
+      if (limitEq) 
+      {
+        limitVal = limitEq->arg(1);
+        // outs() << "limitVal: " << *limitVal << "\n";
+
+        // check if limit value is constant; Eq. 8, section 4
+        Expr replacedLimit = replaceAll(limitVal, rule.srcVars, rule.dstVars);
+        bool constLimitValCheck = u.implies(rule.body, mk<EQ>(limitVal, replacedLimit));
+        
+        // check the case that iter does not exceed limit value during transition; Eq. 7, section 4
+        bool loopEndCheck = limitEq && !u.isSat(mk<AND>(mkNeg(limitEq), rule.body));
+
+        if (!constLimitValCheck || !loopEndCheck)
+        {
+          limitVal = NULL;
+          return false;
+        }
+
+        // s.clear();
+        // filter(limitVal, IsConst(), inserter(s, s.begin()));
+        // if (!s.empty())
+        // {
+          // outs() << "var: " << **s.begin() << "\n";
+          // for (auto &it : s)
+          //   getExprEqualities(it, rule);
+          // outs() << "exprEqualities for " << **s.begin() << ": " << *exprEqualities[*s.begin()] << "\n";
+        // }
+        return true;
+      }
+      return false;
+    }
+
+    void findIterators(CHCs &ruleManager)
+    {
+    	SMTUtils u(ruleManager.m_efac);
+
+      // assuming only one cycle
+      vector<int>& cycle = ruleManager.cycles[0];
+      HornRuleExt& rule = ruleManager.chcs[cycle[0]];
+      vector<int> &prefix = ruleManager.prefixes[0];
+      HornRuleExt &prefixRule = ruleManager.chcs[prefix[0]];
+      Expr rel = rule.srcRelation;
+
+      int invNum = getVarIndex(rel, ruleManager.decls);
+
+      for (int i = 0; i < rule.srcVars.size(); i++)
+      {
+        Expr a = rule.srcVars[i];
+        Expr b = rule.dstVars[i];
+        bool isAnIter = false;
+
+        bool iterDecreases = bind::isIntConst(a) && u.implies(rule.body, mk<GT>(a, b));
+        bool iterIncreases = bind::isIntConst(a) && u.implies(rule.body, mk<LT>(a, b));
+
+        if (iterIncreases || iterDecreases)
+        {
+          Expr initVal, transitionVal, limitVal;
+          Expr add;
+
+          // AH: handle the case where it is iterator but any of values are not available
+          bool hasInitVal = findInitialValue(i, prefixRule, rule, initVal, u);
+
+          bool hasTransitionVal = findTransitionValue(i, rule, transitionVal, u);
+
+          bool hasLimitVal = findFinalValue(i, rule, limitVal, add, iterIncreases, u);
+
+          isAnIter = hasInitVal && hasTransitionVal && hasLimitVal;
+          if (isAnIter)
+          {
+            ruleManager.iter = i;
+          
+            // if iter is increasing/decreasing
+            ruleManager.iterGrows = iterIncreases;
+            ruleManager.numOfIters = numIterations(initVal, transitionVal, limitVal, add);
+          }
+        }
+
+        // if not an iter, collect info about the type of variables
+        if (!isAnIter)
+        {
+          if (bind::isIntConst(a)) ruleManager.varsInt.push_back(i);
+          else if (bind::isBoolConst(a)) ruleManager.varsBool.push_back(i);
+          else if (isOpX<ARRAY_TY>(bind::typeOf(a))) ruleManager.varsArray.push_back(i);
+        }
+      }
+    }
 
 	bool findAlignment(CHCs &ruleManager1, CHCs &ruleManager2)
 	{
@@ -807,9 +1135,8 @@ namespace ufo
 			Expr iterF = prefixRule1.dstVars[ruleManager1.iter], iterFVal;
 			Expr iterS = prefixRule2.dstVars[ruleManager2.iter], iterSVal;
 
-			// AH: make it such that we do not have to pass rules everytime, since it is already a method for rulemanager?
-			ruleManager1.findInitialValue(iter1, prefixRule1, rule1, iterFVal);
-			ruleManager2.findInitialValue(iter2, prefixRule2, rule2, iterSVal);
+			findInitialValue(iter1, prefixRule1, rule1, iterFVal, u);
+			findInitialValue(iter2, prefixRule2, rule2, iterSVal, u);
 
 			// add any variables that are needed in the quantified formula
 			for (auto &pair : comb)
@@ -1059,6 +1386,33 @@ namespace ufo
 		return false;
 	}
 
+	void removePostLoop(CHCs &ruleManager)
+	{
+		vector<HornRuleExt>::iterator query, postLoop;
+		bool postLoopFound = false;
+		for (auto it = ruleManager.chcs.begin(); it != ruleManager.chcs.end(); it++)
+		{
+			if (it->isQuery) query = it;
+			else if (!it->isFact && !it->isInductive) 
+			{
+				postLoopFound = true;
+				postLoop = it;
+			}
+		}
+		if (!postLoopFound) return;
+		HornRuleExt &q = *query, &pl = *postLoop;
+		Expr body = replaceAll(q.body, q.srcVars, pl.dstVars);
+		pl.body = mk<AND>(pl.body, body);
+		pl.dstQueryVars = pl.dstVars;
+		pl.dstVars.clear();
+		pl.head = q.head;
+		ruleManager.removeDecl(pl.dstRelation);
+		pl.dstRelation = q.dstRelation;
+		pl.isQuery = true;
+
+		ruleManager.chcs.erase(query);
+	}
+
 
 	// Create an aligned product program
 	inline void createProductAligned(const char *chcfileSrc, const char *chcfileDst)
@@ -1069,7 +1423,7 @@ namespace ufo
 		CHCs ruleManagerSrc(m_efac, z3, "_v1_");
 		ruleManagerSrc.parse(string(chcfileSrc), false);
 		
-		ruleManagerSrc.removePostLoop();
+		removePostLoop(ruleManagerSrc);
 		/*outs() << "eliminateQuantifiers:\n";
 		for (auto it : ruleManagerSrc.chcs)
 		{
@@ -1093,11 +1447,11 @@ namespace ufo
 		CHCs ruleManagerDst(m_efac, z3, "_v2_");
 		ruleManagerDst.parse(string(chcfileDst), false);
 
-		ruleManagerDst.removePostLoop();
+		removePostLoop(ruleManagerDst);
 		//for (auto it : ruleManagerDst.chcs) it.printMemberVars();
 
-		ruleManagerSrc.findIterators();
-		ruleManagerDst.findIterators();
+		findIterators(ruleManagerSrc);
+		findIterators(ruleManagerDst);
 
 		bool equiv = findAlignment(ruleManagerSrc, ruleManagerDst);
 		if (equiv) outs() << "\nprograms are equivalent\n";
