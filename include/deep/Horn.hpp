@@ -115,8 +115,8 @@ namespace ufo
     map<Expr, int> iterator;
     bool hasAnyArrays;
 
-    CHCs(ExprFactory &efac, EZ3 &z3) : m_efac(efac), m_z3(z3), varname("_FH_"), u(efac) {};
-    CHCs(ExprFactory &efac, EZ3 &z3, string n) : m_efac(efac), m_z3(z3), varname(n), u(efac) {};
+    CHCs(ExprFactory &efac, EZ3 &z3) : m_efac(efac), m_z3(z3), varname("_FH_"), u(efac), hasAnyArrays(false) {};
+    CHCs(ExprFactory &efac, EZ3 &z3, string n) : m_efac(efac), m_z3(z3), varname(n), u(efac), hasAnyArrays(false) {};
 
     bool isFapp (Expr e)
     {
