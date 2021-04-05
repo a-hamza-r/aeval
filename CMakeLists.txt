@@ -54,8 +54,8 @@ endif ()
 include(ExternalProject)
 set_property(DIRECTORY PROPERTY EP_STEP_TARGETS configure build test)
 
-set (Z3_TAG "origin/spacer3" CACHE STRING "Z3 git tag to use")
-set (Z3_REPO "https://bitbucket.org/spacer/code.git" CACHE STRING "Z3 repo")
+set (Z3_TAG "z3-4.8.10" CACHE STRING "Z3 git tag to use")
+set (Z3_REPO "https://github.com/Z3Prover/z3.git" CACHE STRING "Z3 repo")
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")
   set (Z3_DEBUG "-d")
 else()
@@ -126,6 +126,7 @@ endif()
 
 find_package(OpenMP)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
+#set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fopenmp")
 
 find_package(Armadillo)
 if (ARMADILLO_FOUND)
