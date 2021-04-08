@@ -93,10 +93,10 @@
 		
 		(= d_i2 (select d_array (+ i 2)))
 		(= e_i2 (select e_array (+ i 2)))
-		(= b_i2 (* d_i e_i))
+		(= b_i2 (* d_i2 e_i2))
 		(= b_array3 (store b_array2 (+ i 2) b_i2))
 		(= a_i2 (+ (select a_array2 (+ i 2)) (* b_i2 c_i2)))
-		(= a_array3 (store a_array2 (+ i 2) a_i))
+		(= a_array3 (store a_array2 (+ i 2) a_i2))
 
 		(= d_i3 (select d_array (+ i 3)))
 		(= e_i3 (select e_array (+ i 3)))
