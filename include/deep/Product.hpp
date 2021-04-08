@@ -400,7 +400,7 @@ namespace ufo
 	    {
 			for (auto it = chcs.begin(); it != chcs.end(); it++)
 			{
-				if (decl == it->dstRelation)
+				if (decl == it->head)
 				{
 					rulesOfP.push_back(*it);
 				}
@@ -1440,7 +1440,7 @@ namespace ufo
 
 			HornRuleExt *query1 = ruleManager1.getQuery(), *query2 = ruleManager2.getQuery();
 
-			// create precondition and postcondition
+			// create postcondition
 			Expr post;
 			if (!ruleManager1.dstQueryVars.empty()) post = replaceAll(pre, rule1.dstVars, ruleManager1.dstQueryVars);
 			else post = replaceAll(pre, rule1.dstVars, rule1.srcVars); 
@@ -1525,6 +1525,8 @@ namespace ufo
 		ExprFactory m_efac;
 		EZ3 z3(m_efac);
 
+		SMTUtils u(m_efac);
+
 		Extended_CHCs ruleManagerSrc(m_efac, z3, "_v1_");
 		ruleManagerSrc.parse(string(chcfileSrc));
 
@@ -1533,10 +1535,58 @@ namespace ufo
 
 		Product_CHCs ruleManagerProduct(ruleManagerSrc, ruleManagerDst, "_pr_");
 
+		// create precondition and postcondition
+		vector<int> &cycle1 = ruleManagerSrc.cycles[0];
+		HornRuleExt &rule1 = ruleManagerSrc.chcs[cycle1[0]];
+		vector<int> &prefix1 = ruleManagerSrc.prefixes[0];
+		HornRuleExt &prefixRule1 = ruleManagerSrc.chcs[prefix1[0]];
+		Expr rel1 = rule1.srcRelation;
+		int invNum1 = getVarIndex(rel1, ruleManagerSrc.decls);
+		Expr init1 = prefixRule1.body;
+		
+		vector<int> &cycle2 = ruleManagerDst.cycles[0];
+		HornRuleExt &rule2 = ruleManagerDst.chcs[cycle2[0]];
+		vector<int> &prefix2 = ruleManagerDst.prefixes[0];
+		HornRuleExt &prefixRule2 = ruleManagerDst.chcs[prefix1[0]];
+		Expr rel2 = rule2.srcRelation;
+		int invNum2 = getVarIndex(rel2, ruleManagerDst.decls);
+		Expr init2 = prefixRule2.body;
+
+		Expr pre;
+		for (int i = 0; i < rule1.srcVars.size(); i++)
+		{
+			Expr var = rule1.srcVars[i];
+			Expr var1 = rule2.srcVars[i];
+
+			if ((!u.hasOneModel(var, init1) && !u.hasOneModel(var1, init2)) 
+				|| (u.hasOneModel(var, init1) && u.hasOneModel(var1, init2)))
+			{
+				if (!pre) pre = mk<EQ>(rule1.dstVars[i], rule2.dstVars[i]);
+				else pre = mk<AND>(pre, mk<EQ>(rule1.dstVars[i], rule2.dstVars[i]));
+			}
+			else
+			{
+				outs() << "programs are not equivalent\n";
+				return;
+			}
+		}
+
+		Expr post;
+		post = replaceAll(pre, rule1.dstVars, rule1.srcVars); 
+		post = replaceAll(post, rule2.dstVars, rule2.srcVars); 
+		Expr negPost = mkNeg(post);
+
 	    // product of two CHC systems
 		ruleManagerProduct.createProduct();
 
-		// have to add pre and post
+		HornRuleExt *fact, *query;
+		for (auto &it : ruleManagerProduct.chcs)
+		{
+			if (it.isFact) fact = &it;
+			if (it.isQuery) query = &it;
+		}
+		fact->body = mk<AND>(fact->body, pre);
+		query->body = simplifyBool(mk<AND>(query->body, negPost));
 
 		if (learnInvariantsPr(ruleManagerProduct, mk<TRUE>(m_efac)))
 			outs() << "programs are equivalent\n";
