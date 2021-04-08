@@ -828,7 +828,7 @@ namespace ufo
                 if (hr.isFact)
                 {
                   Expr failedCand = normalizeDisj(*it, invVars);
-               // outs () << "failed cand for " << *hr.dstRelation << ": " << *failedCand << "\n";
+               outs () << "failed cand for " << *hr.dstRelation << ": " << *failedCand << "\n";
                   Sampl& s = sf.exprToSampl(failedCand);
                   sf.assignPrioritiesForFailed();
                 }
@@ -1275,6 +1275,13 @@ namespace ufo
         }
       }
 
+      // for (int i = 0; i < decls.size(); i++)
+      // {
+      //   Expr rel = decls[i];
+      //   candidates[0].push_back(mk<GT>(ruleManager.invVars[rel][2], mkMPZ(0, m_efac)));
+      // }
+
+
       filterUnsat();
       if (multiHoudini(ruleManager.wtoCHCs))
       {
@@ -1423,10 +1430,7 @@ namespace ufo
         for (auto & a : annotations[ind]) lms.insert(a);
         for (auto a : lms)
         {
-		if (hr.isQuery && !hr.dstQueryVars.empty()) 
-          		for (auto & v : invarVars[ind]) a = replaceAll(a, v.second, hr.dstQueryVars[v.first]);
-		else
-			for (auto & v : invarVars[ind]) a = replaceAll(a, v.second, hr.srcVars[v.first]);
+          for (auto & v : invarVars[ind]) a = replaceAll(a, v.second, hr.srcVars[v.first]);
           exprs.insert(a);
         }
       }
@@ -1543,22 +1547,23 @@ namespace ufo
     }
   };
 
-  inline bool learnInvariantsPr(CHCs &ruleManager, unsigned maxAttempts, unsigned to, bool freqs, bool aggp,
+  inline void learnInvariants3(string smt, unsigned maxAttempts, unsigned to, bool freqs, bool aggp,
                                bool enableDataLearning, bool doElim, bool doDisj,
-                               bool dAllMbp, bool dAddProp, bool dAddDat, bool dStrenMbp, Expr currentMatching)
+                               bool dAllMbp, bool dAddProp, bool dAddDat, bool dStrenMbp)
   {
-    EZ3 z3(ruleManager.m_efac);
+    ExprFactory m_efac;
+    EZ3 z3(m_efac);
 
-    // CHCs ruleManager(m_efac, z3);
-    // ruleManager.parse(smt, doElim);
+    CHCs ruleManager(m_efac, z3);
+    ruleManager.parse(smt, doElim);
     BndExpl bnd(ruleManager);
-    // if (!ruleManager.hasCycles())
-    // {
-    //   bnd.exploreTraces(1, ruleManager.chcs.size(), true);
-    //   return;
-    // }
+    if (!ruleManager.hasCycles())
+    {
+      bnd.exploreTraces(1, ruleManager.chcs.size(), true);
+      return;
+    }
 
-    RndLearnerV3 ds(ruleManager.m_efac, z3, ruleManager, to, freqs, aggp, dAllMbp, dAddProp, dAddDat, dStrenMbp);
+    RndLearnerV3 ds(m_efac, z3, ruleManager, to, freqs, aggp, dAllMbp, dAddProp, dAddDat, dStrenMbp);
     map<Expr, ExprSet> cands;
     for (auto& dcl: ruleManager.decls) ds.initializeDecl(dcl);
 
@@ -1574,22 +1579,15 @@ namespace ufo
       ds.mutateHeuristicEq(cands[rel], cands[rel], rel, true);
       ds.initializeAux(bnd, i, pref);
     }
-    // if (enableDataLearning) ds.getDataCandidates(cands);
+    if (enableDataLearning) ds.getDataCandidates(cands);
     for (auto& dcl: ruleManager.wtoDecls) ds.addCandidates(dcl, cands[dcl]);
     for (auto& dcl: ruleManager.wtoDecls) ds.getSeeds(dcl, cands);
     ds.refreshCands(cands);
     for (auto& dcl: ruleManager.decls) ds.doSeedMining(dcl->arg(0), cands[dcl->arg(0)], false);
     ds.calculateStatistics();
-
-    // call bootstrap with option to only consider equalities as candidates for finding invariant
-    // also add equalities for variable matchings
-    bool check = ds.bootstrap(doDisj, currentMatching, true);
-    // if (!check)
-    // {
-    //   std::srand(std::time(0));
-    //   check = ds.synthesize(maxAttempts, doDisj);
-    // }
-    return check;
+    if (ds.bootstrap(doDisj)) return;
+    std::srand(std::time(0));
+    ds.synthesize(maxAttempts, doDisj);
   }
 }
 

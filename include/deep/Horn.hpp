@@ -2,7 +2,6 @@
 #define HORN__HPP__
 
 #include "ae/AeValSolver.hpp"
-#include "Helper.hpp"
 
 using namespace std;
 using namespace boost;
@@ -34,7 +33,6 @@ namespace ufo
     ExprVector srcVars;
     ExprVector dstVars;
     ExprVector locVars;
-    ExprVector dstQueryVars;
 
     Expr body;
     Expr head;
@@ -45,8 +43,6 @@ namespace ufo
     bool isFact;
     bool isQuery;
     bool isInductive;
-
-    bool subRelationsBothInductive;
 
     void assignVarsAndRewrite (ExprVector& _srcVars, ExprVector& invVarsSrc,
                                ExprVector& _dstVars, ExprVector& invVarsDst)
@@ -95,7 +91,7 @@ namespace ufo
 
   class CHCs
   {
-    private:
+    protected:
     set<int> indeces;
     string varname;
     SMTUtils u;
@@ -119,29 +115,8 @@ namespace ufo
     map<Expr, int> iterator;
     bool hasAnyArrays;
 
-    // assuming only one loop
-    int iter;
-    bool iterGrows;
-    Expr numOfIters;
-    vector<int> varsInt;
-    vector<int> varsBool;
-    vector<int> varsArray;
-    map<Expr, Expr> exprEqualities;
-
-    map<Expr, ExprVector> productRelsToSrcDst;
-
     CHCs(ExprFactory &efac, EZ3 &z3) : m_efac(efac), m_z3(z3), varname("_FH_"), u(efac) {};
     CHCs(ExprFactory &efac, EZ3 &z3, string n) : m_efac(efac), m_z3(z3), varname(n), u(efac) {};
-
-    CHCs(CHCs &rules1, CHCs &rules2, string n) : 
-      m_efac(rules1.m_efac), m_z3(rules1.m_z3), varname(n), u(rules1.m_efac) 
-    {
-      setUnion(decls, rules1.decls, rules2.decls);
-      concatenateVectors(chcs, rules1.chcs, rules2.chcs);
-      concatenateMaps(invVars, rules1.invVars, rules2.invVars);
-    };
-
-    string getVarName() {return varname;}
 
     bool isFapp (Expr e)
     {
@@ -153,49 +128,16 @@ namespace ufo
       return false;
     }
 
-    Expr getDecl(Expr relation)
-    {
-      Expr relationDecl;
-      if (isFdecl(relation)) 
-      {
-        relationDecl = relation;
-        return relationDecl;
-      }
-      for (auto it = decls.begin(); it != decls.end(); it++)
-      {
-        if ((*it)->arg(0) == relation)
-        {
-          relationDecl = *it;
-          return relationDecl;
-        }
-      }
-      return NULL;
-    }
-
-    void removeDecl(Expr relation)
-    {
-      Expr decl;
-      ExprSet::iterator it;
-      if (!isOpX<TRUE>(relation))
-      {
-        decl = getDecl(relation);
-        it = decls.find(decl);
-        if (it != decls.end()) 
-          decls.erase(it);
-      }
-    }
-
     void splitBody (Expr body, ExprVector& srcVars, Expr &srcRelation, ExprSet& lin)
     {
       getConj (body, lin);
       for (auto c = lin.begin(); c != lin.end(); )
       {
         Expr cnj = *c;
-        Expr rel = cnj->left();
-        renameFdecl(rel, varname);
-        if (isOpX<FAPP>(cnj) && isOpX<FDECL>(rel) &&
-            find(decls.begin(), decls.end(), rel) != decls.end())
+        if (isOpX<FAPP>(cnj) && isOpX<FDECL>(cnj->left()) &&
+            find(decls.begin(), decls.end(), cnj->left()) != decls.end())
         {
+          Expr rel = cnj->left();
           if (srcRelation != NULL)
           {
             errs () << "Nonlinear CHCs are currently unsupported:\n   ";
@@ -310,15 +252,13 @@ namespace ufo
         hr.head = r->right();
         if (isOpX<FAPP>(hr.head))
         {
-          Expr head = hr.head->left();
-          renameFdecl(head, varname);
           if (hr.head->left()->arity() == 2 &&
               (find(fp.m_queries.begin(), fp.m_queries.end(), r->right()) !=
-               fp.m_queries.end())) 
-            addFailDecl(head->left());
-          else 
-            addDecl(head);
-          hr.dstRelation = head->left();
+               fp.m_queries.end()))
+            addFailDecl(hr.head->left()->left());
+          else
+            addDecl(hr.head->left());
+          hr.dstRelation = hr.head->left()->left();
         }
         else
         {
@@ -357,17 +297,8 @@ namespace ufo
         {
           for (auto it = hr.head->args_begin()+1, end = hr.head->args_end(); it != end; ++it)
             origDstSymbs.push_back(*it);
-	  Expr head = hr.head->left();
-	  renameFdecl(head, varname);
-          hr.head = head;
+          hr.head = hr.head->left();
         }
-	// added for proper renaming of query predicate
-	else 
-	{
-		Expr head = hr.head->left();
-		renameFdecl(head, varname);
-		hr.head = bind::fapp(head, ExprVector());
-	}
 
         allOrigSymbs.insert(allOrigSymbs.end(), origDstSymbs.begin(), origDstSymbs.end());
         simplBoolReplCnj(allOrigSymbs, lin);
@@ -379,9 +310,6 @@ namespace ufo
           hr.body = simpleQE(hr.body, hr.locVars);
         else
           hr.body = eliminateQuantifiers(hr.body, hr.locVars);
-
-        // rename locVars according to the version
-        renameVars(hr.locVars, hr.body, varname);
 
         hr.body = u.removeITE(hr.body);
       }

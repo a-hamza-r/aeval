@@ -12,540 +12,71 @@ using namespace boost;
 namespace ufo
 {
 
-	void productOfCHCs(HornRuleExt &, HornRuleExt &, vector<HornRuleExt> &, CHCs &);
-
-	void productRelationSymbols(ExprVector, Expr &, vector<HornRuleExt> &, CHCs &, bool, vector<ExprVector> &);
-
-
-	void removeCHC(Expr srcRelation, Expr dstRelation, CHCs &rules)
+	template <typename T>
+	void concatenateVectors(vector<T> &result, vector<T> vec1, vector<T> vec2)
 	{
-		for (auto it = rules.chcs.begin(); it != rules.chcs.end(); it++)
-		{
-			if (it->srcRelation == srcRelation && it->dstRelation == dstRelation)
-			{
-				rules.chcs.erase(it);
-
-				// this might not be the best location to remove decls; recheck
-				rules.removeDecl(srcRelation);
-				rules.removeDecl(dstRelation);
-			}
-		}
+		result.reserve(result.size()+vec1.size()+vec2.size());
+		result.insert(result.end(), vec1.begin(), vec1.end());
+		result.insert(result.end(), vec2.begin(), vec2.end());
 	}
 
-
-	void getSpecificSrcRelations(Expr rel, Expr dstRelation, bool recursive, ExprVector &partitions, CHCs &rules)
+	template <typename T>
+	void setUnion(set<T> &result, set<T> set1, set<T> set2)
 	{
-		Expr decl;
-		if (isOpX<AND>(rel))
-		{
-			for (auto it = rel->args_begin(); it != rel->args_end(); it++)
-			{
-				getSpecificSrcRelations(*it, dstRelation, recursive, partitions, rules);
-			}
-		}
-		else if (!isOpX<TRUE>(rel))
-		{
-			if (recursive && rel == dstRelation)
-			{
-				decl = rules.getDecl(rel);
-				partitions.push_back(decl);
-			}
-			else if (!recursive && rel != dstRelation)
-			{
-				decl = rules.getDecl(rel);
-				partitions.push_back(decl);
-			}
-		}
+		result = set1;
+		result.insert(set2.begin(), set2.end());
 	}
 
-
-	void nonRecursiveProduct(HornRuleExt &chc1, HornRuleExt &chc2, Expr &product, ExprVector &vars, CHCs &rules)
+	template <typename T, typename T1>
+	void concatenateMaps(map<T, T1> &result, map<T, T1> map1, map<T, T1> map2)
 	{
-		ExprVector chc1NonRecPart, chc2NonRecPart;
-		Expr rel;
-		
-		getSpecificSrcRelations(chc1.srcRelation, chc1.dstRelation, false, chc1NonRecPart, rules);
-		getSpecificSrcRelations(chc2.srcRelation, chc2.dstRelation, false, chc2NonRecPart, rules);
-
-		bool chc1NonRec = !chc1NonRecPart.empty();
-		bool chc2NonRec = !chc2NonRecPart.empty();
-
-		if (chc1NonRec)
-		{
-			product = chc1NonRecPart[0]->arg(0);
-			vars.insert(vars.end(), rules.invVars[product].begin(), rules.invVars[product].end());
-			for (auto it = chc1NonRecPart.begin()+1; it != chc1NonRecPart.end(); it++)
-			{
-				rel = (*it)->arg(0);
-				product = mk<AND>(product, rel);
-				vars.insert(vars.end(), rules.invVars[rel].begin(), rules.invVars[rel].end());
-			}
-		}
-
-		if (chc2NonRec)
-		{
-			rel = chc2NonRecPart[0]->arg(0);
-			if (!product) product = rel;
-			else product = mk<AND>(product, rel);
-			vars.insert(vars.end(), rules.invVars[rel].begin(), rules.invVars[rel].end());
-			for (auto it = chc2NonRecPart.begin()+1; it != chc2NonRecPart.end(); it++)
-			{
-				rel = (*it)->arg(0);
-				product = mk<AND>(product, rel);
-				vars.insert(vars.end(), rules.invVars[rel].begin(), rules.invVars[rel].end());
-			}
-		}
+		result = map1;
+		result.insert(map2.begin(), map2.end());
 	}
 
-
-	void RTransform(HornRuleExt &chc, ExprVector &transformed, CHCs &rules)
-	{
-		Expr decl;
-		if (!chc.isInductive)
-		{
-			transformed.push_back(bind::fapp(chc.head, chc.dstVars));
-		}
-		else
-		{
-			decl = rules.getDecl(chc.srcRelation);
-			transformed.push_back(bind::fapp(decl, chc.srcVars));
-		}
-	}
-
-
-	void recursiveProduct(HornRuleExt &chc1, HornRuleExt &chc2, Expr &product, ExprVector &vars, CHCs &rules)
-	{
-		vector<HornRuleExt> nullV;
-		vector<ExprVector> nullV1;
-		ExprVector transformed;
-
-		RTransform(chc1, transformed, rules); RTransform(chc2, transformed, rules);
-
-		// might have to check if there are more than two relation symbols in transformed
-		productRelationSymbols(ExprVector{transformed[0]->arg(0), transformed[1]->arg(0)}, 
-			product, nullV, rules, false, nullV1);
-
-		// remove head(C) from body
-		if (bind::fapp(chc1.head, chc1.dstVars) == transformed[0] 
-			&& bind::fapp(chc2.head, chc2.dstVars) == transformed[1]) 
-		{
-			product = NULL;
-		}
-		else 
-		{
-			vars.insert(vars.end(), transformed[0]->args_begin()+1, transformed[0]->args_end());
-			vars.insert(vars.end(), transformed[1]->args_begin()+1, transformed[1]->args_end());
-
-			product = product->arg(0);
-		}
-	}
-
-
-	void productBody(HornRuleExt &chc1, HornRuleExt &chc2, CHCs &rules, HornRuleExt &newProductRule)
-	{
-		Expr constraintPr, recursivePr, nonRecursivePr;
-		ExprVector nonRecursivePrVars, recursivePrVars;
-
-		// constraint product
-		constraintPr = mk<AND>(chc1.body, chc2.body);
-
-		// non-recursive part product
-		nonRecursiveProduct(chc1, chc2, nonRecursivePr, nonRecursivePrVars, rules);
-
-		// recursive part product
-		recursiveProduct(chc1, chc2, recursivePr, recursivePrVars, rules);
-
-		if (chc1.isInductive && chc2.isInductive) newProductRule.subRelationsBothInductive = true;
-		else newProductRule.subRelationsBothInductive = false;
-
-		newProductRule.body = constraintPr;
-
-		if (nonRecursivePr && recursivePr) {
-			newProductRule.srcRelation = mk<AND>(nonRecursivePr, recursivePr);
-			concatenateVectors(newProductRule.srcVars, nonRecursivePrVars, recursivePrVars);
-		}
-		else if (nonRecursivePr) {
-			newProductRule.srcRelation = nonRecursivePr;
-			newProductRule.srcVars = nonRecursivePrVars;
-		}
-		else if (recursivePr) {
-			newProductRule.srcRelation = recursivePr;
-			newProductRule.srcVars = recursivePrVars;
-		}
-		else {
-			newProductRule.srcRelation = mk<TRUE>(rules.m_efac);
-			newProductRule.srcVars = ExprVector();
-		}
-		newProductRule.isFact = (isOpX<TRUE>(newProductRule.srcRelation));
-		newProductRule.isQuery = (newProductRule.dstRelation == rules.failDecl);
-		newProductRule.isInductive = (recursivePr != NULL);
-	}
-
-
-	void getQueries(vector<HornRuleExt> &chcs1, vector<HornRuleExt> &chcs2, vector<vector<HornRuleExt>> &queries)
-	{
-		for (auto it = chcs1.begin(); it != chcs1.end(); it++)
-		{
-			if (it->isQuery) queries[0].push_back(*it);
-		}
-
-		for (auto it = chcs2.begin(); it != chcs2.end(); it++)
-		{
-			if (it->isQuery) queries[1].push_back(*it);
-		}
-	}
-
-
-	void calculateCombinations(vector<vector<HornRuleExt>> &rules, vector<vector<HornRuleExt>> &combinations)
-	{
-		// assumption: rules has only two vectors, one for rules of each predicate
-		vector<HornRuleExt> rulesFirstP = rules[0], rulesSecondP = rules[1];
-
-		for (auto it : rulesFirstP)
-		{
-			for (auto it2 : rulesSecondP)
-			{
-				combinations.push_back(vector<HornRuleExt>{it, it2});
-			}
-		}
-	}
-
-	void createProductQueries(vector<vector<HornRuleExt>> &queries, vector<HornRuleExt> &queriesPr, CHCs &rules)
-	{
-		vector<vector<HornRuleExt>> combinations;
-		calculateCombinations(queries, combinations);
-
-		HornRuleExt query1, query2, queryPr;
-
-		for (auto &it : combinations)
-		{
-			query1 = it[0];
-			query2 = it[1];
-			queryPr.body = mk<AND>(query1.body, query2.body);
-
-			queryPr.srcRelation = mk<AND>(query1.srcRelation, query2.srcRelation);
-			queryPr.dstRelation = mkTerm<string>(lexical_cast<string>(query1.dstRelation) + 
-				"*" + lexical_cast<string>(query2.dstRelation), queryPr.body->getFactory());
-
-			if (rules.productRelsToSrcDst.find(queryPr.dstRelation) == rules.productRelsToSrcDst.end())
-				rules.productRelsToSrcDst[queryPr.dstRelation] = ExprVector{query1.dstRelation, query2.dstRelation};
-			
-			queryPr.head = bind::fdecl(queryPr.dstRelation, ExprVector{mk<BOOL_TY>(rules.m_efac)});
-
-			// queries do not have dstVars
-			queryPr.dstVars = ExprVector();
-			concatenateVectors(queryPr.srcVars, query1.srcVars, query2.srcVars);
-			concatenateVectors(queryPr.locVars, query1.locVars, query2.locVars);
-			concatenateVectors(queryPr.dstQueryVars, query1.dstQueryVars, query2.dstQueryVars);
-			
-			queryPr.isFact = false;
-			queryPr.isQuery = true;
-			queryPr.isInductive = false;
-
-			if (!rules.failDecl)
-				rules.addFailDecl(queryPr.dstRelation);
-
-			queriesPr.push_back(queryPr);
-		}
-	}
-
-    void rulesOfPredicate(Expr &predicateDecl, vector<HornRuleExt> &rulesOfP, CHCs &rules)
+	template <typename T>
+    void findExpr(Expr toFind, Expr conj, Expr &result, bool skipArray=false)
     {
-      for (auto it = rules.chcs.begin(); it != rules.chcs.end(); it++)
+      Expr res;
+      if (isOpX<AND>(conj))
       {
-          if (predicateDecl == it->head || predicateDecl == it->dstRelation)
+        for (auto it = conj->args_begin(); it != conj->args_end(); it++)
+        {
+          findExpr<T>(toFind, *it, res, skipArray);
+          if (res)
           {
-            rulesOfP.push_back(*it);
+            if (result)
+              result = mk<AND>(result, res);
+            else
+              result = res;
+            res = NULL;
           }
+        }
+      }
+      else if (isOpX<OR>(conj))
+      {
+        for (auto it = conj->args_begin(); it != conj->args_end(); it++)
+        {
+          findExpr<T>(toFind, *it, res, skipArray);
+          if (res)
+          {
+            if (result)
+              result = mk<OR>(result, res);
+            else
+              result = res;
+            res = NULL;
+          }
+        }
+      }
+      else if (isOpX<T>(conj)) 
+      {
+        if (skipArray && containsOp<ARRAY_TY>(conj)) return;
+        if (contains(conj, toFind)) result = conj;
       }
     }
 
-
-	void productRelationSymbols(ExprVector predicates, Expr &predicateP, vector<HornRuleExt> &rulesOfP, 
-		CHCs &rules, bool calculateRulesOfP, vector<ExprVector> &toRemoveCHCs)
-	{
-		ExprVector productTypes;
-		vector<vector<HornRuleExt>> rulesOfPredicates, combinations;
-		vector<HornRuleExt> rulesOfCurrentP;
-
-		Expr rel1 = predicates[0], rel2 = predicates[1];
-
-		rel1 = rules.getDecl(rel1); rel2 = rules.getDecl(rel2);
-
-		// might have to do more handling, probably outside this method
-		if (!isFdecl(rel1) || !isFdecl(rel2)) return;
-
-		Expr productRel = mkTerm<string>(lexical_cast<string>(rel1->arg(0)) + "*" + 
-			lexical_cast<string>(rel2->arg(0)), rules.m_efac);
-
-		if (rules.productRelsToSrcDst.find(productRel) == rules.productRelsToSrcDst.end())
-			rules.productRelsToSrcDst[productRel] = ExprVector{rel1->arg(0), rel2->arg(0)};
-
-		for (int i = 1; i < rel1->arity()-1; i++) 
-			productTypes.push_back(rel1->arg(i));
-
-		for (int i = 1; i < rel2->arity(); i++) 
-			productTypes.push_back(rel2->arg(i));
-
-		predicateP = bind::fdecl(productRel, productTypes);
-		
-		if (calculateRulesOfP) 
-		{
-			// outs() << "Rules of relation: " << *rel1->arg(0) << "\n";
-			rulesOfPredicate(rel1, rulesOfCurrentP, rules);
-
-			for (auto &it : rulesOfCurrentP) 
-			{
-				toRemoveCHCs.push_back(ExprVector{it.srcRelation, it.dstRelation});
-				// rules.print(it);
-			}
-
-			rulesOfPredicates.push_back(rulesOfCurrentP);
-
-			rulesOfCurrentP.clear();
-
-			// outs() << "Rules of relation: " << *rel2->arg(0) << "\n";
-			rulesOfPredicate(rel2, rulesOfCurrentP, rules);
-
-			for (auto &it : rulesOfCurrentP) 
-			{
-				toRemoveCHCs.push_back(ExprVector{it.srcRelation, it.dstRelation});
-				// rules.print(it);
-			}
-
-			rulesOfPredicates.push_back(rulesOfCurrentP);
-
-			calculateCombinations(rulesOfPredicates, combinations);
-
-			for (auto &it : combinations)
-			{
-				productOfCHCs(it[0], it[1], rulesOfP, rules);
-			}
-		}
-	}
-
-
-	void productOfCHCs(HornRuleExt &chc1, HornRuleExt &chc2, vector<HornRuleExt> &rulesOfP, CHCs &rules)
-	{
-		Expr head, body;
-		vector<HornRuleExt> nullV;
-		vector<ExprVector> nullV1;
-		HornRuleExt newProductRule;
-
-		// head product
-		productRelationSymbols(ExprVector{chc1.head, chc2.head}, head, nullV, rules, false, nullV1);
-		newProductRule.head = head;
-		newProductRule.dstRelation = head->arg(0);
-		concatenateVectors(newProductRule.dstVars, chc1.dstVars, chc2.dstVars);
-		
-		// body product
-		productBody(chc1, chc2, rules, newProductRule);
-
-		concatenateVectors(newProductRule.locVars, chc1.locVars, chc2.locVars);
-
-		// outs() << "Taking product of two CHCs: \n";
-		// rules.print(chc1);
-		// rules.print(chc2);
-		// outs() << "The product is: \n";
-		// rules.print(newProductRule);
-		// outs() << "\n";
-
-		// do not push if one is inductive and other one is not. Push in all other cases
-		// make sure this condition is correct generically
-		// if (!((!chc1.isInductive && chc2.isInductive) || (!chc2.isInductive && chc1.isInductive)))
-		rulesOfP.push_back(newProductRule);
-	}
-
-	void renamingAsProductRules(CHCs &rules)
-	{
-		ExprVector srcVars, dstVars;
-
-		for (auto &chc : rules.chcs) 
-		{
-			srcVars = chc.srcVars; dstVars = chc.dstVars;
-			
-			// might add dstVars of one of the CHCs to product locVars twice in some cases, should not be a problem
-			concatenateVectors(chc.locVars, srcVars, dstVars);
-			chc.srcVars.clear(); chc.dstVars.clear();
-
-			ExprVector dstV;
-			for (auto &it : rules.invVars[chc.dstRelation])
-			{
-				Expr new_name = mkTerm<string> (lexical_cast<string>(it) + "'", rules.m_efac);
-				dstV.push_back(cloneVar(it, new_name));
-			}
-
-			chc.assignVarsAndRewrite(srcVars, rules.invVars[chc.srcRelation], 
-				dstVars, dstV);
-		}
-
-	}
-
-	void simplifyRules(CHCs &rules)
-	{
-		vector<HornRuleExt*> rulesToKeep;
-		Expr propagated, tmp;
-
-		renamingAsProductRules(rules);
-
-		for (auto chcIter = rules.chcs.begin(); chcIter != rules.chcs.end(); )
-		{   
-			bool erased = false;
-			bool allowed = (chcIter->isInductive && chcIter->subRelationsBothInductive) || !chcIter->isInductive;
-
-			// it checks if any inductive CHC has only one loop iterating
-			// generally we allow that behavior in the product of two CHC systems, we compute them in the algorithm
-			// but since we do not need those extra relations, we filter them out here
-			if (!allowed)
-			{
-				chcIter = rules.chcs.erase(chcIter);
-				continue;
-			}
-
-			// outs() << "is inductive: " << chcIter->isInductive << ", is fact: " << chcIter->isFact << "\n";
-			// for (auto& it : chcIter->locVars)
-			// {
-			//     // outs() << "eliminating: " << *it << "\n";
-			//     ExprSet vars{it};
-			//     chcIter->body = eliminateQuantifiers(chcIter->body, vars);    
-			//     // outs() << "body: " << *chcIter->body << "\n";
-			// }
-			// if (!chcIter->isFact)
-			// {
-			//     ExprSet vars(chcIter->locVars.begin(), chcIter->locVars.end());
-			//     chcIter->body = eliminateQuantifiers(chcIter->body, vars);
-			    // chcIter->locVars.clear();
-			// }
-
-			// outs() << "after QE: " << *chcIter->body << "\n";
-
-			for (auto it : rulesToKeep)
-			{
-				if (chcIter->srcRelation == it->srcRelation && chcIter->dstRelation == it->dstRelation)
-				{
-					it->body = mk<OR>(it->body, chcIter->body);
-
-					// it->locVars.insert(it->locVars.end(), chcIter->locVars.begin(), chcIter->locVars.end());
-
-					chcIter = rules.chcs.erase(chcIter);
-					erased = true;
-					break;
-				}
-			}
-			if (!erased)
-			{
-				rulesToKeep.push_back(&(*chcIter));
-				chcIter++;
-			}
-		}
-	}
-
-	// generates the product of two CHC systems
-	// At many places, it is assumed that there are only two systems, 
-	// hence the operations done are not generic i.e. for product of more than two CHC systems
-	void Product(CHCs &product, vector<vector<HornRuleExt>> &queries)
-	{
-		vector<HornRuleExt> transformedCHCs;
-		vector<HornRuleExt> worklist;
-		HornRuleExt C_a;
-		vector<ExprVector> toRemoveCHCs;
-
-		vector<HornRuleExt> queriesPr;
-
-		// generate product queries
-		createProductQueries(queries, queriesPr, product);
-
-		worklist = queriesPr;
-
-		for (auto &it : queries) 
-			for (auto &it2 : it)
-				toRemoveCHCs.push_back(ExprVector{it2.srcRelation, it2.dstRelation});
-
-		while (!worklist.empty())
-		{
-			Expr freshP;
-			ExprVector partition;
-			vector<HornRuleExt> rulesOfP;
-			C_a = worklist[0];
-			worklist.erase(worklist.begin());
-
-			// outs() << "current worklist item popped: \n";
-			// C_a.printMemberVars();
-
-			// AH: In the original algorithm, the operation PARTITION is used that is defined: 
-			// 'operator partition from a set to a set of its disjoint subsets'
-			// I just create one partition of two symbols because there are only two relation symbols here 
-
-			// argument false for non-recursive; getting non-recursive parts of the srcrelation
-			getSpecificSrcRelations(C_a.srcRelation, C_a.dstRelation, false, partition, product);
-
-			if (partition.size() >= 2) 
-			{
-				// outs() << "Non-recursive partition is: " << *partition[0]->arg(0) 
-				//     << " and " << *partition[1]->arg(0) << "\n";
-
-				productRelationSymbols(partition, freshP, rulesOfP, product, true, toRemoveCHCs);
-
-				C_a.srcRelation = freshP->arg(0);
-
-				// outs() << "We push rules of p " << *C_a.srcRelation << " to worklist:\n";
-				worklist.insert(worklist.end(), rulesOfP.begin(), rulesOfP.end());
-				// for (auto it : rulesOfP)
-				//     product.print(it);
-			}
-
-			if (isOpX<AND>(C_a.srcRelation))
-			{
-				// outs() << "Non-linear CHC:\n";
-				// product.print(C_a);
-			}
-			else 
-			{
-				// if freshP is not NULL, itwent into the if-statement (partition.size() >= 2)
-				if (freshP) product.addDecl(freshP);
-				
-				product.chcs.push_back(C_a);
-				
-				// outs() << "Updated CHC added to CHCs: \n";
-				// product.print(C_a);
-				// outs() << "\n";
-			}
-		}
-
-		for (auto &it : toRemoveCHCs)
-		{
-			removeCHC(it[0], it[1], product);
-		}
-
-		// for (auto &hr : product.chcs)
-		// 	hr.printMemberVars();
-
-		// changes variables from _v1_ and _v2_ prefixes to _pr_ with necessary changes, 
-		// also disjoins rules to remove redundancy
-		simplifyRules(product);
-
-		for (int i = 0; i < product.chcs.size(); i++)
-			product.outgs[product.chcs[i].srcRelation].push_back(i);
-
-		product.wtoSort();
-
-		// outs() << "\nFinal system:\n";
-		// product.print();
-
-		// outs() << "Printing all rules and member vars:\n";
-		// for (auto &hr : product.chcs) {
-		// 	hr.printMemberVars();
-			
-			// creates an encoding of formula and prints to stdout
-			/*ExprVector v;
-			Expr q = createQuantifiedFormula(hr.body, v);
-			SMTUtils su(hr.body->getFactory());
-			su.serialize_formula(q);*/
-		// }
-		outs() << "\n--------------------------CALCULATING PRODUCT DONE-----------------------------\n\n";
-	}
-
-	void combinations(vector<int> &vars1, vector<int> &vars2, vector<vector<int>> c, vector<int> vars2Used, vector<vector<vector<int>>> &combs, int pos)
+	void combinations(vector<int> &vars1, vector<int> &vars2, vector<vector<int>> c, 
+		vector<int> vars2Used, vector<vector<vector<int>>> &combs, int pos)
 	{
 		if (c.size() >= vars1.size())
 		{
@@ -599,451 +130,1054 @@ namespace ufo
 	}
 
 
-	void mergeIterationsFact(HornRuleExt &fact, int num, ExprVector &ssa, BndExpl &bnd)
+	class Extended_CHCs : public CHCs
 	{
-		if (num <= 0) return;
-		ssa[0] = replaceAll(fact.body, fact.dstVars, bnd.bindVars[0]);
-		ssa[num] = replaceAll(ssa[num], bnd.bindVars[num], fact.dstVars);
-	}
+	public:
+	    ExprVector dstQueryVars;
 
-	void mergeIterationsLoop(HornRuleExt &loop, int num, ExprVector &ssa, BndExpl &bnd)
-	{
-		if (num <= 0) return;
-		loop.body = replaceAll(loop.body, loop.dstVars, bnd.bindVars[0]);
-		ssa[num-1] = replaceAll(ssa[num-1], bnd.bindVars[num], loop.dstVars);
-	}
+	    int iter;
+	    bool iterGrows;
+	    Expr numOfIters;
+	    vector<int> varsInt;
+	    vector<int> varsBool;
+	    vector<int> varsArray;
+	    map<Expr, Expr> exprEqualities;
 
-	void mergeIterationsQuery(HornRuleExt *query, int num, ExprVector &ssa, BndExpl &bnd, string varname)
-	{
-		if (num <= 0) return;
-		// for (auto it : ssa)
-		// {
-		// 	outs() << "SSA: " << *it << "\n";
-		// }
-		ssa[0] = replaceAll(ssa[0], bnd.bindVars[0], query->srcVars);
-		for (int i = 0; i < bnd.bindVars[num].size(); i++)
+	    Extended_CHCs(ExprFactory &efac, EZ3 &z3, string n) : CHCs(efac, z3, n) {};
+
+        Expr getDecl(Expr relation)
 		{
-			Expr newVar = mkTerm<string>(varname+"query_var_"+lexical_cast<string>(i), query->body->getFactory());
-			newVar = cloneVar(bnd.bindVars[num][i], newVar);
-
-			// make sure dstQueryVars are empty before pushing vars, or handle the case when we need to push to non-empty vector
-			query->dstQueryVars.push_back(newVar);
-			// outs() << "newVar: " << *newVar << "\n";
-			ssa[num-1] = replaceAll(ssa[num-1], bnd.bindVars[num][i], newVar);
-		}
-	}
-
-	void createAlignment(CHCs &ruleManager, int unrollTrans, int unrollFact, int unrollQuery, Expr& prefRuleBody)
-	{
-		// if (!(unrollTrans == 0 && unrollQuery == 0))
-		// {
-		// 	cout << "unrollTrans: " << unrollTrans << "\n";
-		// 	cout << "unrollFact: " << unrollFact << "\n";
-		// 	cout << "unrollQuery: " << unrollQuery << "\n";
-		// }
-
-		vector<int>& cycle = ruleManager.cycles[0];
-		HornRuleExt& rule = ruleManager.chcs[cycle[0]];
-		auto & prefix = ruleManager.prefixes[0];
-		HornRuleExt &prefixRule = ruleManager.chcs[prefix[0]];
-		Expr rel = rule.srcRelation;
-
-		HornRuleExt *query;
-		for (auto &it : ruleManager.outgs[rel])
-			if (ruleManager.chcs[it].isQuery)
-				query = &ruleManager.chcs[it];
-		
-		rel = ruleManager.getDecl(rel);
-
-		prefRuleBody = prefixRule.body;
-
-		// merge iterations to the fact, given the unrollFact value
-		BndExpl bnd(ruleManager);
-
-		vector<int> trace;
-
-		trace.push_back(prefix[0]);
-
-		for (int j = 0; j < unrollFact; j++)
-          for (int m = 0; m < cycle.size(); m++)
-            trace.push_back(cycle[m]);
-
-		string s = ruleManager.getVarName();
-
-        ExprVector ssa;
-        bnd.getSSA(trace, ssa);
-
-        ExprVector factBndVars;
-        filter(conjoin(ssa, ruleManager.m_efac), IsConst(), inserter(factBndVars, factBndVars.begin()));
-
-        // AH: have to push extra vars to locVars
-        mergeIterationsFact(prefixRule, unrollFact, ssa, bnd);
-		trace.clear();
-
-		// merge iterations to the query, given the unrollquery value
-		trace.push_back(prefix[0]);
-
-		for (int j = 0; j < unrollQuery; j++)
-          for (int m = 0; m < cycle.size(); m++)
-            trace.push_back(cycle[m]);
-
-        ExprVector ssa1;
-        bnd.getSSA(trace, ssa1);
-
-        ssa1.erase(ssa1.begin());
-
-		ExprVector queryBndVars;
-        filter(conjoin(ssa1, ruleManager.m_efac), IsConst(), inserter(queryBndVars, queryBndVars.begin()));
-
-        mergeIterationsQuery(query, unrollQuery, ssa1, bnd, ruleManager.getVarName());
-
-        trace.clear();
-
-        // unroll the inductive rule unrollTrans times
-		trace.push_back(prefix[0]);
-
-		for (int j = 0; j < unrollTrans-1; j++)
-          for (int m = 0; m < cycle.size(); m++)
-            trace.push_back(cycle[m]);
-
-        ExprVector ssa2;
-        bnd.getSSA(trace, ssa2);
-
-        ssa2.erase(ssa2.begin());
-
-		ExprVector ruleBndVars;
-        filter(conjoin(ssa2, ruleManager.m_efac), IsConst(), inserter(ruleBndVars, ruleBndVars.begin()));
-
-        mergeIterationsLoop(rule, unrollTrans-1, ssa2, bnd);
-
-        // make required changes to the CHC system
-        if (unrollFact > 0) 
-        {
-        	prefRuleBody = conjoin(ssa, ruleManager.m_efac);
-	        for (auto &var : factBndVars)
+			if (!isOpX<TRUE>(relation))
 			{
-				Expr new_name = mkTerm<string>(s+lexical_cast<string>(var), ruleManager.m_efac);
-        		Expr var1 = cloneVar(var, new_name);
-        		prefRuleBody = replaceAll(prefRuleBody, var, var1);
+				for (auto it = decls.begin(); it != decls.end(); it++)
+				{
+					if ((*it)->arg(0) == relation) return *it;
+				}
 			}
-        }
-		if (unrollTrans > 1) 
-		{
-			Expr addToRule = conjoin(ssa2, ruleManager.m_efac);
-	        for (auto &var : ruleBndVars)
-			{
-				Expr new_name = mkTerm<string>(s+lexical_cast<string>(var), ruleManager.m_efac);
-        		Expr var1 = cloneVar(var, new_name);
-        		addToRule = replaceAll(addToRule, var, var1);
-        		rule.body = replaceAll(rule.body, var, var1);
-        		rule.locVars.push_back(var1);
-			}
-			rule.body = mk<AND>(rule.body, addToRule);
+			return NULL;
 		}
-		if (unrollQuery > 0) 
+
+		void removeDecl(Expr relation)
 		{
-			Expr addToQuery = conjoin(ssa1, ruleManager.m_efac);
+			Expr decl;
+			if (!isOpX<TRUE>(relation))
+			{
+				for (auto it = decls.begin(); it != decls.end(); it++)
+				{
+					// fix, if possible
+					if ((*it)->arg(0) == relation)
+					{
+						decls.erase(it);
+						return;
+					}
+				}
+			}
+		}
+
+
+	    Expr renameFdecl(Expr e)
+	    {
+			Expr newName = mkTerm<string>(varname+lexical_cast<string>(e->arg(0)), m_efac);
+			ExprVector types(e->args_begin()+1, e->args_end());
+			return bind::fdecl(newName, types);
+	    }
+
+
+	    void renameLocVars()
+	    {
+	    	for (auto &chc : chcs)
+	    	{
+	    		for (int i = 0; i < chc.locVars.size(); i++)
+	    		{
+			        Expr var = chc.locVars[i]->arg(0);
+	    			var = renameFdecl(var);
+	    			chc.body = replaceAll(chc.body, chc.locVars[i], bind::fapp(var));
+	    			chc.locVars[i] = bind::fapp(var);
+	    		}
+	    	}
+	    }
+
+
+		HornRuleExt *getQuery()
+		{
+			for (auto &chc : chcs)
+			{
+				if (chc.isQuery) return &chc;
+			}
+		}
+
+		void removePostLoop()
+		{
+			vector<HornRuleExt>::iterator query, postLoop;
+			bool postLoopFound = false;
+			for (auto it = chcs.begin(); it != chcs.end(); it++)
+			{
+				if (it->isQuery) query = it;
+				else if (!it->isFact && !it->isInductive) 
+				{
+					postLoopFound = true;
+					postLoop = it;
+				}
+			}
+			if (!postLoopFound) return;
+			HornRuleExt &q = *query, &pl = *postLoop;
+			Expr body = replaceAll(q.body, q.srcVars, pl.dstVars);
+			pl.body = mk<AND>(pl.body, body);
+			dstQueryVars = pl.dstVars;
+			pl.dstVars.clear();
+			pl.head = q.head;
+			removeDecl(pl.dstRelation);
+			pl.dstRelation = q.dstRelation;
+			pl.isQuery = true;
+
+			chcs.erase(query);
+		}
+
+
+	    // renaming rels in decls and chcs; if to be added, invVars need to be renamed too
+		/* void renameRels()
+		{
+			ExprSet newDcls;
+			for (auto it = decls.begin(); it != decls.end(); )
+			{
+				Expr newDcl = renameFdecl(*it);
+				newDcls.insert(newDcl);
+				it = decls.erase(it);
+			}
+			decls.insert(newDcls.begin(), newDcls.end());
+
+			failDecl = mkTerm<string>(varname+lexical_cast<string>(failDecl), m_efac);
+
+			for (auto &chc : chcs)
+			{
+				if (!chc.isQuery)
+				{
+					chc.head = renameFdecl(chc.head);
+					chc.dstRelation = chc.head->arg(0);
+				}
+				else 
+				{
+					chc.head = failDecl;
+					chc.dstRelation = failDecl;
+				}
+				if (!isOpX<TRUE>(chc.srcRelation))
+					chc.srcRelation = mkTerm<string>(varname+lexical_cast<string>(chc.srcRelation), m_efac);
+			}
+		}
+*/
+
+		/*void serializeFormulas()
+		{
+			for (auto& it : chcs)
+			{
+				ExprVector v;
+				Expr q = createQuantifiedFormula(it.body, v);
+				u.serialize_formula(q);
+
+				Expr body = it.body;
+				for (auto v : it.locVars)
+				{
+					ExprSet s{v};
+					body = eliminateQuantifiers(body, s);
+				}
+			}
+		}*/
+
+		void getExprEqualities(Expr var, HornRuleExt& rule)
+	    {
+	      Expr body = rule.body;
+	      ExprSet s;
+	      Expr final;
+	      getConj(body, s);
+	      for (auto &e : s)
+	      {
+	        bool skip = false;
+	        if (contains(e, var) && !containsOp<ARRAY_TY>(e) && containsOp<EQ>(e))
+	        {
+	          ExprSet ss;
+	          filter(e, IsConst(), inserter(ss, ss.begin()));
+	          for (auto &it : ss)
+	          {
+	            if (find(rule.dstVars.begin(), rule.dstVars.end(), it) != rule.dstVars.end())
+	            {
+	              skip = true;
+	              break;
+	            }
+	          }
+	          if (skip) continue;
+	          else 
+	          { 
+	            if (final) final = mk<AND>(final, e);
+	            else final = e;
+	          }
+	        }
+	      }
+	      exprEqualities[var] = final;
+	    }
+
+
+	    Expr numIterations(Expr init, Expr transition, Expr final, Expr add)
+	    {
+	      auto &fac = init->getFactory();
+	      if (!(init && transition && final)) return mkMPZ(-1, fac);
+	      Expr numer = mk<MINUS>(final, init);
+
+	      if (add) numer = mk<PLUS>(numer, add);
+	      Expr divisible = mk<EQ>(mk<MOD>(numer, transition), mkMPZ(0, fac));
+
+	      Expr numIters = mk<PLUS>(mk<IDIV>(numer, transition), mk<ITE>(divisible, mkMPZ(0, fac), mkMPZ(1, fac)));
+	      return numIters;
+	    }
+
+		bool findInitialValue(int i, HornRuleExt& initRule, HornRuleExt& rule, Expr &initVal, SMTUtils &u)
+	    {
+
+	      Expr init = initRule.body;
+	      Expr iter = rule.dstVars[i];
+
+	      findExpr<EQ>(iter, init, initVal, true);
+	      if (initVal)
+	      {
+	        Expr newInit;
+	        // a hack to avoid mod operations
+	        if (isOpX<AND>(initVal))
+	        {
+	          ExprSet s;
+	          getConj(initVal, s);
+	          for (auto &it : s)
+	          {
+	            Expr normalized = ineqSimplifier(iter, simplifyArithm(it));
+	            if (isOpX<EQ>(normalized) && normalized->left() == iter)  
+	            {
+	              // if multiple equalities are found, just return; support more
+	              if (newInit) return false;
+	              else newInit = normalized;
+	            }
+	          }
+	          initVal = newInit;
+	        }
+	        if (initVal) 
+	        {
+	          initVal = initVal->right();
+	          // assigns non-primed variables
+	          initVal = replaceAll(initVal, rule.dstVars, rule.srcVars);
+	          // outs() << "initVal: " << *initVal << "\n";
+	          return true;
+
+	          // use when local vars are not eliminated, so extra equalities need to be calculated
+	          // initVar is then the iterator
+	          /*getExprEqualities(initVar, rule);
+	          outs() << "exprEqualities for " << *initVar << ": " << *exprEqualities[initVar] << "\n";
+
+	          ExprSet s;
+	          filter(initVal, IsConst(), inserter(s, s.begin()));
+	          if (!s.empty())
+	          {
+	            // outs() << "var: " << **s.begin() << "\n";
+
+	            getExprEqualities(*s.begin(), rule);
+	            // outs() << "exprEqualities for " << **s.begin() << ": " << *exprEqualities[*s.begin()] << "\n";
+	          }*/
+
+	        }
+	      }
+	      return false;
+	    }
+
+		void getConjAndDisj(Expr e, ExprSet& allExprs)
+		{
+			if (isOpX<AND>(e) || isOpX<OR>(e))
+			{
+			  for (auto it = e->args_begin(); it != e->args_end(); it++)
+			    getConjAndDisj(*it, allExprs);
+			}
+			else
+			  allExprs.insert(e);
+		}
+
+
+	    void rulesOfPredicate(Expr decl, vector<HornRuleExt> &rulesOfP)
+	    {
+			for (auto it = chcs.begin(); it != chcs.end(); it++)
+			{
+				if (decl == it->dstRelation)
+				{
+					rulesOfP.push_back(*it);
+				}
+			}
+	    }
+
+
+		void mergeIterationsFact(HornRuleExt &fact, int num, ExprVector &ssa, BndExpl &bnd)
+		{
+			if (num <= 0) return;
+			ssa[0] = replaceAll(fact.body, fact.dstVars, bnd.bindVars[0]);
+			ssa[num] = replaceAll(ssa[num], bnd.bindVars[num], fact.dstVars);
+		}
+
+		void mergeIterationsLoop(HornRuleExt &loop, int num, ExprVector &ssa, BndExpl &bnd)
+		{
+			if (num <= 0) return;
+			loop.body = replaceAll(loop.body, loop.dstVars, bnd.bindVars[0]);
+			ssa[num-1] = replaceAll(ssa[num-1], bnd.bindVars[num], loop.dstVars);
+		}
+
+		void mergeIterationsQuery(HornRuleExt *query, int num, ExprVector &ssa, BndExpl &bnd)
+		{
+			if (num <= 0) return;
+
+			ssa[0] = replaceAll(ssa[0], bnd.bindVars[0], query->srcVars);
+			for (int i = 0; i < bnd.bindVars[num].size(); i++)
+			{
+				Expr newVar = mkTerm<string>(varname+"query_var_"+lexical_cast<string>(i), query->body->getFactory());
+				newVar = cloneVar(bnd.bindVars[num][i], newVar);
+
+				// make sure dstQueryVars are empty before pushing vars, or handle the case when we need to push to non-empty vector
+				dstQueryVars.push_back(newVar);
+
+				ssa[num-1] = replaceAll(ssa[num-1], bnd.bindVars[num][i], newVar);
+			}
+		}
+
+
+		void createAlignment(int unrollTrans, int unrollFact, int unrollQuery, Expr& prefRuleBody)
+		{
+			// if (!(unrollTrans == 0 && unrollQuery == 0))
+			// {
+			// 	cout << "unrollTrans: " << unrollTrans << "\n";
+			// 	cout << "unrollFact: " << unrollFact << "\n";
+			// 	cout << "unrollQuery: " << unrollQuery << "\n";
+			// }
+
+			vector<int>& cycle = cycles[0];
+			HornRuleExt& rule = chcs[cycle[0]];
+			auto & prefix = prefixes[0];
+			HornRuleExt &prefixRule = chcs[prefix[0]];
+			Expr rel = rule.srcRelation;
+
+			HornRuleExt *query;
+			for (auto &it : outgs[rel])
+				if (chcs[it].isQuery)
+					query = &chcs[it];
+			
+			rel = getDecl(rel);
+
+			prefRuleBody = prefixRule.body;
+
+			// merge iterations to the fact, given the unrollFact value
+			BndExpl bnd(*this);
+
+			vector<int> trace;
+
+			trace.push_back(prefix[0]);
+
+			for (int j = 0; j < unrollFact; j++)
+	          for (int m = 0; m < cycle.size(); m++)
+	            trace.push_back(cycle[m]);
+
+	        ExprVector ssa;
+	        bnd.getSSA(trace, ssa);
+
+	        ExprVector factBndVars;
+	        filter(conjoin(ssa, m_efac), IsConst(), inserter(factBndVars, factBndVars.begin()));
+
+	        // AH: have to push extra vars to locVars
+	        mergeIterationsFact(prefixRule, unrollFact, ssa, bnd);
+			trace.clear();
+
+			// merge iterations to the query, given the unrollquery value
+			trace.push_back(prefix[0]);
+
+			for (int j = 0; j < unrollQuery; j++)
+	          for (int m = 0; m < cycle.size(); m++)
+	            trace.push_back(cycle[m]);
+
+	        ExprVector ssa1;
+	        bnd.getSSA(trace, ssa1);
+
+	        ssa1.erase(ssa1.begin());
+
+			ExprVector queryBndVars;
+	        filter(conjoin(ssa1, m_efac), IsConst(), inserter(queryBndVars, queryBndVars.begin()));
+
+	        mergeIterationsQuery(query, unrollQuery, ssa1, bnd);
+
+	        trace.clear();
+
+	        // unroll the inductive rule unrollTrans times
+			trace.push_back(prefix[0]);
+
+			for (int j = 0; j < unrollTrans-1; j++)
+	          for (int m = 0; m < cycle.size(); m++)
+	            trace.push_back(cycle[m]);
+
+	        ExprVector ssa2;
+	        bnd.getSSA(trace, ssa2);
+
+	        ssa2.erase(ssa2.begin());
+
+			ExprVector ruleBndVars;
+	        filter(conjoin(ssa2, m_efac), IsConst(), inserter(ruleBndVars, ruleBndVars.begin()));
+
+	        mergeIterationsLoop(rule, unrollTrans-1, ssa2, bnd);
+
+	        // make required changes to the CHC system
+	        if (unrollFact > 0) 
+	        {
+	        	prefRuleBody = conjoin(ssa, m_efac);
+		        for (auto &var : factBndVars)
+				{
+					Expr new_name = mkTerm<string>(varname+lexical_cast<string>(var), m_efac);
+	        		Expr var1 = cloneVar(var, new_name);
+	        		prefRuleBody = replaceAll(prefRuleBody, var, var1);
+				}
+	        }
+			if (unrollTrans > 1) 
+			{
+				Expr addToRule = conjoin(ssa2, m_efac);
+		        for (auto &var : ruleBndVars)
+				{
+					Expr new_name = mkTerm<string>(varname+lexical_cast<string>(var), m_efac);
+	        		Expr var1 = cloneVar(var, new_name);
+	        		addToRule = replaceAll(addToRule, var, var1);
+	        		rule.body = replaceAll(rule.body, var, var1);
+	        		rule.locVars.push_back(var1);
+				}
+				rule.body = mk<AND>(rule.body, addToRule);
+			}
+			if (unrollQuery > 0) 
+			{
+				Expr addToQuery = conjoin(ssa1, m_efac);
+		        
+				for (auto &var : queryBndVars)
+				{
+					Expr new_name = mkTerm<string>(varname+lexical_cast<string>(var), m_efac);
+	        		Expr var1 = cloneVar(var, new_name);
+	        		addToQuery = replaceAll(addToQuery, var, var1);
+	        		query->locVars.push_back(var1);
+				}
+				query->body = replaceAll(query->body, query->srcVars, dstQueryVars);
+				query->body = mk<AND>(query->body, addToQuery);
+			}
+		}
+
+	    bool findTransitionValue(int i, HornRuleExt& rule, Expr& transitionVal, SMTUtils &u)
+	    {
+	      ExprSet allExprs;
+	      Expr allExprsConj, e;
+	      bool multipleTransVal = false;
+
+	      Expr a = rule.srcVars[i];
+	      Expr b = rule.dstVars[i];
+
+	      findExpr<EQ>(b, rule.body, e, true);
+	      // errs() << "\nfinding: " << *b << "\n\n";
+
+	      if (!e) return false;
+
+	      e = ineqSimplifier(b, e);
+	      // errs() << "found: " << *e << "\n\n";
+
+	      getConjAndDisj(e, allExprs);
+	      for (auto &it : allExprs)
+	      {
+	        if (contains(it, a)) 
+	        {
+	          if (allExprsConj) multipleTransVal = true;
+	          else allExprsConj = it;
+	        }
+	      }
+
+	      // Cases when transition can't be found: multiple transition rels, no transition rel, contains an ITE
+	      if (multipleTransVal || !allExprsConj || allExprsConj->right()->arity() <= 1 || containsOp<ITE>(allExprsConj)) 
+	        return false;
+
+	      Expr right = allExprsConj->right();
+
+	      // assuming no local vars
+	      if (right->arg(0) == a)
+	        transitionVal = right->arg(1);
+	      else 
+	        transitionVal = right->arg(0);
+
+	      // check if delta value is constant; Eq. 10, section 4 in paper
+	      Expr replacedTrans = replaceAll(transitionVal, rule.srcVars, rule.dstVars);
+	      if (!u.implies(rule.body, mk<EQ>(transitionVal, replacedTrans)))
+	      {
+	        transitionVal = NULL;
+	        return false;
+	      }
+
+	      // outs() << "transitionVal: " << *transitionVal << "\n";
+	      return true;
+	    }
+
+	    bool findFinalValue(int i, HornRuleExt& rule, Expr& limitVal, Expr& add, bool iterIncreases, SMTUtils &u)
+	    {
+	      Expr a = rule.srcVars[i];
+	      Expr b = rule.dstVars[i];
+
+	      Expr limitEq;
+	      Expr gt, ge, lt, le;
+	      if (iterIncreases)
+	      {
+	        findExpr<LT>(a, rule.body, lt, true);
+	        findExpr<LEQ>(a, rule.body, le, true);
+
+	        // make sure there is no case where both lt and le are not null
+	        // cannot think of any but could be
+	        // in case lt and le are either conjunction or disjunction, handle better
+	        if (lt) 
+	        {
+	          lt = ineqSimplifier(a, lt);
+	          if (!(isOpX<AND>(lt) || isOpX<OR>(lt))) limitEq = lt;
+	        }
+	        if (le) 
+	        {
+	          add = mkMPZ(1, a->getFactory());
+	          le = ineqSimplifier(a, le);
+	          if (!(isOpX<AND>(le) || isOpX<OR>(le))) limitEq = le;
+	        }
+	      }
+	      else 
+	      {
+	        findExpr<GT>(a, rule.body, gt);
+	        findExpr<GEQ>(a, rule.body, ge);
+
+	        // make sure there is no case where both gt and ge are not null
+	        // cannot think of any but could be
+	        if (gt) 
+	        {
+	          gt = ineqSimplifier(a, gt);
+	          if (!(isOpX<AND>(gt) || isOpX<OR>(gt))) limitEq = gt;
+	        }
+	        if (ge) 
+	        {
+	          add = mkMPZ(-1, a->getFactory());
+	          ge = ineqSimplifier(a, ge);
+	          if (!(isOpX<AND>(ge) || isOpX<OR>(ge))) limitEq = ge;
+	        }
+	      }
+
+	      if (limitEq) 
+	      {
+	        limitVal = limitEq->arg(1);
+	        // outs() << "limitVal: " << *limitVal << "\n";
+
+	        // check if limit value is constant; Eq. 8, section 4
+	        Expr replacedLimit = replaceAll(limitVal, rule.srcVars, rule.dstVars);
+	        bool constLimitValCheck = u.implies(rule.body, mk<EQ>(limitVal, replacedLimit));
 	        
-			for (auto &var : queryBndVars)
+	        // check the case that iter does not exceed limit value during transition; Eq. 7, section 4
+	        bool loopEndCheck = limitEq && !u.isSat(mk<AND>(mkNeg(limitEq), rule.body));
+
+	        if (!constLimitValCheck || !loopEndCheck)
+	        {
+	          limitVal = NULL;
+	          return false;
+	        }
+
+	        // s.clear();
+	        // filter(limitVal, IsConst(), inserter(s, s.begin()));
+	        // if (!s.empty())
+	        // {
+	          // outs() << "var: " << **s.begin() << "\n";
+	          // for (auto &it : s)
+	          //   getExprEqualities(it, rule);
+	          // outs() << "exprEqualities for " << **s.begin() << ": " << *exprEqualities[*s.begin()] << "\n";
+	        // }
+	        return true;
+	      }
+	      return false;
+	    }
+
+	    void findIterators()
+	    {
+	      vector<int>& cycle = cycles[0];
+	      HornRuleExt& rule = chcs[cycle[0]];
+	      vector<int> &prefix = prefixes[0];
+	      HornRuleExt &prefixRule = chcs[prefix[0]];
+	      Expr rel = rule.srcRelation;
+
+	      int invNum = getVarIndex(rel, decls);
+
+	      for (int i = 0; i < rule.srcVars.size(); i++)
+	      {
+	        Expr a = rule.srcVars[i];
+	        Expr b = rule.dstVars[i];
+	        bool isAnIter = false;
+
+	        bool iterDecreases = bind::isIntConst(a) && u.implies(rule.body, mk<GT>(a, b));
+	        bool iterIncreases = bind::isIntConst(a) && u.implies(rule.body, mk<LT>(a, b));
+
+	        if (iterIncreases || iterDecreases)
+	        {
+	          Expr initVal, transitionVal, limitVal;
+	          Expr add;
+
+	          // AH: handle the case where it is iterator but any of values are not available
+	          bool hasInitVal = findInitialValue(i, prefixRule, rule, initVal, u);
+
+	          bool hasTransitionVal = findTransitionValue(i, rule, transitionVal, u);
+
+	          bool hasLimitVal = findFinalValue(i, rule, limitVal, add, iterIncreases, u);
+
+	          isAnIter = hasInitVal && hasTransitionVal && hasLimitVal;
+	          if (isAnIter)
+	          {
+	            iter = i;
+	          
+	            // if iter is increasing/decreasing
+	            iterGrows = iterIncreases;
+	            numOfIters = numIterations(initVal, transitionVal, limitVal, add);
+	          }
+	        }
+
+	        // if not an iter, collect info about the type of variables
+	        if (!isAnIter)
+	        {
+	          if (bind::isIntConst(a)) varsInt.push_back(i);
+	          else if (bind::isBoolConst(a)) varsBool.push_back(i);
+	          else if (isOpX<ARRAY_TY>(bind::typeOf(a))) varsArray.push_back(i);
+	        }
+	      }
+	    }
+	};
+
+
+	class Product_CHCs : public Extended_CHCs
+	{
+	public:
+	    Extended_CHCs* subRule1;
+	    Extended_CHCs* subRule2;
+
+	    Product_CHCs(Extended_CHCs &rules1, Extended_CHCs &rules2, string n) : 
+	    	Extended_CHCs(rules1.m_efac, rules1.m_z3, n), subRule1(&rules1), subRule2(&rules2) {};
+
+		void nonRecursiveProduct(HornRuleExt &chc1, HornRuleExt &chc2, Expr &product, ExprVector &vars)
+		{
+			ExprVector chc1NonRecPart, chc2NonRecPart;
+			Expr rel;
+			
+			getSpecificSrcRelations(chc1.srcRelation, chc1.dstRelation, false, chc1NonRecPart, 0);
+			getSpecificSrcRelations(chc2.srcRelation, chc2.dstRelation, false, chc2NonRecPart, 1);
+
+			bool chc1NonRec = !chc1NonRecPart.empty();
+			bool chc2NonRec = !chc2NonRecPart.empty();
+
+			if (chc1NonRec)
 			{
-				Expr new_name = mkTerm<string>(s+lexical_cast<string>(var), ruleManager.m_efac);
-        		Expr var1 = cloneVar(var, new_name);
-        		addToQuery = replaceAll(addToQuery, var, var1);
-        		query->locVars.push_back(var1);
+				product = chc1NonRecPart[0]->arg(0);
+				vars.insert(vars.end(), subRule1->invVars[product].begin(), subRule1->invVars[product].end());
+				for (auto it = chc1NonRecPart.begin()+1; it != chc1NonRecPart.end(); it++)
+				{
+					rel = (*it)->arg(0);
+					product = mk<AND>(product, rel);
+					vars.insert(vars.end(), subRule1->invVars[rel].begin(), subRule1->invVars[rel].end());
+				}
 			}
-			query->body = replaceAll(query->body, query->srcVars, query->dstQueryVars);
-			query->body = mk<AND>(query->body, addToQuery);
+
+			if (chc2NonRec)
+			{
+				rel = chc2NonRecPart[0]->arg(0);
+				if (!product) product = rel;
+				else product = mk<AND>(product, rel);
+				vars.insert(vars.end(), subRule2->invVars[rel].begin(), subRule2->invVars[rel].end());
+				for (auto it = chc2NonRecPart.begin()+1; it != chc2NonRecPart.end(); it++)
+				{
+					rel = (*it)->arg(0);
+					product = mk<AND>(product, rel);
+					vars.insert(vars.end(), subRule2->invVars[rel].begin(), subRule2->invVars[rel].end());
+				}
+			}
 		}
-	}
 
-	void getExprEqualities(Expr var, HornRuleExt& rule, CHCs &ruleManager)
+
+		void getSpecificSrcRelations(Expr srcRelation, Expr dstRelation, bool recursive, ExprVector &partitions, int pos)
+		{
+			Expr decl;
+			if (isOpX<AND>(srcRelation))
+			{
+				for (int i = 0; i < srcRelation->arity(); i++)
+					getSpecificSrcRelations(srcRelation->arg(i), dstRelation, recursive, partitions, i);
+			}
+			else if (!isOpX<TRUE>(srcRelation))
+			{
+				if (recursive && srcRelation == dstRelation)
+				{
+					// todo: remove dependence on this pos variable
+					if (pos == 0) decl = subRule1->getDecl(srcRelation);
+					else decl = subRule2->getDecl(srcRelation);
+					partitions.push_back(decl);
+				}
+				else if (!recursive && srcRelation != dstRelation)
+				{
+					if (pos == 0) decl = subRule1->getDecl(srcRelation);
+					else decl = subRule2->getDecl(srcRelation);
+					partitions.push_back(decl);
+				}
+			}
+		}
+
+
+		void RTransform(HornRuleExt &chc, ExprVector &transformed, int pos)
+		{
+			Expr decl;
+			if (!chc.isInductive)
+			{
+				transformed.push_back(bind::fapp(chc.head, chc.dstVars));
+			}
+			else
+			{
+				if (pos == 0) decl = subRule1->getDecl(chc.srcRelation);
+				else decl = subRule2->getDecl(chc.srcRelation);
+				transformed.push_back(bind::fapp(decl, chc.srcVars));
+			}
+		}
+
+
+		void recursiveProduct(HornRuleExt &chc1, HornRuleExt &chc2, Expr &product, ExprVector &vars)
+		{
+			vector<HornRuleExt> nullV;
+			ExprVector transformed;
+
+			RTransform(chc1, transformed, 0); RTransform(chc2, transformed, 1);
+
+			// might have to check if there are more than two relation symbols in transformed
+			productRelationSymbols(ExprVector{transformed[0]->arg(0), transformed[1]->arg(0)}, 
+				product, nullV, false);
+
+			// remove head(C) from body
+			if (bind::fapp(chc1.head, chc1.dstVars) == transformed[0] 
+				&& bind::fapp(chc2.head, chc2.dstVars) == transformed[1]) 
+			{
+				product = NULL;
+			}
+			else 
+			{
+				vars.insert(vars.end(), transformed[0]->args_begin()+1, transformed[0]->args_end());
+				vars.insert(vars.end(), transformed[1]->args_begin()+1, transformed[1]->args_end());
+
+				product = product->arg(0);
+			}
+		}
+
+
+		void bodyProduct(HornRuleExt &chc1, HornRuleExt &chc2, HornRuleExt &newProductRule)
+		{
+			Expr constraintPr, recursivePr, nonRecursivePr;
+			ExprVector nonRecursivePrVars, recursivePrVars;
+
+			// constraint product
+			constraintPr = mk<AND>(chc1.body, chc2.body);
+
+			// non-recursive part product
+			nonRecursiveProduct(chc1, chc2, nonRecursivePr, nonRecursivePrVars);
+
+			// recursive part product
+			recursiveProduct(chc1, chc2, recursivePr, recursivePrVars);
+
+			// if (chc1.isInductive && chc2.isInductive) newProductRule.subRelationsBothInductive = true;
+			// else newProductRule.subRelationsBothInductive = false;
+
+			newProductRule.body = constraintPr;
+
+			if (nonRecursivePr && recursivePr) 
+			{
+				newProductRule.srcRelation = mk<AND>(nonRecursivePr, recursivePr);
+				concatenateVectors(newProductRule.srcVars, nonRecursivePrVars, recursivePrVars);
+			}
+			else if (nonRecursivePr) 
+			{
+				newProductRule.srcRelation = nonRecursivePr;
+				newProductRule.srcVars = nonRecursivePrVars;
+			}
+			else if (recursivePr) 
+			{
+				newProductRule.srcRelation = recursivePr;
+				newProductRule.srcVars = recursivePrVars;
+			}
+			else 
+			{
+				newProductRule.srcRelation = mk<TRUE>(m_efac);
+				newProductRule.srcVars = ExprVector();
+			}
+			newProductRule.isFact = (isOpX<TRUE>(newProductRule.srcRelation));
+			newProductRule.isQuery = (newProductRule.dstRelation == failDecl);
+			newProductRule.isInductive = (recursivePr != NULL);
+		}
+
+
+		void calculateCombinations(vector<vector<HornRuleExt>> &rules, vector<vector<HornRuleExt>> &combinations)
+		{
+			vector<HornRuleExt> rulesFirstP = rules[0], rulesSecondP = rules[1];
+
+			for (auto it : rulesFirstP)
+			{
+				for (auto it2 : rulesSecondP)
+				{
+					combinations.push_back(vector<HornRuleExt>{it, it2});
+				}
+			}
+		}
+
+		void createProductQueries(HornRuleExt &queryPr)
+		{
+			HornRuleExt *query1, *query2;
+
+			query1 = subRule1->getQuery();
+			query2 = subRule2->getQuery();
+			queryPr.body = mk<AND>(query1->body, query2->body);
+
+			queryPr.srcRelation = mk<AND>(query1->srcRelation, query2->srcRelation);
+			queryPr.dstRelation = mkTerm<string>(lexical_cast<string>(query1->dstRelation) + 
+				"*" + lexical_cast<string>(query2->dstRelation), m_efac);
+
+			queryPr.head = bind::fdecl(queryPr.dstRelation, ExprVector{mk<BOOL_TY>(m_efac)});
+
+			// queries do not have dstVars
+			queryPr.dstVars = ExprVector();
+			concatenateVectors(queryPr.srcVars, query1->srcVars, query2->srcVars);
+			concatenateVectors(queryPr.locVars, query1->locVars, query2->locVars);
+			
+			queryPr.isFact = false;
+			queryPr.isQuery = true;
+			queryPr.isInductive = false;
+
+			if (!failDecl)
+				addFailDecl(queryPr.dstRelation);
+		}
+
+
+	    void calculateProductOfRules(Expr rel1, Expr rel2, vector<HornRuleExt> &rulesOfP)
+	    {
+			vector<vector<HornRuleExt>> rulesOfPredicates, combinations;
+			vector<HornRuleExt> rulesOfCurrentP;
+
+			subRule1->rulesOfPredicate(rel1, rulesOfCurrentP);
+			rulesOfPredicates.push_back(rulesOfCurrentP);
+			rulesOfCurrentP.clear();
+
+			subRule2->rulesOfPredicate(rel2, rulesOfCurrentP);
+			rulesOfPredicates.push_back(rulesOfCurrentP);
+
+			calculateCombinations(rulesOfPredicates, combinations);
+
+			for (auto &it : combinations)
+			{
+				productOfCHCs(it[0], it[1], rulesOfP);
+			}
+	    }
+
+
+		void productRelationSymbols(ExprVector predicates, Expr &predicateP, vector<HornRuleExt> &rulesOfP, 
+			bool calculateRulesOfP)
+		{
+			ExprVector productTypes;
+			Expr rel1 = predicates[0], rel2 = predicates[1];
+
+			Expr productRel = mkTerm<string>(lexical_cast<string>(rel1->arg(0)) + "*" + 
+				lexical_cast<string>(rel2->arg(0)), m_efac);
+
+			productTypes.insert(productTypes.end(), rel1->args_begin()+1, rel1->args_begin()+rel1->arity()-1);
+			productTypes.insert(productTypes.end(), rel2->args_begin()+1, rel2->args_begin()+rel2->arity());
+
+			predicateP = bind::fdecl(productRel, productTypes);
+			
+			if (calculateRulesOfP) 
+				calculateProductOfRules(rel1, rel2, rulesOfP);
+		}
+
+
+		void productOfCHCs(HornRuleExt &chc1, HornRuleExt &chc2, vector<HornRuleExt> &rulesOfP)
+		{
+			Expr head, body;
+			vector<HornRuleExt> nullV;
+			vector<ExprVector> nullV1;
+			HornRuleExt newProductRule;
+
+			// head product
+			productRelationSymbols(ExprVector{chc1.head, chc2.head}, head, nullV, false/*, nullV1*/);
+			newProductRule.head = head;
+			newProductRule.dstRelation = head->arg(0);
+			concatenateVectors(newProductRule.dstVars, chc1.dstVars, chc2.dstVars);
+			
+			// body product
+			bodyProduct(chc1, chc2, newProductRule);
+
+			concatenateVectors(newProductRule.locVars, chc1.locVars, chc2.locVars);
+
+			// do not push if one is inductive and other one is not. Push in all other cases
+			if ((newProductRule.isInductive && chc1.isInductive && chc2.isInductive) || !newProductRule.isInductive) 
+				rulesOfP.push_back(newProductRule);
+		}
+
+		void renamingAsProductRules()
+		{
+			ExprVector srcVars, dstVars;
+
+			for (auto &chc : chcs) 
+			{
+				srcVars = chc.srcVars; dstVars = chc.dstVars;
+				
+				// might add dstVars of one of the CHCs to product locVars twice in some cases, should not be a problem
+				concatenateVectors(chc.locVars, srcVars, dstVars);
+				chc.srcVars.clear(); chc.dstVars.clear();
+
+				ExprVector dstV;
+				for (auto &it : invVars[chc.dstRelation])
+				{
+					Expr new_name = mkTerm<string> (lexical_cast<string>(it) + "'", m_efac);
+					dstV.push_back(cloneVar(it, new_name));
+				}
+
+				chc.assignVarsAndRewrite(srcVars, invVars[chc.srcRelation], 
+					dstVars, dstV);
+			}
+		}
+
+
+		void simplifyRules()
+		{
+			renamingAsProductRules();
+
+			// extra chcs are not currently being pushed to the chcs, hence this code is not needed
+			// but if all chcs were to be computed (like in paper), this code filters out extra rules
+			/*for (auto chcIter = chcs.begin(); chcIter != chcs.end(); )
+			{   
+				bool erased = false;
+				bool allowed = (chcIter->isInductive && chcIter->subRelationsBothInductive) || !chcIter->isInductive;
+
+				// it checks if any inductive CHC has only one loop iterating
+				// generally we allow that behavior in the product of two CHC systems, we compute them in the algorithm
+				// but since we do not need those extra relations, we filter them out here
+				if (!allowed)
+				{
+					chcIter = chcs.erase(chcIter);
+					continue;
+				}
+				chcIter++;
+			}*/
+		}
+
+
+		// generates the product of two CHC systems
+		// At many places, it is assumed that there are only two systems, 
+		// hence the operations done are not generic i.e. for product of more than two CHC systems
+		void createProduct()
+		{
+			vector<HornRuleExt> transformedCHCs;
+			vector<HornRuleExt> worklist;
+			HornRuleExt C_a;
+
+			HornRuleExt queryPr;
+
+			concatenateVectors(dstQueryVars, subRule1->dstQueryVars, subRule2->dstQueryVars);
+
+			// generate product queries
+			createProductQueries(queryPr);
+			worklist.push_back(queryPr);
+
+			HornRuleExt *query1 = subRule1->getQuery(), *query2 = subRule2->getQuery();
+
+			while (!worklist.empty())
+			{
+				Expr freshP;
+				ExprVector partition;
+				vector<HornRuleExt> rulesOfP;
+				C_a = worklist[0];
+				worklist.erase(worklist.begin());
+
+				// AH: In the original algorithm, the operation PARTITION is used that is defined: 
+				// 'operator partition from a set to a set of its disjoint subsets'
+				// Here, just one partition created of two symbols because there are only two relation symbols here 
+
+				// argument false for non-recursive; getting non-recursive parts of the srcrelation
+				getSpecificSrcRelations(C_a.srcRelation, C_a.dstRelation, false, partition, 0);
+				getSpecificSrcRelations(C_a.srcRelation, C_a.dstRelation, false, partition, 1);
+
+				if (partition.size() >= 2) 
+				{
+					// take product of relation symbols in partition, 
+					// true specified if product of rules of relations is to be calculated
+					productRelationSymbols(partition, freshP, rulesOfP, true);
+					C_a.srcRelation = freshP->arg(0);
+
+					worklist.insert(worklist.end(), rulesOfP.begin(), rulesOfP.end());
+				}
+
+				if (isOpX<AND>(C_a.srcRelation))
+				{
+					// outs() << "Non-linear CHC:\n";
+					// C_a.printMemberVars();
+				}
+				else 
+				{
+					// if freshP is not NULL, it went into the if-statement (partition.size() >= 2)
+					if (freshP) addDecl(freshP);					
+					chcs.push_back(C_a);
+				}
+			}
+
+			// changes variables from _v1_ and _v2_ prefixes to _pr_ with necessary changes, 
+			// also disjoins rules to remove redundancy
+			simplifyRules();
+
+			for (int i = 0; i < chcs.size(); i++)
+				outgs[chcs[i].srcRelation].push_back(i);
+
+			// sort rules
+			wtoSort();
+
+			outs() << "\n--------------------------CALCULATING PRODUCT DONE-----------------------------\n\n";
+		}
+	};
+
+	inline bool learnInvariantsPr(CHCs &ruleManager, Expr currentMatching)
+  {
+    EZ3 z3(ruleManager.m_efac);
+    BndExpl bnd(ruleManager);
+
+    unsigned maxAttempts = 2000000, to = 100;
+    bool freqs = false, aggp = false, enableDataLearning = true, doElim = false, doDisj = false;
+    bool dAllMbp = false, dAddProp = false, dAddDat = false, dStrenMbp = false;
+
+    RndLearnerV3 ds(ruleManager.m_efac, z3, ruleManager, to, freqs, aggp, dAllMbp, dAddProp, dAddDat, dStrenMbp);
+    map<Expr, ExprSet> cands;
+    for (auto& dcl: ruleManager.decls) ds.initializeDecl(dcl);
+
+    for (int i = 0; i < ruleManager.cycles.size(); i++)
     {
-      Expr body = rule.body;
-      ExprSet s;
-      Expr final;
-      getConj(body, s);
-      for (auto &e : s)
-      {
-        bool skip = false;
-        if (contains(e, var) && !containsOp<ARRAY_TY>(e) && containsOp<EQ>(e))
-        {
-          ExprSet ss;
-          filter(e, IsConst(), inserter(ss, ss.begin()));
-          for (auto &it : ss)
-          {
-            if (find(rule.dstVars.begin(), rule.dstVars.end(), it) != rule.dstVars.end())
-            {
-              skip = true;
-              break;
-            }
-          }
-          if (skip) continue;
-          else 
-          { 
-            if (final) final = mk<AND>(final, e);
-            else final = e;
-          }
-        }
-      }
-      ruleManager.exprEqualities[var] = final;
+      Expr pref = bnd.compactPrefix(i);
+      Expr rel = ruleManager.chcs[ruleManager.cycles[i][0]].srcRelation;
+      ExprSet tmp;
+      getConj(pref, tmp);
+      for (auto & t : tmp)
+        if(hasOnlyVars(t, ruleManager.invVars[rel]))
+          cands[rel].insert(t);
+      ds.mutateHeuristicEq(cands[rel], cands[rel], rel, true);
+      ds.initializeAux(bnd, i, pref);
     }
+    // if (enableDataLearning) ds.getDataCandidates(cands);
+    
+    for (auto& dcl: ruleManager.wtoDecls) ds.getSeeds(dcl, cands);
+    ds.refreshCands(cands);
+    for (auto& dcl: ruleManager.decls) ds.doSeedMining(dcl->arg(0), cands[dcl->arg(0)], false);
+    ds.calculateStatistics();
+
+    // call bootstrap with option to only consider equalities as candidates for finding invariant
+    // also add equalities for variable matchings
+    bool check = ds.bootstrap(doDisj, currentMatching, true);
+    // if (!check)
+    // {
+    //   std::srand(std::time(0));
+    //   check = ds.synthesize(maxAttempts, doDisj);
+    // }
+    return check;
+  }
 
 
-    Expr numIterations(Expr init, Expr transition, Expr final, Expr add)
-    {
-      auto &fac = init->getFactory();
-      if (!(init && transition && final)) return mkMPZ(-1, fac);
-      Expr numer = mk<MINUS>(final, init);
-      // works this way
-      if (add) numer = mk<PLUS>(numer, add);
-      Expr divisible = mk<EQ>(mk<MOD>(numer, transition), mkMPZ(0, fac));
-
-      Expr numIters = mk<PLUS>(mk<IDIV>(numer, transition), mk<ITE>(divisible, mkMPZ(0, fac), mkMPZ(1, fac)));
-      // outs() << "numIters: " << *numIters << "\n";
-      return numIters;
-    }
-
-	bool findInitialValue(int i, HornRuleExt& initRule, HornRuleExt& rule, Expr &initVal, SMTUtils &u)
-    {
-      Expr init = initRule.body;
-      Expr iter = rule.dstVars[i];
-
-      findExpr<EQ>(iter, init, initVal, true);
-      if (initVal)
-      {
-        Expr newInit;
-        // a hack to avoid mod operations
-        if (isOpX<AND>(initVal))
-        {
-          ExprSet s;
-          getConj(initVal, s);
-          for (auto &it : s)
-          {
-            Expr normalized = ineqSimplifier(iter, simplifyArithm(it));
-            if (isOpX<EQ>(normalized) && normalized->left() == iter)  
-            {
-              // if multiple equalities are found, just return; support more
-              if (newInit) return false;
-              else newInit = normalized;
-            }
-          }
-          initVal = newInit;
-        }
-        if (initVal) 
-        {
-          // initVal = ineqSimplifier(iter, initVal);
-          initVal = initVal->right();
-          // assigns non-primed variables
-          initVal = replaceAll(initVal, rule.dstVars, rule.srcVars);
-          // outs() << "initVal: " << *initVal << "\n";
-          return true;
-
-          // use when local vars are not eliminated, so extra equalities need to be calculated
-          // initVar is then the iterator
-          /*getExprEqualities(initVar, rule);
-          outs() << "exprEqualities for " << *initVar << ": " << *exprEqualities[initVar] << "\n";
-
-          ExprSet s;
-          filter(initVal, IsConst(), inserter(s, s.begin()));
-          if (!s.empty())
-          {
-            // outs() << "var: " << **s.begin() << "\n";
-
-            getExprEqualities(*s.begin(), rule);
-            // outs() << "exprEqualities for " << **s.begin() << ": " << *exprEqualities[*s.begin()] << "\n";
-          }*/
-
-        }
-      }
-      return false;
-    }
-
-    bool findTransitionValue(int i, HornRuleExt& rule, Expr& transitionVal, SMTUtils &u)
-    {
-      ExprSet allExprs;
-      Expr allExprsConj, e;
-      bool multipleTransVal = false;
-
-      Expr a = rule.srcVars[i];
-      Expr b = rule.dstVars[i];
-
-      findExpr<EQ>(b, rule.body, e, true);
-      // errs() << "\nfinding: " << *b << "\n\n";
-
-      if (!e) return false;
-
-      e = ineqSimplifier(b, e);
-      // errs() << "found: " << *e << "\n\n";
-
-      getConjAndDisj(e, allExprs);
-      for (auto &it : allExprs)
-      {
-        if (contains(it, a)) 
-        {
-          if (allExprsConj) multipleTransVal = true;
-          else allExprsConj = it;
-        }
-      }
-
-      // Cases when transition can't be found: multiple transition rels, no transition rel, contains an ITE
-      if (multipleTransVal || !allExprsConj || allExprsConj->right()->arity() <= 1 || containsOp<ITE>(allExprsConj)) 
-        return false;
-
-      Expr right = allExprsConj->right();
-
-      // assuming no local vars
-      if (right->arg(0) == a)
-        transitionVal = right->arg(1);
-      else 
-        transitionVal = right->arg(0);
-
-      // check if delta value is constant; Eq. 10, section 4 in paper
-      Expr replacedTrans = replaceAll(transitionVal, rule.srcVars, rule.dstVars);
-      if (!u.implies(rule.body, mk<EQ>(transitionVal, replacedTrans)))
-      {
-        transitionVal = NULL;
-        return false;
-      }
-
-      // outs() << "transitionVal: " << *transitionVal << "\n";
-      return true;
-    }
-
-    bool findFinalValue(int i, HornRuleExt& rule, Expr& limitVal, Expr& add, bool iterIncreases, SMTUtils &u)
-    {
-      Expr a = rule.srcVars[i];
-      Expr b = rule.dstVars[i];
-
-      Expr limitEq;
-      Expr gt, ge, lt, le;
-      if (iterIncreases)
-      {
-        findExpr<LT>(a, rule.body, lt, true);
-        findExpr<LEQ>(a, rule.body, le, true);
-
-        // make sure there is no case where both lt and le are not null
-        // cannot think of any but could be
-        // in case lt and le are either conjunction or disjunction, handle better
-        if (lt) 
-        {
-          lt = ineqSimplifier(a, lt);
-          if (!(isOpX<AND>(lt) || isOpX<OR>(lt))) limitEq = lt;
-        }
-        if (le) 
-        {
-          add = mkMPZ(1, a->getFactory());
-          le = ineqSimplifier(a, le);
-          if (!(isOpX<AND>(le) || isOpX<OR>(le))) limitEq = le;
-        }
-      }
-      else 
-      {
-        findExpr<GT>(a, rule.body, gt);
-        findExpr<GEQ>(a, rule.body, ge);
-
-        // make sure there is no case where both gt and ge are not null
-        // cannot think of any but could be
-        if (gt) 
-        {
-          gt = ineqSimplifier(a, gt);
-          if (!(isOpX<AND>(gt) || isOpX<OR>(gt))) limitEq = gt;
-        }
-        if (ge) 
-        {
-          add = mkMPZ(-1, a->getFactory());
-          ge = ineqSimplifier(a, ge);
-          if (!(isOpX<AND>(ge) || isOpX<OR>(ge))) limitEq = ge;
-        }
-      }
-
-      if (limitEq) 
-      {
-        limitVal = limitEq->arg(1);
-        // outs() << "limitVal: " << *limitVal << "\n";
-
-        // check if limit value is constant; Eq. 8, section 4
-        Expr replacedLimit = replaceAll(limitVal, rule.srcVars, rule.dstVars);
-        bool constLimitValCheck = u.implies(rule.body, mk<EQ>(limitVal, replacedLimit));
-        
-        // check the case that iter does not exceed limit value during transition; Eq. 7, section 4
-        bool loopEndCheck = limitEq && !u.isSat(mk<AND>(mkNeg(limitEq), rule.body));
-
-        if (!constLimitValCheck || !loopEndCheck)
-        {
-          limitVal = NULL;
-          return false;
-        }
-
-        // s.clear();
-        // filter(limitVal, IsConst(), inserter(s, s.begin()));
-        // if (!s.empty())
-        // {
-          // outs() << "var: " << **s.begin() << "\n";
-          // for (auto &it : s)
-          //   getExprEqualities(it, rule);
-          // outs() << "exprEqualities for " << **s.begin() << ": " << *exprEqualities[*s.begin()] << "\n";
-        // }
-        return true;
-      }
-      return false;
-    }
-
-    void findIterators(CHCs &ruleManager)
-    {
-    	SMTUtils u(ruleManager.m_efac);
-
-      // assuming only one cycle
-      vector<int>& cycle = ruleManager.cycles[0];
-      HornRuleExt& rule = ruleManager.chcs[cycle[0]];
-      vector<int> &prefix = ruleManager.prefixes[0];
-      HornRuleExt &prefixRule = ruleManager.chcs[prefix[0]];
-      Expr rel = rule.srcRelation;
-
-      int invNum = getVarIndex(rel, ruleManager.decls);
-
-      for (int i = 0; i < rule.srcVars.size(); i++)
-      {
-        Expr a = rule.srcVars[i];
-        Expr b = rule.dstVars[i];
-        bool isAnIter = false;
-
-        bool iterDecreases = bind::isIntConst(a) && u.implies(rule.body, mk<GT>(a, b));
-        bool iterIncreases = bind::isIntConst(a) && u.implies(rule.body, mk<LT>(a, b));
-
-        if (iterIncreases || iterDecreases)
-        {
-          Expr initVal, transitionVal, limitVal;
-          Expr add;
-
-          // AH: handle the case where it is iterator but any of values are not available
-          bool hasInitVal = findInitialValue(i, prefixRule, rule, initVal, u);
-
-          bool hasTransitionVal = findTransitionValue(i, rule, transitionVal, u);
-
-          bool hasLimitVal = findFinalValue(i, rule, limitVal, add, iterIncreases, u);
-
-          isAnIter = hasInitVal && hasTransitionVal && hasLimitVal;
-          if (isAnIter)
-          {
-            ruleManager.iter = i;
-          
-            // if iter is increasing/decreasing
-            ruleManager.iterGrows = iterIncreases;
-            ruleManager.numOfIters = numIterations(initVal, transitionVal, limitVal, add);
-          }
-        }
-
-        // if not an iter, collect info about the type of variables
-        if (!isAnIter)
-        {
-          if (bind::isIntConst(a)) ruleManager.varsInt.push_back(i);
-          else if (bind::isBoolConst(a)) ruleManager.varsBool.push_back(i);
-          else if (isOpX<ARRAY_TY>(bind::typeOf(a))) ruleManager.varsArray.push_back(i);
-        }
-      }
-    }
-
-	bool findAlignment(CHCs &ruleManager1, CHCs &ruleManager2)
+    bool findAlignment(Extended_CHCs &ruleManager1, Extended_CHCs &ruleManager2)
 	{
 		auto &fac = ruleManager1.m_efac;
 		SMTUtils u(fac);
@@ -1135,8 +1269,8 @@ namespace ufo
 			Expr iterF = prefixRule1.dstVars[ruleManager1.iter], iterFVal;
 			Expr iterS = prefixRule2.dstVars[ruleManager2.iter], iterSVal;
 
-			findInitialValue(iter1, prefixRule1, rule1, iterFVal, u);
-			findInitialValue(iter2, prefixRule2, rule2, iterSVal, u);
+			ruleManager1.findInitialValue(iter1, prefixRule1, rule1, iterFVal, u);
+			ruleManager2.findInitialValue(iter2, prefixRule2, rule2, iterSVal, u);
 
 			// add any variables that are needed in the quantified formula
 			for (auto &pair : comb)
@@ -1222,23 +1356,17 @@ namespace ufo
 		
                 findExpr<EQ>(coef1, minModels, minCoef1, true);
                 findExpr<EQ>(coef2, minModels, minCoef2, true);
-		findExpr<EQ>(const1, minModels, minConst1, true);
+				findExpr<EQ>(const1, minModels, minConst1, true);
                 findExpr<EQ>(const2, minModels, minConst2, true);
 
                 u.isSat(mk<AND>(quantifiedFla, mk<AND>(minCoef1, minCoef2)));
 
-		//minModels = u.getMinModelsInts(coef2);
-		
-                	
-                //u.isSat(mk<AND>(quantifiedFla, mk<AND>(minCoef1, minCoef2)));
-
+				if (minConst1->right() == mkMPZ(0, fac))
+					minModels = u.getMinModelInts(const2);
+				else 
+					minModels = u.getMinModelInts(const1);
                 
-		if (minConst1->right() == mkMPZ(0, fac))
-                  minModels = u.getMinModelInts(const2);
-		else 
-                  minModels = u.getMinModelInts(const1);
-                
-		minConst1 = NULL;
+				minConst1 = NULL;
                 minConst2 = NULL;
                 findExpr<EQ>(const1, minModels, minConst1, true);
                 findExpr<EQ>(const2, minModels, minConst2, true);
@@ -1265,7 +1393,6 @@ namespace ufo
 			int coef2Int = (int)lexical_cast<cpp_int>(minCoef2);
 			int const2Int = (int)lexical_cast<cpp_int>(minConst2);
 
-
 			// Currently, it does all combinations to check the number of iterations to be added to fact and query
 			vector<int> v1, v2;
 			vector<vector<int>> vComb;
@@ -1285,8 +1412,8 @@ namespace ufo
 				// check if adding certain iterations to query will make the initial values of iterators equal
 				// it is not greedy approach currently
 				Expr prefRuleBody1, prefRuleBody2;
-				createAlignment(ruleManager1, 0, it[0], 0, prefRuleBody1);
-				createAlignment(ruleManager2, 0, it[1], 0, prefRuleBody2);
+				ruleManager1.createAlignment(0, it[0], 0, prefRuleBody1);
+				ruleManager2.createAlignment(0, it[1], 0, prefRuleBody2);
 
 				Expr tempProdFact = mk<AND>(mk<AND>(prefRuleBody1, prefRuleBody2), preRelev);
 				Expr eq = mk<EQ>(iterF, iterS);
@@ -1295,10 +1422,10 @@ namespace ufo
 				if (impliesEq)
 				{
 					// actual alignment created here
-					createAlignment(ruleManager1, coef1Int, it[0], const1Int-it[0], prefRuleBody1);
+					ruleManager1.createAlignment(coef1Int, it[0], const1Int-it[0], prefRuleBody1);
 					prefixRule1.body = prefRuleBody1;
 
-					createAlignment(ruleManager2, coef2Int, it[1], const2Int-it[1], prefRuleBody2);					
+					ruleManager2.createAlignment(coef2Int, it[1], const2Int-it[1], prefRuleBody2);					
 					prefixRule2.body = prefRuleBody2;
 
 					// break out of the loop if for any alignment, we have iterators initially equal;
@@ -1311,42 +1438,21 @@ namespace ufo
 			// if iterator values do not match for any number of iterations, no alignment found
 			if (!impliesEq) continue;
 
-			HornRuleExt *query1, *query2;
-			for (auto &it : ruleManager1.chcs) 
-			{
-				if (it.isQuery) query1 = &it; 
-			}
-
-			for (auto &it : ruleManager2.chcs)
-			{
-				if (it.isQuery) query2 = &it;
-			}
+			HornRuleExt *query1 = ruleManager1.getQuery(), *query2 = ruleManager2.getQuery();
 
 			// create precondition and postcondition
 			Expr post;
-			if (!query1->dstQueryVars.empty()) post = replaceAll(pre, rule1.dstVars, query1->dstQueryVars);
+			if (!ruleManager1.dstQueryVars.empty()) post = replaceAll(pre, rule1.dstVars, ruleManager1.dstQueryVars);
 			else post = replaceAll(pre, rule1.dstVars, rule1.srcVars); 
-			if (!query2->dstQueryVars.empty()) post = replaceAll(post, rule2.dstVars, query2->dstQueryVars);
+			if (!ruleManager2.dstQueryVars.empty()) post = replaceAll(post, rule2.dstVars, ruleManager2.dstQueryVars);
 			else post = replaceAll(post, rule2.dstVars, rule2.srcVars); 
 			Expr negPost = mkNeg(post);
 
-
 			// create the product 
-			CHCs ruleManagerProduct(ruleManager1, ruleManager2, "_pr_");
-
-		    vector<vector<HornRuleExt>> queries(2);
-
-		    // get queries of both systems
-		    getQueries(ruleManager1.chcs, ruleManager2.chcs, queries);
-
-		    if (queries[0].empty() || queries[1].empty())
-		    {
-		        outs() << "Product can not be found.\n";
-		        continue;
-		    }
+			Product_CHCs ruleManagerProduct(ruleManager1, ruleManager2, "_pr_");
 
 		    // product of two CHC systems
-			Product(ruleManagerProduct, queries);
+			ruleManagerProduct.createProduct();
 
 			HornRuleExt *fact, *query, *ind;
 			for (auto &it : ruleManagerProduct.chcs)
@@ -1366,11 +1472,11 @@ namespace ufo
 			outs() << "------------------------CREATING ALIGNED PROGRAM DONE-----------------------------\n\n";
 
 			Expr currentMatching = mk<TRUE>(fac);
-				int sz = rule1.srcVars.size();
+			int sz = rule1.srcVars.size();
 			for (auto &pair : comb)
 			{
-			Expr eq = mk<EQ>(ind->srcVars[pair[0]], ind->srcVars[sz+pair[1]]);
-			currentMatching = mk<AND>(currentMatching, eq);
+				Expr eq = mk<EQ>(ind->srcVars[pair[0]], ind->srcVars[sz+pair[1]]);
+				currentMatching = mk<AND>(currentMatching, eq);
 			}
 
 			// GF: hack to create pairs (to revisit) -- visited, works well
@@ -1380,37 +1486,9 @@ namespace ufo
 
 			// call the function with all default values for arguments that are not relevant
 			// probably, do a cleaner way of calling the function
-		    if (learnInvariantsPr(ruleManagerProduct, 2000000, 100, false, 
-		    	false, true, false, false, false, false, false, false, currentMatching)) return true;
+		    if (learnInvariantsPr(ruleManagerProduct, currentMatching)) return true;
 		}
 		return false;
-	}
-
-	void removePostLoop(CHCs &ruleManager)
-	{
-		vector<HornRuleExt>::iterator query, postLoop;
-		bool postLoopFound = false;
-		for (auto it = ruleManager.chcs.begin(); it != ruleManager.chcs.end(); it++)
-		{
-			if (it->isQuery) query = it;
-			else if (!it->isFact && !it->isInductive) 
-			{
-				postLoopFound = true;
-				postLoop = it;
-			}
-		}
-		if (!postLoopFound) return;
-		HornRuleExt &q = *query, &pl = *postLoop;
-		Expr body = replaceAll(q.body, q.srcVars, pl.dstVars);
-		pl.body = mk<AND>(pl.body, body);
-		pl.dstQueryVars = pl.dstVars;
-		pl.dstVars.clear();
-		pl.head = q.head;
-		ruleManager.removeDecl(pl.dstRelation);
-		pl.dstRelation = q.dstRelation;
-		pl.isQuery = true;
-
-		ruleManager.chcs.erase(query);
 	}
 
 
@@ -1420,38 +1498,20 @@ namespace ufo
 		ExprFactory m_efac;
 		EZ3 z3(m_efac);
 
-		CHCs ruleManagerSrc(m_efac, z3, "_v1_");
+		Extended_CHCs ruleManagerSrc(m_efac, z3, "_v1_");
 		ruleManagerSrc.parse(string(chcfileSrc), false);
-		
-		removePostLoop(ruleManagerSrc);
-		/*outs() << "eliminateQuantifiers:\n";
-		for (auto it : ruleManagerSrc.chcs)
-		{
-			// ExprVector v;
-			// Expr q = createQuantifiedFormula(it.body, v);
-			// SMTUtils su(it.body->getFactory());
-			// su.serialize_formula(q);
-			outs() << "is inductive: " << it.isInductive << ", is fact: " << it.isFact << "\n";
-			Expr body = it.body;
-			for (auto v : it.locVars)
-			{
-				outs() << "eliminating: " << *v << "\n";
-				ExprSet s{v};
-				body = eliminateQuantifiers(body, s);
-				outs() << "body: " << *body << "\n";
-			}
-		}*/
 
-		//for (auto it : ruleManagerSrc.chcs) it.printMemberVars();
-
-		CHCs ruleManagerDst(m_efac, z3, "_v2_");
+		Extended_CHCs ruleManagerDst(m_efac, z3, "_v2_");
 		ruleManagerDst.parse(string(chcfileDst), false);
+		
+		ruleManagerSrc.removePostLoop();
+		ruleManagerDst.removePostLoop();
 
-		removePostLoop(ruleManagerDst);
-		//for (auto it : ruleManagerDst.chcs) it.printMemberVars();
+		ruleManagerSrc.renameLocVars();
+		ruleManagerDst.renameLocVars();
 
-		findIterators(ruleManagerSrc);
-		findIterators(ruleManagerDst);
+		ruleManagerSrc.findIterators();
+		ruleManagerDst.findIterators();
 
 		bool equiv = findAlignment(ruleManagerSrc, ruleManagerDst);
 		if (equiv) outs() << "\nprograms are equivalent\n";
@@ -1465,34 +1525,20 @@ namespace ufo
 		ExprFactory m_efac;
 		EZ3 z3(m_efac);
 
-		CHCs ruleManagerSrc(m_efac, z3, "_v1_");
+		Extended_CHCs ruleManagerSrc(m_efac, z3, "_v1_");
 		ruleManagerSrc.parse(string(chcfileSrc));
 
-		// for (auto it : ruleManagerSrc.chcs) it.printMemberVars();
-
-		CHCs ruleManagerDst(m_efac, z3, "_v2_");
+		Extended_CHCs ruleManagerDst(m_efac, z3, "_v2_");
 		ruleManagerDst.parse(string(chcfileDst));
-		
-		// for (auto it : ruleManagerDst.chcs) it.printMemberVars();
 
-		CHCs ruleManagerProduct(ruleManagerSrc, ruleManagerDst, "_pr_");
-
-	    vector<vector<HornRuleExt>> queries(2);
-
-	    // get queries of both systems
-	    getQueries(ruleManagerSrc.chcs, ruleManagerDst.chcs, queries);
-
-	    if (queries[0].empty() || queries[1].empty())
-	    {
-	        outs() << "Product can not be found.\n";
-	        exit(1);
-	    }
+		Product_CHCs ruleManagerProduct(ruleManagerSrc, ruleManagerDst, "_pr_");
 
 	    // product of two CHC systems
-		Product(ruleManagerProduct, queries);
+		ruleManagerProduct.createProduct();
 
-		if (learnInvariantsPr(ruleManagerProduct, 2000000, 100, false, 
-		    	false, true, false, false, false, false, false, false, mk<TRUE>(m_efac)))
+		// have to add pre and post
+
+		if (learnInvariantsPr(ruleManagerProduct, mk<TRUE>(m_efac)))
 			outs() << "programs are equivalent\n";
 		else
 			outs() << "programs are not equivalent\n";
