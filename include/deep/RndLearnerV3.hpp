@@ -1465,7 +1465,8 @@ namespace ufo
       int invNum = getVarIndex(rel, decls);
 
       prefs[invNum] = pref;
-      ssas[invNum] = replaceAll(bnd.toExpr(cycle), bnd.bindVars.back(), dstVars);
+      Expr e = bnd.toExpr(cycle);
+      ssas[invNum] = replaceAll(e, bnd.bindVars.back(), dstVars);
 
       if (iterators[invNum] != NULL) return;    // GF: TODO more sanity checks (if needed)
 
