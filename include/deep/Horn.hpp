@@ -112,7 +112,7 @@ namespace ufo
     vector<vector<int>> prefixes;  // for cycles
     vector<vector<int>> cycles;
     map<Expr, bool> hasArrays;
-    map<Expr, int> iterator;
+    map<Expr, vector<int>> iterators;
     bool hasAnyArrays;
 
     CHCs(ExprFactory &efac, EZ3 &z3) : m_efac(efac), m_z3(z3), varname("_FH_"), u(efac), hasAnyArrays(false) {};
@@ -121,7 +121,7 @@ namespace ufo
       indeces(old_CHCs.indeces), varname(old_CHCs.varname), failDecl(old_CHCs.failDecl), chcs(old_CHCs.chcs),
       wtoCHCs(old_CHCs.wtoCHCs), wtoDecls(old_CHCs.wtoDecls), decls(old_CHCs.decls), invVars(old_CHCs.invVars), 
       invVarsPrime(old_CHCs.invVarsPrime), outgs(old_CHCs.outgs), prefixes(old_CHCs.prefixes), cycles(old_CHCs.cycles),
-      hasAnyArrays(old_CHCs.hasAnyArrays), iterator(old_CHCs.iterator), hasArrays(old_CHCs.hasArrays) {}
+      hasAnyArrays(old_CHCs.hasAnyArrays), iterators(old_CHCs.iterators), hasArrays(old_CHCs.hasArrays) {}
 
     bool isFapp (Expr e)
     {
