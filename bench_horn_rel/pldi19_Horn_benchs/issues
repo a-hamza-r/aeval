@@ -1,0 +1,12 @@
+1. align_should_work_but_not_1[_1 and _2], complex_align_[1 and 2], s113, s127
+	- alignment is found but does not prove equivalence
+
+2. s122, s131, tmp
+	- alignment not found, programs not equivalent
+
+3. s161, s243, s124
+	- stuck after finding product
+
+4. s175, s112
+	- segmentation
+

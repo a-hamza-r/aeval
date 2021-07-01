@@ -1,4 +1,5 @@
 (declare-rel loop ((Array Int Int) (Array Int Int) Int Int ))
+(declare-rel preLoop ((Array Int Int) (Array Int Int) Int Int ))
 (declare-rel exit ())
 (declare-var i Int )
 (declare-var a_0 Int )
@@ -24,38 +25,46 @@
 
 (rule (=> 
 	(and 
-		(< 1 (* count 8))
+		(= i 1)
+		(> count 0)
+	)
+	(preLoop a_array b_array i count)
+))
+(rule (=> 
+	(and
+		(preLoop a_array b_array i count)
+		(< i (* count 8))
+		
 		(= a_0 (select a_array 0))
 
-		(= a_i (+ (select b_array 1) a_0))
-		(= a_array1 (store a_array 1 a_i))
+		(= a_i (+ (select b_array i) a_0))
+		(= a_array1 (store a_array i a_i))
 
-		(= a_i1 (+ (select b_array (+ 1 1)) a_0))
-		(= a_array2 (store a_array1 (+ 1 1) a_i1))
+		(= a_i1 (+ (select b_array (+ i 1)) a_0))
+		(= a_array2 (store a_array1 (+ i 1) a_i1))
 
-		(= a_i2 (+ (select b_array (+ 1 2)) a_0))
-		(= a_array3 (store a_array2 (+ 1 2) a_i2))
+		(= a_i2 (+ (select b_array (+ i 2)) a_0))
+		(= a_array3 (store a_array2 (+ i 2) a_i2))
 
-		(= a_i3 (+ (select b_array (+ 1 3)) a_0))
-		(= a_array4 (store a_array3 (+ 1 3) a_i3))
+		(= a_i3 (+ (select b_array (+ i 3)) a_0))
+		(= a_array4 (store a_array3 (+ i 3) a_i3))
 
-		(= a_i4 (+ (select b_array (+ 1 4)) a_0))
-		(= a_array5 (store a_array4 (+ 1 4) a_i4))
+		(= a_i4 (+ (select b_array (+ i 4)) a_0))
+		(= a_array5 (store a_array4 (+ i 4) a_i4))
 
-		(= a_i5 (+ (select b_array (+ 1 5)) a_0))
-		(= a_array6 (store a_array5 (+ 1 5) a_i5))
+		(= a_i5 (+ (select b_array (+ i 5)) a_0))
+		(= a_array6 (store a_array5 (+ i 5) a_i5))
 
-		(= a_i6 (+ (select b_array (+ 1 6)) a_0))
-		(= a_array7 (store a_array6 (+ 1 6) a_i6))
-
-		(= i 8)
+		(= a_i6 (+ (select b_array (+ i 6)) a_0))
+		(= a_array7 (store a_array6 (+ i 6) a_i6))
 	)
-	(loop a_array7 b_array i count)
+	(loop a_array7 b_array (+ i 7) count)
 ))
 (rule (=> 
 	(and 
 		(loop a_array b_array i count)
 		(< i (* count 8))
+
 		(= a_0 (select a_array 0))
 
 		(= a_i (+ (select b_array i) a_0))

@@ -20,6 +20,7 @@
 (rule (=> 
 	(and 
 		(= i 0)
+		(> count 0)
 	)
 	(loop a_array b_array c_array d_array e_array i count)
 ))
@@ -29,6 +30,7 @@
 		(< i (* count 8))
 		(= d_i (select d_array i))
 		(= e_i (select e_array i))
+		(= c_i (select c_array i))
 		(= b_i (* d_i e_i))
 		(= b_array_new (store b_array i b_i))
 		(= a_i (+ (select a_array i) (* b_i c_i)))

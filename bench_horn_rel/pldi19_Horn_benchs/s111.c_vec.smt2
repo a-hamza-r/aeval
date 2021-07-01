@@ -33,6 +33,7 @@
 (rule (=> 
 	(and 
 		(= i 1)
+		(> count 0)
 	)
 	(loop a_array b_array i count)
 ))

@@ -1,4 +1,5 @@
 (declare-rel loop ((Array Int Int) (Array Int Int) Int Int Int ))
+(declare-rel preLoop ((Array Int Int) (Array Int Int) Int Int Int ))
 (declare-rel exit ())
 (declare-var i Int )
 (declare-var i1 Int )
@@ -18,6 +19,7 @@
 	(and 
 		(= i 1)
 		(= k 0)
+		(> count 0)
 	)
 	(loop a_array b_array i k count)
 ))

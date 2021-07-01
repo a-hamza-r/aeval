@@ -67,6 +67,7 @@
 (rule (=> 
 	(and 
 		(= i 0)
+		(> count 0)
 	)
 	(loop a_array b_array c_array d_array i count)
 ))

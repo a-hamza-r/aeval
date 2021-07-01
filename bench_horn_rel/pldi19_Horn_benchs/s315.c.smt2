@@ -16,6 +16,7 @@
 		(= x (select a_array 0))
 		(= index 0)
 		(= i 0)
+		(> count 0)
 	)
 	(loop a_array i count x index)
 ))

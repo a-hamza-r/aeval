@@ -51,6 +51,7 @@
 (rule (=> 
 	(and 
 		(= i (- (* count 8) 1))
+		(> count 0)
 	)
 	(loop a_array b_array i count)
 ))
@@ -89,6 +90,8 @@
 (rule (=> 
 	(and 
 		(loop a_array b_array i count)
+
+		(< i 8)
 
 		(= a_i (+ (select a_array (- i 1)) (select b_array i)))
 		(= a_array1 (store a_array i a_i))

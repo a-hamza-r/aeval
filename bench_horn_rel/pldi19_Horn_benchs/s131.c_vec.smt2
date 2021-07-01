@@ -1,4 +1,5 @@
 (declare-rel loop ((Array Int Int) (Array Int Int) Int Int Int ))
+(declare-rel preLoop ((Array Int Int) (Array Int Int) Int Int Int ))
 (declare-rel exit ())
 (declare-var m Int )
 (declare-var i Int )
@@ -39,35 +40,41 @@
 (declare-var a_array8 (Array Int Int) )
 (declare-var b_array (Array Int Int) )
 
+
 (rule (=> 
 	(and 
-		(< 0 (- (* count 8) 1))
+		(= i 0)
 		(= m 1)
-		
-		(= a_i (+ (select a_array (+ 0 m)) (select b_array 0)))
-		(= a_array1 (store a_array 0 a_i))
-
-		(= a_i1 (+ (select a_array1 (+ (+ 0 1) m)) (select b_array (+ 0 1))))
-		(= a_array2 (store a_array1 (+ 0 1) a_i1))
-
-		(= a_i2 (+ (select a_array2 (+ (+ 0 2) m)) (select b_array (+ 0 2))))
-		(= a_array3 (store a_array2 (+ 0 2) a_i2))
-
-		(= a_i3 (+ (select a_array3 (+ (+ 0 3) m)) (select b_array (+ 0 3))))
-		(= a_array4 (store a_array3 (+ 0 3) a_i3))
-
-		(= a_i4 (+ (select a_array4 (+ (+ 0 4) m)) (select b_array (+ 0 4))))
-		(= a_array5 (store a_array4 (+ 0 4) a_i4))
-
-		(= a_i5 (+ (select a_array5 (+ (+ 0 5) m)) (select b_array (+ 0 5))))
-		(= a_array6 (store a_array5 (+ 0 5) a_i5))
-
-		(= a_i6 (+ (select a_array6 (+ (+ 0 6) m)) (select b_array (+ 0 6))))
-		(= a_array7 (store a_array6 (+ 0 6) a_i6))
-
-		(= i 7)
+		(> count 0)
 	)
-	(loop a_array7 b_array i m count)
+	(preLoop a_array b_array i m count)
+))
+(rule (=> 
+	(and 
+		(preLoop a_array b_array i m count)
+
+		(= a_i (+ (select a_array (+ i m)) (select b_array i)))
+		(= a_array1 (store a_array i a_i))
+
+		(= a_i1 (+ (select a_array1 (+ (+ i 1) m)) (select b_array (+ i 1))))
+		(= a_array2 (store a_array1 (+ i 1) a_i1))
+
+		(= a_i2 (+ (select a_array2 (+ (+ i 2) m)) (select b_array (+ i 2))))
+		(= a_array3 (store a_array2 (+ i 2) a_i2))
+
+		(= a_i3 (+ (select a_array3 (+ (+ i 3) m)) (select b_array (+ i 3))))
+		(= a_array4 (store a_array3 (+ i 3) a_i3))
+
+		(= a_i4 (+ (select a_array4 (+ (+ i 4) m)) (select b_array (+ i 4))))
+		(= a_array5 (store a_array4 (+ i 4) a_i4))
+
+		(= a_i5 (+ (select a_array5 (+ (+ i 5) m)) (select b_array (+ i 5))))
+		(= a_array6 (store a_array5 (+ i 5) a_i5))
+
+		(= a_i6 (+ (select a_array6 (+ (+ i 6) m)) (select b_array (+ i 6))))
+		(= a_array7 (store a_array6 (+ i 6) a_i6))
+	)
+	(loop a_array7 b_array (+ i 7) m count)
 ))
 (rule (=> 
 	(and 

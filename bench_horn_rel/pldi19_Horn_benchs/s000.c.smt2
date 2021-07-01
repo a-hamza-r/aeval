@@ -13,6 +13,7 @@
 (rule (=> 
 	(and 
 		(= i 0)
+		(> count 0)
 	)
 	(loop a_array b_array i count)
 ))
@@ -30,7 +31,7 @@
 		(loop a_array b_array i count)
 		(not (< i (* count 8)))
 		;(<= 0 i1)
-		;(< i1 index_limit)
+		;(< i1 (* count 8))
 		;(not (< (select b_array i1) (select a_array i1)))
 	)
 	exit

@@ -7,7 +7,7 @@ TYPE s132(int count) {
 	int m = 0;
 	int j = m;
 	int k = m+1;
-	for (int i= 1; i < count; i++) {
+	for (int i= 1; i < count*8; i++) {
 		aa[j][i] = aa[k][i-1] + b[i] * c[1];
 	}
   return 0;

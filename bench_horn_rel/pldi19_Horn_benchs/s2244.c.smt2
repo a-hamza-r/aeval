@@ -19,6 +19,7 @@
 (rule (=> 
 	(and 
 		(= i 0)
+		(> count 0)
 	)
 	(loop a_array b_array c_array e_array i count)
 ))

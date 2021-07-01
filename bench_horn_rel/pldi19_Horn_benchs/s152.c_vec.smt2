@@ -68,6 +68,7 @@
 (rule (=> 
 	(and 
 		(= i 0)
+		(> count 0)
 	)
 	(loop a_array b_array c_array d_array e_array i count)
 ))
@@ -79,6 +80,7 @@
 		
 		(= d_i (select d_array i))
 		(= e_i (select e_array i))
+		(= c_i (select c_array i))
 		(= b_i (* d_i e_i))
 		(= b_array1 (store b_array i b_i))
 		(= a_i (+ (select a_array i) (* b_i c_i)))
@@ -86,6 +88,7 @@
 
 		(= d_i1 (select d_array (+ i 1)))
 		(= e_i1 (select e_array (+ i 1)))
+		(= c_i1 (select c_array (+ i 1)))
 		(= b_i1 (* d_i1 e_i1))
 		(= b_array2 (store b_array1 (+ i 1) b_i1))
 		(= a_i1 (+ (select a_array1 (+ i 1)) (* b_i1 c_i1)))
@@ -93,6 +96,7 @@
 		
 		(= d_i2 (select d_array (+ i 2)))
 		(= e_i2 (select e_array (+ i 2)))
+		(= c_i2 (select c_array (+ i 2)))
 		(= b_i2 (* d_i2 e_i2))
 		(= b_array3 (store b_array2 (+ i 2) b_i2))
 		(= a_i2 (+ (select a_array2 (+ i 2)) (* b_i2 c_i2)))
@@ -100,6 +104,7 @@
 
 		(= d_i3 (select d_array (+ i 3)))
 		(= e_i3 (select e_array (+ i 3)))
+		(= c_i3 (select c_array (+ i 3)))
 		(= b_i3 (* d_i3 e_i3))
 		(= b_array4 (store b_array3 (+ i 3) b_i3))
 		(= a_i3 (+ (select a_array3 (+ i 3)) (* b_i3 c_i3)))
@@ -107,6 +112,7 @@
 
 		(= d_i4 (select d_array (+ i 4)))
 		(= e_i4 (select e_array (+ i 4)))
+		(= c_i4 (select c_array (+ i 4)))
 		(= b_i4 (* d_i4 e_i4))
 		(= b_array5 (store b_array4 (+ i 4) b_i4))
 		(= a_i4 (+ (select a_array4 (+ i 4)) (* b_i4 c_i4)))
@@ -114,6 +120,7 @@
 
 		(= d_i5 (select d_array (+ i 5)))
 		(= e_i5 (select e_array (+ i 5)))
+		(= c_i5 (select c_array (+ i 5)))
 		(= b_i5 (* d_i5 e_i5))
 		(= b_array6 (store b_array5 (+ i 5) b_i5))
 		(= a_i5 (+ (select a_array5 (+ i 5)) (* b_i5 c_i5)))
@@ -121,6 +128,7 @@
 
 		(= d_i6 (select d_array (+ i 6)))
 		(= e_i6 (select e_array (+ i 6)))
+		(= c_i6 (select c_array (+ i 6)))
 		(= b_i6 (* d_i6 e_i6))
 		(= b_array7 (store b_array6 (+ i 6) b_i6))
 		(= a_i6 (+ (select a_array6 (+ i 6)) (* b_i6 c_i6)))
@@ -128,6 +136,7 @@
 
 		(= d_i7 (select d_array (+ i 7)))
 		(= e_i7 (select e_array (+ i 7)))
+		(= c_i7 (select c_array (+ i 7)))
 		(= b_i7 (* d_i7 e_i7))
 		(= b_array8 (store b_array7 (+ i 7) b_i7))
 		(= a_i7 (+ (select a_array7 (+ i 7)) (* b_i7 c_i7)))

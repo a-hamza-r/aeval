@@ -14,6 +14,7 @@
 	(and 
 		(= i 0)
 		(= m 1)
+		(> count 0)
 	)
 	(loop a_array b_array i m count)
 ))

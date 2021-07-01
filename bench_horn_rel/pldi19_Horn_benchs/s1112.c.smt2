@@ -14,6 +14,7 @@
 (rule (=> 
 	(and 
     	(= i (- (* count 8) 1))
+    	(> count 0)
 	)
 	(loop a_array b_array i count)
 ))

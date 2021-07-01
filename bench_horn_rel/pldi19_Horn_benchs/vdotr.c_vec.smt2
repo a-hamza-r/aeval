@@ -43,6 +43,7 @@
 	(and 
 		(= i 0)
 		(= sum 0)
+		(> count 0)
 	)
 	(loop a_array b_array i sum count)
 ))

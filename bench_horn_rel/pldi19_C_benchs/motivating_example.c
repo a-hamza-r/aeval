@@ -1,0 +1,17 @@
+#include "declarations.h"
+
+TYPE motiv_example(int count) {
+  for (int i = 1; i < count*4; i++) {
+  	if (b0 > 0)
+		a[i] = a[i-1] + b[i];
+  }
+  return 0;
+}
+
+
+int nondet();
+
+int main() {
+	int count = nondet();
+	motiv_example(count);
+}

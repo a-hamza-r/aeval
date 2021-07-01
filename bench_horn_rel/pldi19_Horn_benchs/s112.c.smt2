@@ -1,3 +1,4 @@
+
 (declare-rel loop ((Array Int Int) (Array Int Int) Int Int))
 (declare-rel exit ())
 (declare-var i Int )
@@ -15,6 +16,7 @@
 (rule (=> 
 	(and
 		(= i (- (* count 8) 1))
+		(> count 0)
 	)
 	(loop a_array b_array i count)
 ))

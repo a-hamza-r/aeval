@@ -21,6 +21,7 @@
 (rule (=> 
 	(and 
 		(= i 0)
+		(> count 0)
 	)
 	(loop a_array a_ind b_array b_ind c_array c_ind i count)
 ))

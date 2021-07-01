@@ -77,6 +77,7 @@
 (rule (=> 
 	(and 
 		(= i 0)
+		(> count 0)
 	)
 	(loop a_array a_ind b_array b_ind c_array c_ind i count)
 ))
@@ -155,9 +156,6 @@
 	(and 
 		(loop a_array a_ind b_array b_ind c_array c_ind i count)
 		(not (< i (* count 8)))
-		;(<= 0 i1)
-		;(< i1 (* count 8))
-		;(not (< (select b_array i1) (select a_array i1)))
 	)
 	exit
 ))

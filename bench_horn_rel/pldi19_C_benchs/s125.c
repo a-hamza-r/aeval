@@ -3,7 +3,7 @@
 //	induction variable recognition
 //	induction variable in two loops; collapsing possible
 
-TYPE s000(int count) {
+TYPE s125(int count) {
 	int k = -1;
 	for (int i = 0; i < count; i++) {
 		for (int j = 0; j < count; j++) {
@@ -19,5 +19,5 @@ int nondet();
 
 int main() {
 	int count = nondet();
-	s000(count);
+	s125(count);
 }

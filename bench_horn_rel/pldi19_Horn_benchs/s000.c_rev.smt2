@@ -15,6 +15,7 @@
 (rule (=> 
 	(and 
 		(= i (- (* count 8) 1))
+		(> count 0)
 	)
 	(loop a_array b_array i count)
 ))
@@ -24,19 +25,13 @@
 		(>= i 0)
 		(= a_i (+ (select b_array i) 1))
 		(= a_array_new (store a_array i a_i))
-
-		(= a_i1 (+ (select b_array (- i 1)) 1))
-		(= a_array_new1 (store a_array_new (- i 1) a_i1))
 	)
-	(loop a_array_new1 b_array (- i 2) count)
+	(loop a_array_new b_array (- i 1) count)
 ))
 (rule (=> 
 	(and 
 		(loop a_array b_array i count)
 		(not (>= i 0))
-		;(<= 0 i1)
-		;(< i1 index_limit)
-		;(not (< (select b_array i1) (select a_array i1)))
 	)
 	exit
 ))

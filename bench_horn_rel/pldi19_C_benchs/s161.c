@@ -5,7 +5,7 @@
 //	between statements in mutually exclusive regions.
 
 TYPE s161(int count) {
-	for (int i = 0; i < LEN-1; ++i) {
+	for (int i = 0; i < count*8-1; ++i) {
 		if (b[i] < (float)0.) {
 			goto L20;
 		}

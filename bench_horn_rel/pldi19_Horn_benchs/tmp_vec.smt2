@@ -1,4 +1,5 @@
 (declare-rel loop ((Array Int Int) (Array Int Int) Int Int Int ))
+(declare-rel preLoop ((Array Int Int) (Array Int Int) Int Int Int ))
 (declare-rel exit ())
 (declare-var i Int )
 (declare-var i1 Int )
@@ -65,12 +66,17 @@
 
 (rule (=> 
 	(and 
-		(= i 8)
+		(= i 1)
 		(= k 0)
-
-		(< 1 (* count 8))
+		(> count 0)
 	)
-	(loop a_array7 b_array i k count)
+	(preLoop a_array b_array i k count)
+))
+(rule (=> 
+	(and 
+		(preLoop a_array b_array i k count)
+	)
+	(loop a_array b_array (+ i 7) k count)
 ))
 (rule (=> 
 	(and 
