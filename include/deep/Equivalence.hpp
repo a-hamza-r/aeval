@@ -697,7 +697,7 @@ namespace ufo
 
 			Expr tempProdFact = mk<AND>(mk<AND>(prefRuleBody1, prefRuleBody2), preForEqualityCheck);
 			Expr eq = mk<EQ>(iterF, iterS);
-			impliesEq = u.implies(tempProdFact, eq);
+			impliesEq = bool(u.implies(tempProdFact, eq));
 
 			if (impliesEq)
 			{

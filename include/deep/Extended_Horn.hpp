@@ -863,7 +863,7 @@ namespace ufo
 
 	        // check if limit value is constant; Eq. 8, section 4
 	        Expr replacedLimit = replaceAll(limitVal, rule.srcVars, rule.dstVars);
-	        bool constLimitValCheck = u.implies(rule.body, mk<EQ>(limitVal, replacedLimit));
+	        bool constLimitValCheck = bool(u.implies(rule.body, mk<EQ>(limitVal, replacedLimit)));
 	        
 	        // check the case that iter does not exceed limit value during transition; Eq. 7, section 4
 	        bool loopEndCheck = limitEq && !u.isSat(mk<AND>(mkNeg(limitEq), rule.body));
@@ -905,8 +905,8 @@ namespace ufo
 	        Expr b = rule.dstVars[i];
 	        bool isAnIter = false;
 
-	        bool iterDecreases = bind::isIntConst(a) && u.implies(rule.body, mk<GT>(a, b));
-	        bool iterIncreases = bind::isIntConst(a) && u.implies(rule.body, mk<LT>(a, b));
+	        bool iterDecreases = bind::isIntConst(a) && bool(u.implies(rule.body, mk<GT>(a, b)));
+	        bool iterIncreases = bind::isIntConst(a) && bool(u.implies(rule.body, mk<LT>(a, b)));
 
 	        if (iterIncreases || iterDecreases)
 	        {
