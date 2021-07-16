@@ -27,7 +27,7 @@
 (rule (=>
 	(and
 		(preLoop x i count)
-		(= x1 (+ 0 1))
+		(= x1 (+ (+ x 0) 1))
 	)
 	(loop x1 (+ i 2) count)
 ))
@@ -36,8 +36,8 @@
 		(loop x i count)
 		(< i (* count 6))
 		
-		(= x1 (+ x (* i i)))
-		(= x2 (+ x1 (* (+ i 1) (+ i 1))))
+		(= x1 (+ x i))
+		(= x2 (+ x1 (+ i 1)))
 	)
 	(loop x2 (+ i 2) count)
 ))

@@ -83,7 +83,7 @@
 		(loop a_array b_array i k count)
 		(< i (* count 8))
 	)
-	(loop a_array8 b_array (+ i 8) k count)
+	(loop a_array b_array (+ i 8) k count)
 ))
 (rule (=> 
 	(and 

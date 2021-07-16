@@ -807,10 +807,14 @@ namespace ufo
           int ind = getVarIndex(hr.dstRelation, decls);
 
           Expr model = NULL;
-          if (b) model = u.getModel(hr.dstVars);
-
+          if (b) {
+            model = u.getModel(hr.dstVars);
+            // outs() << "model: " << *model << "\n"; 
+          }
+	  // outs() << "if indeterminate: " << indeterminate(b) << "\n";
           if (u.isModelSkippable(model, hr.dstVars, candidatesTmp))
           {
+	  	// outs() << "model skippable\n";
             // something went wrong with z3. do aggressive weakening (TODO: try bruteforce):
             // candidatesTmp[ind].clear();
             candidatesTmp[ind].pop_back();
@@ -826,6 +830,7 @@ namespace ufo
             for (auto it = ev.begin(); it != ev.end(); )
             {
               Expr repl = *it;
+	    	// outs() << "cand: " << *repl << "\n";
               for (auto & v : invarVars[ind]) repl = replaceAll(repl, v.second, hr.dstVars[v.first]);
 
               if (!u.isSat(model, repl))
@@ -833,7 +838,7 @@ namespace ufo
                 if (hr.isFact)
                 {
                   Expr failedCand = normalizeDisj(*it, invVars);
-               outs () << "failed cand for " << *hr.dstRelation << ": " << *failedCand << "\n";
+               // outs () << "failed cand for " << *hr.dstRelation << ": " << *failedCand << "\n";
                   Sampl& s = sf.exprToSampl(failedCand);
                   sf.assignPrioritiesForFailed();
                 }
@@ -842,6 +847,7 @@ namespace ufo
                   if (isOpX<EQ>(*it)) deferredCandidates[ind].push_back(*it);  //  prioritize equalities
                   else deferredCandidates[ind].push_front(*it);
                 }
+        // outs() << "erasing" << *repl << "\n";
                 it = ev.erase(it);
                 res2 = false;
               }
@@ -1429,6 +1435,8 @@ namespace ufo
       ExprSet exprs;
       exprs.insert(hr.body);
 
+      // outs() << (hr.isFact ? "Fact" : (hr.isQuery ? "Query" : "Inductive")) << "\n";
+
       if (!hr.isFact)
       {
         int ind = getVarIndex(hr.srcRelation, decls);
@@ -1456,6 +1464,7 @@ namespace ufo
         }
         exprs.insert(disjoin(negged, m_efac));
       }
+      // outs() << "exprs: " << *conjoin(exprs, m_efac) << "\n";
       return u.isSat(exprs);
     }
 

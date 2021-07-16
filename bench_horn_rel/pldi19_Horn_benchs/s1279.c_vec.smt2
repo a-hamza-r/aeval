@@ -78,7 +78,7 @@
 		(= a_i2 (select a_array (+ i 2)))
 		(= c_select2 (select c_array2 (+ i 2)))
 		(= mult2 (select d_array (+ i 1)) (select e_array (+ i 2)))
-		(= c_i2 (ite (and (< a_i2 0) (> (select b_array (+ i 2)) a_i1)) (+ c_select2 mult2) c_select2))
+		(= c_i2 (ite (and (< a_i2 0) (> (select b_array (+ i 2)) a_i2)) (+ c_select2 mult2) c_select2))
 		(= c_array3 (store c_array2 (+ i 2) c_i2))
 
 		(= a_i3 (select a_array (+ i 3)))

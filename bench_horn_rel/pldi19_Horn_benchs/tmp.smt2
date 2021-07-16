@@ -27,7 +27,7 @@
 		(loop a_array b_array i k count)
 		(< i (* count 8))
 	)
-	(loop a_array_new b_array (+ i 1) k count)
+	(loop a_array b_array (+ i 1) k count)
 ))
 (rule (=> 
 	(and 

@@ -132,8 +132,9 @@ namespace ufo
 
 	class Extended_CHCs : public CHCs
 	{
-	public:
+		public:
 	    ExprVector dstQueryVars;
+	    ExprVector srcFactVars;
 
 	    int iter;
 	    bool iterGrows;
@@ -145,41 +146,41 @@ namespace ufo
 
 	    Extended_CHCs(ExprFactory &efac, EZ3 &z3, string n) : CHCs(efac, z3, n) {};
 
-        Expr getDecl(Expr relation)
-		{
-			if (!isOpX<TRUE>(relation))
+      Expr getDecl(Expr relation)
 			{
-				for (auto it = decls.begin(); it != decls.end(); it++)
+				if (!isOpX<TRUE>(relation))
 				{
-					if ((*it)->arg(0) == relation) return *it;
-				}
-			}
-			return NULL;
-		}
-
-		void removeDecl(Expr relation)
-		{
-			Expr decl;
-			if (!isOpX<TRUE>(relation))
-			{
-				for (auto it = decls.begin(); it != decls.end(); it++)
-				{
-					// fix, if possible
-					if ((*it)->arg(0) == relation)
+					for (auto it = decls.begin(); it != decls.end(); it++)
 					{
-						decls.erase(it);
-						return;
+						if ((*it)->arg(0) == relation) return *it;
+					}
+				}
+				return NULL;
+			}
+
+			void removeDecl(Expr relation)
+			{
+				Expr decl;
+				if (!isOpX<TRUE>(relation))
+				{
+					for (auto it = decls.begin(); it != decls.end(); it++)
+					{
+						// fix, if possible
+						if ((*it)->arg(0) == relation)
+						{
+							decls.erase(it);
+							return;
+						}
 					}
 				}
 			}
-		}
 
 
 	    Expr renameFdecl(Expr e)
 	    {
-			Expr newName = mkTerm<string>(varname+lexical_cast<string>(e->arg(0)), m_efac);
-			ExprVector types(e->args_begin()+1, e->args_end());
-			return bind::fdecl(newName, types);
+				Expr newName = mkTerm<string>(varname+lexical_cast<string>(e->arg(0)), m_efac);
+				ExprVector types(e->args_begin()+1, e->args_end());
+				return bind::fdecl(newName, types);
 	    }
 
 
@@ -204,21 +205,63 @@ namespace ufo
 			{
 				if (chc.isQuery) return &chc;
 			}
+			return NULL;
+		}
+
+		void removePreLoop()
+		{
+			int cycleNum = 0;
+			vector<int> cycle = cycles[cycleNum];
+			HornRuleExt loop = chcs[cycle[0]];
+			
+			vector<HornRuleExt>::iterator fact, preLoop;
+			bool preLoopFound = false;
+			for (auto it = chcs.begin(); it != chcs.end(); it++)
+			{
+				if (it->isFact) 
+					fact = it;
+
+				if (!it->isFact && !it->isInductive && !it->isQuery && it->dstRelation == loop.srcRelation) 
+				{
+					preLoopFound = true;
+					preLoop = it;
+				}
+
+			}
+
+			if (!preLoopFound) return;
+			HornRuleExt &f = *fact, &pl = *preLoop;
+			Expr body = replaceAll(f.body, f.dstVars, pl.srcVars);
+			pl.body = mk<AND>(pl.body, body);
+			srcFactVars = pl.srcVars;
+			pl.srcVars.clear();
+			removeDecl(pl.srcRelation);
+			pl.srcRelation = f.srcRelation;
+			pl.isFact = true;
+
+			chcs.erase(fact);
 		}
 
 		void removePostLoop()
 		{
+			int cycleNum = 0;
+			vector<int> cycle = cycles[cycleNum];
+			HornRuleExt loop = chcs[cycle[0]];
+			
 			vector<HornRuleExt>::iterator query, postLoop;
 			bool postLoopFound = false;
 			for (auto it = chcs.begin(); it != chcs.end(); it++)
 			{
-				if (it->isQuery) query = it;
-				else if (!it->isFact && !it->isInductive) 
+				if (it->isQuery) 
+					query = it;
+				
+				if (!it->isFact && !it->isInductive && !it->isQuery && it->srcRelation == loop.srcRelation) 
 				{
 					postLoopFound = true;
 					postLoop = it;
 				}
 			}
+
 			if (!postLoopFound) return;
 			HornRuleExt &q = *query, &pl = *postLoop;
 			Expr body = replaceAll(q.body, q.srcVars, pl.dstVars);
@@ -329,11 +372,10 @@ namespace ufo
 	      return numIters;
 	    }
 
-		bool findInitialValue(int i, HornRuleExt& initRule, HornRuleExt& rule, Expr &initVal, SMTUtils &u)
+		bool findInitialValue(int i, Expr init, HornRuleExt& rule, Expr &initVal, SMTUtils &u)
 	    {
-
-	      Expr init = initRule.body;
-	      Expr iter = rule.dstVars[i];
+	      Expr iter = rule.srcVars[i];
+	      // outs() << "init: " << *init << "\n";
 
 	      findExpr<EQ>(iter, init, initVal, true);
 	      if (initVal)
@@ -358,10 +400,10 @@ namespace ufo
 	        }
 	        if (initVal) 
 	        {
-	          initVal = initVal->right();
+	        	Expr normalized = ineqSimplifier(iter, simplifyArithm(initVal));
+	          initVal = normalized->right();
 	          // assigns non-primed variables
 	          initVal = replaceAll(initVal, rule.dstVars, rule.srcVars);
-	          // outs() << "initVal: " << *initVal << "\n";
 	          return true;
 
 	          // use when local vars are not eliminated, so extra equalities need to be calculated
@@ -408,10 +450,27 @@ namespace ufo
 	    }
 
 
-		void mergeIterationsFact(HornRuleExt &fact, int num, ExprVector &ssa, BndExpl &bnd)
+		void mergeIterationsFact(HornRuleExt &fact, int num, ExprVector &ssa, BndExpl &bnd, bool actualAlign)
 		{
 			if (num <= 0) return;
-			ssa[0] = replaceAll(fact.body, fact.dstVars, bnd.bindVars[0]);
+
+			// case when we do not already have processed a preloop; we need to save variables in srcFactVars
+			// in the other case we already have srcFactVars info, the ssa has already done proper unrolling
+			// should only work when we are actually aligning and not just checking, as we do not want to 
+			// modify srcFactVars if we are not aligning; if not modifying srcFactVars, ssa already has handled
+			if (actualAlign && srcFactVars.empty())
+			{
+				for (int i = 0; i < bnd.bindVars[0].size(); i++)
+				{
+					Expr newVar = mkTerm<string>(varname+"fact_var_"+lexical_cast<string>(i), fact.body->getFactory());
+					newVar = cloneVar(bnd.bindVars[0][i], newVar);
+
+					srcFactVars.push_back(newVar);
+				}
+			
+				ssa[0] = replaceAll(ssa[0], bnd.bindVars[0], srcFactVars);
+				ssa[1] = replaceAll(ssa[1], bnd.bindVars[0], srcFactVars);
+			}
 			ssa[num] = replaceAll(ssa[num], bnd.bindVars[num], fact.dstVars);
 		}
 
@@ -427,27 +486,33 @@ namespace ufo
 			if (num <= 0) return;
 
 			ssa[0] = replaceAll(ssa[0], bnd.bindVars[0], query->srcVars);
-			for (int i = 0; i < bnd.bindVars[num].size(); i++)
+			if (dstQueryVars.empty()) 
 			{
-				Expr newVar = mkTerm<string>(varname+"query_var_"+lexical_cast<string>(i), query->body->getFactory());
-				newVar = cloneVar(bnd.bindVars[num][i], newVar);
+				for (int i = 0; i < bnd.bindVars[num].size(); i++)
+				{
+					Expr newVar = mkTerm<string>(varname+"query_var_"+lexical_cast<string>(i), query->body->getFactory());
+					newVar = cloneVar(bnd.bindVars[num][i], newVar);
 
-				// make sure dstQueryVars are empty before pushing vars, or handle the case when we need to push to non-empty vector
-				dstQueryVars.push_back(newVar);
-
-				ssa[num-1] = replaceAll(ssa[num-1], bnd.bindVars[num][i], newVar);
+					dstQueryVars.push_back(newVar);
+				}
+				ssa[num-1] = replaceAll(ssa[num-1], bnd.bindVars[num], dstQueryVars);
+				query->body = replaceAll(query->body, query->srcVars, dstQueryVars);
+			}
+			else
+			{
+				query->body = replaceAll(query->body, query->srcVars, bnd.bindVars[num]);
 			}
 		}
 
 
-		void createAlignment(int unrollTrans, int unrollFact, int unrollQuery, Expr& prefRuleBody)
+		void createAlignment(int unrollTrans, int unrollFact, int unrollQuery, Expr& prefRuleBody, BndExpl &bnd, bool actualAlign=true)
 		{
-			// if (!(unrollTrans == 0 && unrollQuery == 0))
-			// {
-			// 	cout << "unrollTrans: " << unrollTrans << "\n";
-			// 	cout << "unrollFact: " << unrollFact << "\n";
-			// 	cout << "unrollQuery: " << unrollQuery << "\n";
-			// }
+			if (!(unrollTrans == 0 && unrollQuery == 0))
+			{
+				cout << "Iterations in the loop: " << unrollTrans << "\n";
+				cout << "Iterations added to fact: " << unrollFact << "\n";
+				cout << "Iterations added to query: " << unrollQuery << "\n";
+			}
 
 			vector<int>& cycle = cycles[0];
 			HornRuleExt& rule = chcs[cycle[0]];
@@ -465,8 +530,6 @@ namespace ufo
 			prefRuleBody = prefixRule.body;
 
 			// merge iterations to the fact, given the unrollFact value
-			BndExpl bnd(*this);
-
 			vector<int> trace;
 
 			trace.push_back(prefix[0]);
@@ -478,11 +541,11 @@ namespace ufo
 	        ExprVector ssa;
 	        bnd.getSSA(trace, ssa);
 
-	        ExprVector factBndVars;
+		ExprSet factBndVars;
 	        filter(conjoin(ssa, m_efac), IsConst(), inserter(factBndVars, factBndVars.begin()));
-
+		
 	        // AH: have to push extra vars to locVars
-	        mergeIterationsFact(prefixRule, unrollFact, ssa, bnd);
+	        mergeIterationsFact(prefixRule, unrollFact, ssa, bnd, actualAlign);
 			trace.clear();
 
 			// merge iterations to the query, given the unrollquery value
@@ -497,9 +560,9 @@ namespace ufo
 
 	        ssa1.erase(ssa1.begin());
 
-			ExprVector queryBndVars;
+			ExprSet queryBndVars;
 	        filter(conjoin(ssa1, m_efac), IsConst(), inserter(queryBndVars, queryBndVars.begin()));
-
+		
 	        mergeIterationsQuery(query, unrollQuery, ssa1, bnd);
 
 	        trace.clear();
@@ -516,7 +579,7 @@ namespace ufo
 
 	        ssa2.erase(ssa2.begin());
 
-			ExprVector ruleBndVars;
+			ExprSet ruleBndVars;
 	        filter(conjoin(ssa2, m_efac), IsConst(), inserter(ruleBndVars, ruleBndVars.begin()));
 
 	        mergeIterationsLoop(rule, unrollTrans-1, ssa2, bnd);
@@ -525,6 +588,9 @@ namespace ufo
 	        if (unrollFact > 0) 
 	        {
 	        	prefRuleBody = conjoin(ssa, m_efac);
+			for (auto &var : srcFactVars) {
+				factBndVars.erase(var);
+			}
 		        for (auto &var : factBndVars)
 				{
 					Expr new_name = mkTerm<string>(varname+lexical_cast<string>(var), m_efac);
@@ -556,7 +622,6 @@ namespace ufo
 	        		addToQuery = replaceAll(addToQuery, var, var1);
 	        		query->locVars.push_back(var1);
 				}
-				query->body = replaceAll(query->body, query->srcVars, dstQueryVars);
 				query->body = mk<AND>(query->body, addToQuery);
 			}
 		}
@@ -691,13 +756,16 @@ namespace ufo
 	      return false;
 	    }
 
-	    void findIterators()
+	    bool findIterators(BndExpl &bnd, int cycleNum)
 	    {
-	      vector<int>& cycle = cycles[0];
+	      vector<int>& cycle = cycles[cycleNum];
 	      HornRuleExt& rule = chcs[cycle[0]];
-	      vector<int> &prefix = prefixes[0];
-	      HornRuleExt &prefixRule = chcs[prefix[0]];
+	      // vector<int> &prefix = prefixes[cycleNum];
+	      // HornRuleExt &prefixRule = chcs[prefix[0]];
+	      Expr pref = bnd.compactPrefix(cycleNum);
+
 	      Expr rel = rule.srcRelation;
+	      iter = -1;
 
 	      int invNum = getVarIndex(rel, decls);
 
@@ -716,7 +784,7 @@ namespace ufo
 	          Expr add;
 
 	          // AH: handle the case where it is iterator but any of values are not available
-	          bool hasInitVal = findInitialValue(i, prefixRule, rule, initVal, u);
+	          bool hasInitVal = findInitialValue(i, pref, rule, initVal, u);
 
 	          bool hasTransitionVal = findTransitionValue(i, rule, transitionVal, u);
 
@@ -741,6 +809,28 @@ namespace ufo
 	          else if (isOpX<ARRAY_TY>(bind::typeOf(a))) varsArray.push_back(i);
 	        }
 	      }
+	      return (iter >= 0);
+	    }
+
+	    void extraProcessing()
+	    {
+  			removePreLoop();
+				removePostLoop();
+				renameLocVars();
+
+				// we do it because we have already populated these containers with information with initial chcs,
+				// which have now been updated by removing pre and post loop
+				// either do this, or never populate with initial state of the chcs
+				wtoCHCs.clear();
+				wtoDecls.clear();
+				prefixes.clear();
+				cycles.clear();
+				outgs.clear();
+
+				for (int i = 0; i < chcs.size(); i++)
+		        outgs[chcs[i].srcRelation].push_back(i);
+
+				wtoSort();
 	    }
 	};
 
@@ -1073,6 +1163,7 @@ namespace ufo
 			HornRuleExt queryPr;
 
 			concatenateVectors(dstQueryVars, subRule1->dstQueryVars, subRule2->dstQueryVars);
+			concatenateVectors(srcFactVars, subRule1->srcFactVars, subRule2->srcFactVars);
 
 			// generate product queries
 			createProductQueries(queryPr);
@@ -1138,7 +1229,7 @@ namespace ufo
     EZ3 z3(ruleManager.m_efac);
     BndExpl bnd(ruleManager);
 
-    unsigned maxAttempts = 2000000, to = 100;
+    unsigned maxAttempts = 2000000, to = 10000;
     bool freqs = false, aggp = false, enableDataLearning = true, doElim = false, doDisj = false;
     bool dAllMbp = false, dAddProp = false, dAddDat = false, dStrenMbp = false;
 
@@ -1167,7 +1258,7 @@ namespace ufo
 
     // call bootstrap with option to only consider equalities as candidates for finding invariant
     // also add equalities for variable matchings
-    bool check = ds.bootstrap(doDisj, currentMatching, true);
+    bool check = ds.bootstrap(doDisj, currentMatching, false);
     // if (!check)
     // {
     //   std::srand(std::time(0));
@@ -1181,22 +1272,26 @@ namespace ufo
 	{
 		auto &fac = ruleManager1.m_efac;
 		SMTUtils u(fac);
+		int cycleNum1 = 0, cycleNum2 = 0;
 
-		vector<int> &cycle1 = ruleManager1.cycles[0];
+		vector<int> &cycle1 = ruleManager1.cycles[cycleNum1];
 		HornRuleExt &rule1 = ruleManager1.chcs[cycle1[0]];
-		vector<int> &prefix1 = ruleManager1.prefixes[0];
+		vector<int> &prefix1 = ruleManager1.prefixes[cycleNum1];
 		HornRuleExt &prefixRule1 = ruleManager1.chcs[prefix1[0]];
 		Expr rel1 = rule1.srcRelation;
 		int invNum1 = getVarIndex(rel1, ruleManager1.decls);
-		Expr init1 = prefixRule1.body;
 
-		vector<int> &cycle2 = ruleManager2.cycles[0];
+		vector<int> &cycle2 = ruleManager2.cycles[cycleNum2];
 		HornRuleExt &rule2 = ruleManager2.chcs[cycle2[0]];
-		vector<int> &prefix2 = ruleManager2.prefixes[0];
+		vector<int> &prefix2 = ruleManager2.prefixes[cycleNum2];
 		HornRuleExt &prefixRule2 = ruleManager2.chcs[prefix2[0]];
 		Expr rel2 = rule2.srcRelation;
 		int invNum2 = getVarIndex(rel2, ruleManager2.decls);
-		Expr init2 = prefixRule2.body;
+
+		BndExpl bnd1(ruleManager1);
+		BndExpl bnd2(ruleManager2);
+
+		Expr pref1 = bnd1.compactPrefix(cycleNum1), pref2 = bnd2.compactPrefix(cycleNum2);
 
 		int iter1 = ruleManager1.iter, iter2 = ruleManager2.iter;
 		outs() << "\n\nassuming iters: " << *rule1.srcVars[iter1] << " and " << *rule2.srcVars[iter2] << "\n";
@@ -1228,49 +1323,24 @@ namespace ufo
 		// check for all combinations of variables, such that we match same type of variables
 		for (auto &comb : nonIterCombinations)
 		{
-			Expr pre;
-			bool skipComb = false;
-			if (comb[0][0] != -1)
-			{
-				for (auto &pair : comb)
-				{
-					Expr var = rule1.srcVars[pair[0]];
-					Expr var1 = rule2.srcVars[pair[1]];
-
-					if ((!u.hasOneModel(var, init1) && !u.hasOneModel(var1, init2)) 
-						|| (u.hasOneModel(var, init1) && u.hasOneModel(var1, init2)))
-					{
-						if (!pre) pre = mk<EQ>(rule1.dstVars[pair[0]], rule2.dstVars[pair[1]]);
-						else pre = mk<AND>(pre, mk<EQ>(rule1.dstVars[pair[0]], rule2.dstVars[pair[1]]));
-					}
-					else
-					{
-						skipComb = true;
-						break;
-					}
-
-				}
-				if (skipComb) continue;
-			}
-			else pre = mk<TRUE>(fac);
 
 			// create a quantified formula for optimization query
-            Expr coef1 = bind::intConst(mkTerm<string>("coef1", fac));
-            Expr coef2 = bind::intConst(mkTerm<string>("coef2", fac));
+      Expr coef1 = bind::intConst(mkTerm<string>("coef1", fac));
+      Expr coef2 = bind::intConst(mkTerm<string>("coef2", fac));
 
-            Expr const1 = bind::intConst(mkTerm<string>("const1", fac));
-            Expr const2 = bind::intConst(mkTerm<string>("const2", fac));
-            
-            Expr minCoef1, minCoef2, minConst1, minConst2;
+      Expr const1 = bind::intConst(mkTerm<string>("const1", fac));
+      Expr const2 = bind::intConst(mkTerm<string>("const2", fac));
+      
+      Expr minCoef1, minCoef2, minConst1, minConst2;
 
-            Expr quantifiedFla;
+      Expr quantifiedFla;
 
-            Expr preRelev = mk<TRUE>(fac), preRelev2 = mk<TRUE>(fac);
-			Expr iterF = prefixRule1.dstVars[ruleManager1.iter], iterFVal;
-			Expr iterS = prefixRule2.dstVars[ruleManager2.iter], iterSVal;
+      Expr preRelev = mk<TRUE>(fac), preRelev2 = mk<TRUE>(fac);
+			Expr iterF = rule1.dstVars[iter1], iterFVal;
+			Expr iterS = rule2.dstVars[iter2], iterSVal;
 
-			ruleManager1.findInitialValue(iter1, prefixRule1, rule1, iterFVal, u);
-			ruleManager2.findInitialValue(iter2, prefixRule2, rule2, iterSVal, u);
+			ruleManager1.findInitialValue(iter1, pref1, rule1, iterFVal, u);
+			ruleManager2.findInitialValue(iter2, pref2, rule2, iterSVal, u);
 
 			// add any variables that are needed in the quantified formula
 			for (auto &pair : comb)
@@ -1286,109 +1356,119 @@ namespace ufo
 				}
 			}
 
-            if (!(numIters1 == mkMPZ(-1, fac) || numIters2 == mkMPZ(-1, fac))) 
-            {
-              Expr coefs = mk<AND>(mk<GT>(coef1, mkMPZ(0, fac)), mk<GT>(coef2, mkMPZ(0, fac)));
-              Expr consts = mk<AND>(mk<GEQ>(const1, mkMPZ(0, fac)), mk<GEQ>(const2, mkMPZ(0, fac)));
+	    if (!(numIters1 == mkMPZ(-1, fac) || numIters2 == mkMPZ(-1, fac))) 
+	    {
+	      Expr coefs = mk<AND>(mk<GT>(coef1, mkMPZ(0, fac)), mk<GT>(coef2, mkMPZ(0, fac)));
+	      Expr consts = mk<AND>(mk<GEQ>(const1, mkMPZ(0, fac)), mk<GEQ>(const2, mkMPZ(0, fac)));
 
-              Expr numIters = bind::intConst(mkTerm<string>("numIters1", fac));
-              Expr numItersP = bind::intConst(mkTerm<string>("numIters2", fac));
+	      Expr numIters = bind::intConst(mkTerm<string>("numIters1", fac));
+	      Expr numItersP = bind::intConst(mkTerm<string>("numIters2", fac));
 
-              Expr fla = mk<AND>(mk<EQ>(numIters, numIters1), mk<EQ>(numItersP, numIters2));
+	      Expr fla = mk<AND>(mk<EQ>(numIters, numIters1), mk<EQ>(numItersP, numIters2));
 
-              ExprVector varsIters;
-              
-              // used when local vars are present, extra equalities are needed then
-              /*Expr extraRels;
-              filter(fla, IsConst(), inserter(varsIters, varsIters.begin()));
-             
-            	for (auto &it : varsIters)
-            	{
-            		// outs() << "varsIters: " << *it << "\n";
-            		if (ruleManager1.exprEqualities.find(it) != ruleManager1.exprEqualities.end())
-            		{
-            			if (extraRels) extraRels = mk<AND>(extraRels, ruleManager1.exprEqualities[it]);
-            			else extraRels = ruleManager1.exprEqualities[it];
-            		}
+	      ExprVector varsIters;
+	      
+	      // used when local vars are present, extra equalities are needed then
+	      /*Expr extraRels;
+	      filter(fla, IsConst(), inserter(varsIters, varsIters.begin()));
+	     
+	    	for (auto &it : varsIters)
+	    	{
+	    		// outs() << "varsIters: " << *it << "\n";
+	    		if (ruleManager1.exprEqualities.find(it) != ruleManager1.exprEqualities.end())
+	    		{
+	    			if (extraRels) extraRels = mk<AND>(extraRels, ruleManager1.exprEqualities[it]);
+	    			else extraRels = ruleManager1.exprEqualities[it];
+	    		}
 
-            		if (ruleManager2.exprEqualities.find(it) != ruleManager2.exprEqualities.end())
-            		{
-            			if (extraRels) extraRels = mk<AND>(extraRels, ruleManager2.exprEqualities[it]);
-            			else extraRels = ruleManager2.exprEqualities[it];
-            		}
-            	}
+	    		if (ruleManager2.exprEqualities.find(it) != ruleManager2.exprEqualities.end())
+	    		{
+	    			if (extraRels) extraRels = mk<AND>(extraRels, ruleManager2.exprEqualities[it]);
+	    			else extraRels = ruleManager2.exprEqualities[it];
+	    		}
+	    	}
 
-            	outs() << "extraRels: " << *extraRels << "\n";
+	    	outs() << "extraRels: " << *extraRels << "\n";
 
-              Expr newPre = extraRels;*/
+	      Expr newPre = extraRels;*/
 
-              fla = mk<AND>(preRelev2, fla);
-              Expr implFla = mk<EQ>(mk<MULT>(coef2, mk<MINUS>(numIters, const1)), 
-              	mk<MULT>(coef1, mk<MINUS>(numItersP, const2)));
-              
-              filter(fla, IsConst(), inserter(varsIters, varsIters.begin()));
-              
-              fla = mk<IMPL>(fla, implFla); 
+	      fla = mk<AND>(preRelev2, fla);
+	      Expr implFla = mk<EQ>(mk<MULT>(coef2, mk<MINUS>(numIters, const1)), 
+	      	mk<MULT>(coef1, mk<MINUS>(numItersP, const2)));
+	      
+	      filter(fla, IsConst(), inserter(varsIters, varsIters.begin()));
+	      
+	      fla = mk<IMPL>(fla, implFla); 
 
-              quantifiedFla = createQuantifiedFormulaRestr(fla, varsIters);
-              quantifiedFla = mk<AND>(consts, mk<AND>(coefs, quantifiedFla));
+	      quantifiedFla = createQuantifiedFormulaRestr(fla, varsIters);
+	      quantifiedFla = mk<AND>(consts, mk<AND>(coefs, quantifiedFla));
 
-              Expr constsZero = mk<AND>(mk<EQ>(const1, mkMPZ(0, fac)), mk<EQ>(const2, mkMPZ(0, fac)));
-              Expr const1Zero = mk<EQ>(const1, mkMPZ(0, fac));
-              Expr const2Zero = mk<EQ>(const2, mkMPZ(0, fac));
+	      outs() << "quantifiedFla: " << *quantifiedFla << "\n";
 
-              Expr model;
-              if (u.isSat(mk<AND>(quantifiedFla, constsZero))) model = u.getModel();
-              else if (u.isSat(mk<AND>(quantifiedFla, const1Zero))) model = u.getModel();
-              else if (u.isSat(mk<AND>(quantifiedFla, const2Zero))) model = u.getModel();
-              else if (u.isSat(quantifiedFla)) model = u.getModel();
-              else 
-              {
-              	outs() << "Not satisfiable\n";
-              	continue;
-              }
+	      Expr constsZero = mk<AND>(mk<EQ>(const1, mkMPZ(0, fac)), mk<EQ>(const2, mkMPZ(0, fac)));
+	      Expr const1Zero = mk<EQ>(const1, mkMPZ(0, fac));
+	      Expr const2Zero = mk<EQ>(const2, mkMPZ(0, fac));
 
-              if (model) 
-              {
-	      // iterative solving optimization query to get all minmodels
-		// verify if I need to find minimum coef1 and coef2 separately
-                Expr minModels = u.getMinModelInts(coef1);
 		
-                findExpr<EQ>(coef1, minModels, minCoef1, true);
-                findExpr<EQ>(coef2, minModels, minCoef2, true);
-				findExpr<EQ>(const1, minModels, minConst1, true);
-                findExpr<EQ>(const2, minModels, minConst2, true);
+	      Expr model;
+	      
+	      if (u.isSat(mk<AND>(quantifiedFla, constsZero))) model = u.getModel();
+	      else if (u.isSat(mk<AND>(quantifiedFla, const1Zero))) model = u.getModel();
+	      else if (u.isSat(mk<AND>(quantifiedFla, const2Zero))) model = u.getModel();
+	      else if (u.isSat(quantifiedFla)) model = u.getModel();
+	      else 
+	      {
+	      	outs() << "Not satisfiable\n";
+	      	continue;
+	      }
+	      
+	      if (model) 
+	      {
+	      	// outs() << "model: " << *model << "\n";
+					// iterative solving optimization query to get all minmodels
+					// verify if I need to find minimum coef1 and coef2 separately
+	        Expr minModels = u.getMinModelInts(coef1);
 
-                u.isSat(mk<AND>(quantifiedFla, mk<AND>(minCoef1, minCoef2)));
+	        findExpr<EQ>(coef1, minModels, minCoef1, true);
+	        findExpr<EQ>(coef2, minModels, minCoef2, true);
+					findExpr<EQ>(const1, minModels, minConst1, true);
+          findExpr<EQ>(const2, minModels, minConst2, true);
 
-				if (minConst1->right() == mkMPZ(0, fac))
-					minModels = u.getMinModelInts(const2);
-				else 
-					minModels = u.getMinModelInts(const1);
+          u.isSat(mk<AND>(quantifiedFla, mk<AND>(minCoef1, minCoef2)));
+
+					if (minConst1->right() == mkMPZ(0, fac))
+						minModels = u.getMinModelInts(const2);
+					else 
+						minModels = u.getMinModelInts(const1);
                 
-				minConst1 = NULL;
-                minConst2 = NULL;
-                findExpr<EQ>(const1, minModels, minConst1, true);
-                findExpr<EQ>(const2, minModels, minConst2, true);
+					minConst1 = NULL;
+          minConst2 = NULL;
+          findExpr<EQ>(const1, minModels, minConst1, true);
+          findExpr<EQ>(const2, minModels, minConst2, true);
 
-                minCoef1 = minCoef1->right();
-                minCoef2 = minCoef2->right();
-                minConst1 = minConst1->right();
-                minConst2 = minConst2->right();
-              }
-            }
-            else 
-            {
-            	outs() << "number of iterations were not found\n";
-            	continue;
-            }
+          minCoef1 = minCoef1->right();
+          minCoef2 = minCoef2->right();
+          minConst1 = minConst1->right();
+          minConst2 = minConst2->right();
+        }
+	else
+	{
+		outs() << "No satisfying assignment for quantified formula was found\n";
+		continue;
+	}
+      }
+      else 
+      {
+      	outs() << "number of iterations were not found\n";
+      	continue;
+      }
 
-            outs() << "copy " << *minConst1 << " iterations of loop 1 to fact and query combined\n";
-            outs() << "copy " << *minConst2 << " iterations of loop 2 to fact and query combined\n";
-            outs() << "we need " << *minCoef1 << " iterations of loop 1 to align\n";
-            outs() << "we need " << *minCoef2 << " iterations of loop 2 to align\n";
+      outs() << "copy " << *minConst1 << " iterations of loop 1 to fact and query combined\n";
+      outs() << "copy " << *minConst2 << " iterations of loop 2 to fact and query combined\n";
+      outs() << "we need " << *minCoef1 << " iterations of loop 1 to align\n";
+      outs() << "we need " << *minCoef2 << " iterations of loop 2 to align\n";
 
-            int coef1Int = (int)lexical_cast<cpp_int>(minCoef1);
+      int coef1Int = (int)lexical_cast<cpp_int>(minCoef1);
 			int const1Int = (int)lexical_cast<cpp_int>(minConst1);
 			int coef2Int = (int)lexical_cast<cpp_int>(minCoef2);
 			int const2Int = (int)lexical_cast<cpp_int>(minConst2);
@@ -1403,8 +1483,8 @@ namespace ufo
 				for (auto &it2 : v2)
 					vComb.push_back(vector<int>{it, it2});
 
-			 //for (auto it : vComb)
-			 //	outs() << it[0] << " " << const1Int-it[0] << " " << it[1] << " " << const2Int-it[1] << "\n";
+			 // for (auto it : vComb)
+			 // 	outs() << it[0] << " " << const1Int-it[0] << " " << it[1] << " " << const2Int-it[1] << "\n";
 
 			bool impliesEq = false;
 			for (auto &it : vComb)
@@ -1412,8 +1492,8 @@ namespace ufo
 				// check if adding certain iterations to query will make the initial values of iterators equal
 				// it is not greedy approach currently
 				Expr prefRuleBody1, prefRuleBody2;
-				ruleManager1.createAlignment(0, it[0], 0, prefRuleBody1);
-				ruleManager2.createAlignment(0, it[1], 0, prefRuleBody2);
+				ruleManager1.createAlignment(0, it[0], 0, prefRuleBody1, bnd1, false);
+				ruleManager2.createAlignment(0, it[1], 0, prefRuleBody2, bnd2, false);
 
 				Expr tempProdFact = mk<AND>(mk<AND>(prefRuleBody1, prefRuleBody2), preRelev);
 				Expr eq = mk<EQ>(iterF, iterS);
@@ -1422,10 +1502,10 @@ namespace ufo
 				if (impliesEq)
 				{
 					// actual alignment created here
-					ruleManager1.createAlignment(coef1Int, it[0], const1Int-it[0], prefRuleBody1);
+					ruleManager1.createAlignment(coef1Int, it[0], const1Int-it[0], prefRuleBody1, bnd1);
 					prefixRule1.body = prefRuleBody1;
 
-					ruleManager2.createAlignment(coef2Int, it[1], const2Int-it[1], prefRuleBody2);					
+					ruleManager2.createAlignment(coef2Int, it[1], const2Int-it[1], prefRuleBody2, bnd2);
 					prefixRule2.body = prefRuleBody2;
 
 					// break out of the loop if for any alignment, we have iterators initially equal;
@@ -1435,17 +1515,51 @@ namespace ufo
 				}
 			}
 
+
 			// if iterator values do not match for any number of iterations, no alignment found
 			if (!impliesEq) continue;
 
+
 			HornRuleExt *query1 = ruleManager1.getQuery(), *query2 = ruleManager2.getQuery();
+
+			if (ruleManager1.srcFactVars.empty()) ruleManager1.srcFactVars = prefixRule1.dstVars;
+			if (ruleManager2.srcFactVars.empty()) ruleManager2.srcFactVars = prefixRule2.dstVars;
+			if (ruleManager1.dstQueryVars.empty()) ruleManager1.dstQueryVars = query1->srcVars;
+			if (ruleManager2.dstQueryVars.empty()) ruleManager2.dstQueryVars = query2->srcVars;
+
+			Expr init1 = prefixRule1.body, init2 = prefixRule2.body;
+
+			Expr pre;
+			bool skipComb = false;
+			if (comb[0][0] != -1)
+			{
+				for (auto &pair : comb)
+				{
+					Expr var1 = ruleManager1.srcFactVars[pair[0]];
+					Expr var2 = ruleManager2.srcFactVars[pair[1]];
+
+					if ((!u.hasOneModel(var1, init1) && !u.hasOneModel(var2, init2)) 
+						|| (u.hasOneModel(var1, init1) && u.hasOneModel(var2, init2)))
+					{
+						if (!pre) pre = mk<EQ>(var1, var2);
+						else pre = mk<AND>(pre, mk<EQ>(var1, var2));
+					}
+					else
+					{
+						skipComb = true;
+						break;
+					}
+
+				}
+				if (skipComb) continue;
+			}
+			else pre = mk<TRUE>(fac);
 
 			// create postcondition
 			Expr post;
-			if (!ruleManager1.dstQueryVars.empty()) post = replaceAll(pre, rule1.dstVars, ruleManager1.dstQueryVars);
-			else post = replaceAll(pre, rule1.dstVars, rule1.srcVars); 
-			if (!ruleManager2.dstQueryVars.empty()) post = replaceAll(post, rule2.dstVars, ruleManager2.dstQueryVars);
-			else post = replaceAll(post, rule2.dstVars, rule2.srcVars); 
+			post = replaceAll(pre, ruleManager1.srcFactVars, ruleManager1.dstQueryVars);
+			post = replaceAll(post, ruleManager2.srcFactVars, ruleManager2.dstQueryVars);
+
 			Expr negPost = mkNeg(post);
 
 			// create the product 
@@ -1457,13 +1571,16 @@ namespace ufo
 			HornRuleExt *fact, *query, *ind;
 			for (auto &it : ruleManagerProduct.chcs)
 			{
-				//it.printMemberVars();
+				it.printMemberVars();
 				if (it.isFact) fact = &it;
 				if (it.isQuery) query = &it;
 				if (it.isInductive) ind = &it;
 			}
 			fact->body = mk<AND>(fact->body, pre);
 			query->body = simplifyBool(mk<AND>(query->body, negPost));
+
+			outs() << "fact: " << *fact->body << "\n";
+			outs() << "query: " << *query->body << "\n";
 
 			outs () << "   check fact sanity:  "  << bool(u.isSat(fact->body)) << "\n";
 			outs () << "   check query sanity:  "  << bool(u.isSat(query->body)) << "\n";
@@ -1503,15 +1620,33 @@ namespace ufo
 
 		Extended_CHCs ruleManagerDst(m_efac, z3, "_v2_");
 		ruleManagerDst.parse(string(chcfileDst), false);
-		
-		ruleManagerSrc.removePostLoop();
-		ruleManagerDst.removePostLoop();
 
-		ruleManagerSrc.renameLocVars();
-		ruleManagerDst.renameLocVars();
+		ruleManagerSrc.extraProcessing();
+		ruleManagerDst.extraProcessing();
 
-		ruleManagerSrc.findIterators();
-		ruleManagerDst.findIterators();
+		BndExpl bndSrc(ruleManagerSrc);
+		BndExpl bndDst(ruleManagerDst);
+
+		// if no iterator was found, the tool exits stating non-equivalence. Support more
+		for (int i = 0; i < ruleManagerSrc.cycles.size(); i++) 
+		{
+			bool iterFound = ruleManagerSrc.findIterators(bndSrc, i);
+			if (!iterFound) 
+			{
+				outs() << "no iterator was found for program 1. programs are not equivalent\n";
+				exit(0);
+			}
+		}
+
+		for (int i = 0; i < ruleManagerDst.cycles.size(); i++) 
+		{
+			bool iterFound = ruleManagerDst.findIterators(bndDst, i);
+			if (!iterFound) 
+			{
+				outs() << "no iterator was found  for program 2. programs are not equivalent\n";
+				exit(0);
+			}
+		}
 
 		bool equiv = findAlignment(ruleManagerSrc, ruleManagerDst);
 		if (equiv) outs() << "\nprograms are equivalent\n";
