@@ -146,6 +146,11 @@ namespace ufo
 
 	    Extended_CHCs(ExprFactory &efac, EZ3 &z3, string n) : CHCs(efac, z3, n) {};
 
+	    Extended_CHCs(const Extended_CHCs &old_CHCs) : CHCs(old_CHCs), dstQueryVars(old_CHCs.dstQueryVars),
+	    	srcFactVars(old_CHCs.srcFactVars), iter(old_CHCs.iter), iterGrows(old_CHCs.iterGrows), 
+	    	numOfIters(old_CHCs.numOfIters), varsInt(old_CHCs.varsInt), varsBool(old_CHCs.varsBool), 
+	    	varsArray(old_CHCs.varsArray) {}
+
       Expr getDecl(Expr relation)
 			{
 				if (!isOpX<TRUE>(relation))
@@ -504,7 +509,8 @@ namespace ufo
 		}
 
 
-		void createAlignment(int unrollTrans, int unrollFact, int unrollQuery, Expr& prefRuleBody, BndExpl &bnd, bool actualAlign=true)
+		void createAlignment(int unrollTrans, int unrollFact, int unrollQuery, Expr& prefRuleBody, 
+			ExprVector& prefRuleLocVars, BndExpl &bnd, bool actualAlign=true)
 		{
 			if (!(unrollTrans == 0 && unrollQuery == 0))
 			{
@@ -534,79 +540,79 @@ namespace ufo
 			trace.push_back(prefix[0]);
 
 			for (int j = 0; j < unrollFact; j++)
-	          for (int m = 0; m < cycle.size(); m++)
-	            trace.push_back(cycle[m]);
+        for (int m = 0; m < cycle.size(); m++)
+          trace.push_back(cycle[m]);
 
-	        ExprVector ssa;
-	        bnd.getSSA(trace, ssa);
+      ExprVector ssa;
+      bnd.getSSA(trace, ssa);
 
-		ExprSet factBndVars;
-	        filter(conjoin(ssa, m_efac), IsConst(), inserter(factBndVars, factBndVars.begin()));
+      ExprSet factBndVars;
+      filter(conjoin(ssa, m_efac), IsConst(), inserter(factBndVars, factBndVars.begin()));
 		
-	        // AH: have to push extra vars to locVars
-	        mergeIterationsFact(prefixRule, unrollFact, ssa, bnd, actualAlign);
+      mergeIterationsFact(prefixRule, unrollFact, ssa, bnd, actualAlign);
 			trace.clear();
 
 			// merge iterations to the query, given the unrollquery value
 			trace.push_back(prefix[0]);
 
 			for (int j = 0; j < unrollQuery; j++)
-	          for (int m = 0; m < cycle.size(); m++)
-	            trace.push_back(cycle[m]);
+        for (int m = 0; m < cycle.size(); m++)
+          trace.push_back(cycle[m]);
 
-	        ExprVector ssa1;
-	        bnd.getSSA(trace, ssa1);
+      ExprVector ssa1;
+      bnd.getSSA(trace, ssa1);
 
-	        ssa1.erase(ssa1.begin());
+      ssa1.erase(ssa1.begin());
 
 			ExprSet queryBndVars;
-	        filter(conjoin(ssa1, m_efac), IsConst(), inserter(queryBndVars, queryBndVars.begin()));
-		
-	        mergeIterationsQuery(query, unrollQuery, ssa1, bnd);
+	    filter(conjoin(ssa1, m_efac), IsConst(), inserter(queryBndVars, queryBndVars.begin()));
 
-	        trace.clear();
+	    mergeIterationsQuery(query, unrollQuery, ssa1, bnd);
 
-	        // unroll the inductive rule unrollTrans times
+	    trace.clear();
+
+	    // unroll the inductive rule unrollTrans times
 			trace.push_back(prefix[0]);
 
 			for (int j = 0; j < unrollTrans-1; j++)
-	          for (int m = 0; m < cycle.size(); m++)
-	            trace.push_back(cycle[m]);
+        for (int m = 0; m < cycle.size(); m++)
+          trace.push_back(cycle[m]);
 
-	        ExprVector ssa2;
-	        bnd.getSSA(trace, ssa2);
+      ExprVector ssa2;
+      bnd.getSSA(trace, ssa2);
 
-	        ssa2.erase(ssa2.begin());
+      ssa2.erase(ssa2.begin());
 
 			ExprSet ruleBndVars;
-	        filter(conjoin(ssa2, m_efac), IsConst(), inserter(ruleBndVars, ruleBndVars.begin()));
+      filter(conjoin(ssa2, m_efac), IsConst(), inserter(ruleBndVars, ruleBndVars.begin()));
 
-	        mergeIterationsLoop(rule, unrollTrans-1, ssa2, bnd);
+      mergeIterationsLoop(rule, unrollTrans-1, ssa2, bnd);
 
-	        // make required changes to the CHC system
-	        if (unrollFact > 0) 
-	        {
-	        	prefRuleBody = conjoin(ssa, m_efac);
-			for (auto &var : srcFactVars) {
-				factBndVars.erase(var);
-			}
-		        for (auto &var : factBndVars)
+      // make required changes to the CHC system
+      if (unrollFact > 0) 
+      {
+      	prefRuleBody = conjoin(ssa, m_efac);
+				// for (auto &var : srcFactVars) {
+				// 	factBndVars.erase(var);
+				// }
+        for (auto &var : factBndVars)
 				{
 					Expr new_name = mkTerm<string>(varname+lexical_cast<string>(var), m_efac);
-	        		Expr var1 = cloneVar(var, new_name);
-	        		prefRuleBody = replaceAll(prefRuleBody, var, var1);
+      		Expr var1 = cloneVar(var, new_name);
+      		prefRuleBody = replaceAll(prefRuleBody, var, var1);
+      		prefRuleLocVars.push_back(var1);
 				}
-	        }
+      }
 			if (unrollTrans > 1) 
 			{
 				Expr addToRule = conjoin(ssa2, m_efac);
-		        for (auto &var : ruleBndVars)
+        for (auto &var : ruleBndVars)
 				{
 					Expr new_name = mkTerm<string>(varname+lexical_cast<string>(var), m_efac);
-	        		Expr var1 = cloneVar(var, new_name);
-	        		addToRule = replaceAll(addToRule, var, var1);
-	        		rule.body = replaceAll(rule.body, var, var1);
-	        		rule.locVars.push_back(var1);
+      		Expr var1 = cloneVar(var, new_name);
+      		addToRule = replaceAll(addToRule, var, var1);
+      		rule.body = replaceAll(rule.body, var, var1);
+      		rule.locVars.push_back(var1);
 				}
 				rule.body = mk<AND>(rule.body, addToRule);
 			}
@@ -617,9 +623,9 @@ namespace ufo
 				for (auto &var : queryBndVars)
 				{
 					Expr new_name = mkTerm<string>(varname+lexical_cast<string>(var), m_efac);
-	        		Expr var1 = cloneVar(var, new_name);
-	        		addToQuery = replaceAll(addToQuery, var, var1);
-	        		query->locVars.push_back(var1);
+      		Expr var1 = cloneVar(var, new_name);
+      		addToQuery = replaceAll(addToQuery, var, var1);
+      		query->locVars.push_back(var1);
 				}
 				query->body = mk<AND>(query->body, addToQuery);
 			}
@@ -1501,14 +1507,16 @@ namespace ufo
 		Expr iterF = rule1.dstVars[iter1];
 		Expr iterS = rule2.dstVars[iter2];
 
+		ExprVector dummy;
+
 		bool impliesEq = false;
 		for (auto &possibleAlign : possibleFactQueryAligns)
 		{
 			// check if adding certain iterations to query will make the initial values of iterators equal
 			// it is not greedy approach currently
 			Expr prefRuleBody1, prefRuleBody2;
-			ruleManager1.createAlignment(0, possibleAlign[0], 0, prefRuleBody1, bnd1, false);
-			ruleManager2.createAlignment(0, possibleAlign[1], 0, prefRuleBody2, bnd2, false);
+			ruleManager1.createAlignment(0, possibleAlign[0], 0, prefRuleBody1, dummy, bnd1, false);
+			ruleManager2.createAlignment(0, possibleAlign[1], 0, prefRuleBody2, dummy, bnd2, false);
 
 			Expr tempProdFact = mk<AND>(mk<AND>(prefRuleBody1, prefRuleBody2), preForEqualityCheck);
 			Expr eq = mk<EQ>(iterF, iterS);
@@ -1516,12 +1524,25 @@ namespace ufo
 
 			if (impliesEq)
 			{
+				ExprVector prefRuleLocVars1, prefRuleLocVars2;
 				// actual alignment created here
-				ruleManager1.createAlignment(coef1Int, possibleAlign[0], const1Int-possibleAlign[0], prefRuleBody1, bnd1);
+				ruleManager1.createAlignment(coef1Int, possibleAlign[0], const1Int-possibleAlign[0], prefRuleBody1, 
+					prefRuleLocVars1, bnd1);
+				outs() << "prefixRule1 before alignment: " << *prefixRule1.body << "\n";
+				outs() << "prefixRule1 locVars before alignment: \n";
+				for (auto it : prefixRule1.locVars) outs() << *it << " ";
+					outs() << "\n";
 				prefixRule1.body = prefRuleBody1;
+				std::copy(prefRuleLocVars1.begin(), prefRuleLocVars1.end(), std::back_inserter(prefixRule1.locVars));
+				outs() << "prefixRule1 after alignment: " << *prefixRule1.body << "\n";
+				outs() << "prefixRule1 locVars after alignment: \n";
+				for (auto it : prefixRule1.locVars) outs() << *it << " ";
+					outs() << "\n";
 
-				ruleManager2.createAlignment(coef2Int, possibleAlign[1], const2Int-possibleAlign[1], prefRuleBody2, bnd2);
+				ruleManager2.createAlignment(coef2Int, possibleAlign[1], const2Int-possibleAlign[1], prefRuleBody2, 
+					prefRuleLocVars2, bnd2);
 				prefixRule2.body = prefRuleBody2;
+				std::copy(prefRuleLocVars2.begin(), prefRuleLocVars2.end(), std::back_inserter(prefixRule2.locVars));
 
 				// break out of the loop if for any alignment, we have iterators initially equal;
 				// consequently, all remaining iterations are added to query; 
@@ -1675,10 +1696,11 @@ namespace ufo
 		// check for all combinations of variables, such that we match same type of variables
 		for (auto &comb : nonIterCombinations)
 		{
-			aligned = alignPrograms(ruleManagerSrc, ruleManagerDst, comb);
+			Extended_CHCs ruleManagerSrcCopy = ruleManagerSrc, ruleManagerDstCopy = ruleManagerDst;
+			aligned = alignPrograms(ruleManagerSrcCopy, ruleManagerDstCopy, comb);
 			if (aligned) 
 			{
-				if (checkEquivalence(ruleManagerSrc, ruleManagerDst, comb)) 
+				if (checkEquivalence(ruleManagerSrcCopy, ruleManagerDstCopy, comb)) 
 				{
 					outs() << "\nprograms are equivalent\n";
 					return;
