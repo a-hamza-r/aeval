@@ -1,4 +1,4 @@
-#include "deep/Product.hpp"
+#include "deep/Equivalence.hpp"
 
 using namespace ufo;
 using namespace std;
@@ -29,9 +29,9 @@ int main (int argc, char ** argv)
 	if (!base && !aligned) aligned = true; // default
 
 	if (base)
- 		createProductBase(argv[argc-2], argv[argc-1]);
+ 		checkEquivalenceWithoutAligning(argv[argc-2], argv[argc-1]);
  	else
- 		createProductAligned(argv[argc-2], argv[argc-1]);
+ 		checkEquivalenceWithAligning(argv[argc-2], argv[argc-1]);
 
 	return 0;
 }
