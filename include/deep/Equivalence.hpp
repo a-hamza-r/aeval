@@ -9,14 +9,14 @@ using namespace boost;
 namespace ufo
 {
 
-	class Product_CHCs : public CHCs
+	class Product_CHCs : public Extended_CHCs
 	{
 	public:
 	    Extended_CHCs* subRule1;
 	    Extended_CHCs* subRule2;
 
 	    Product_CHCs(Extended_CHCs &rules1, Extended_CHCs &rules2, string n) : 
-	    	CHCs(rules1.m_efac, rules1.m_z3, n), subRule1(&rules1), subRule2(&rules2) {};
+	    	Extended_CHCs(rules1.m_efac, rules1.m_z3, n), subRule1(&rules1), subRule2(&rules2) {};
 
 		void nonRecursiveProduct(HornRuleExt &chc1, HornRuleExt &chc2, Expr &product, ExprVector &vars)
 		{
@@ -278,25 +278,36 @@ namespace ufo
 
 		void renamingAsProductRules()
 		{
-			ExprVector srcVars, dstVars;
-
 			for (auto &chc : chcs) 
 			{
-				srcVars = chc.srcVars; dstVars = chc.dstVars;
+				ExprVector srcVars = chc.srcVars, dstVars = chc.dstVars;
 				
 				// might add dstVars of one of the CHCs to product locVars twice in some cases, should not be a problem
 				concatenateVectors(chc.locVars, srcVars, dstVars);
 				chc.srcVars.clear(); chc.dstVars.clear();
 
-				ExprVector dstV;
-				for (auto &it : invVars[chc.dstRelation])
+				chc.assignVarsAndRewrite(srcVars, invVars[chc.srcRelation], dstVars, invVarsPrime[chc.dstRelation]);
+
+				// for srcFactVars and dstQueryVars, we might add unnecessary relations to the body, 
+				// also the locVars might contain duplicate variables. Fix later
+				if (chc.isFact)
 				{
-					Expr new_name = mkTerm<string> (lexical_cast<string>(it) + "'", m_efac);
-					dstV.push_back(cloneVar(it, new_name));
+					ExprVector prodVars = invVars[chc.dstRelation];
+					for (int i = 0; i < srcFactVars.size(); i++)
+						chc.body = mk<AND>(chc.body, mk<EQ>(srcFactVars[i], prodVars[i]));
+					chc.locVars.insert(chc.locVars.end(), srcFactVars.begin(), srcFactVars.end());
+					srcFactVars = prodVars;
 				}
 
-				chc.assignVarsAndRewrite(srcVars, invVars[chc.srcRelation], 
-					dstVars, dstV);
+				if (chc.isQuery)
+				{
+					ExprVector prodVarsPrime = invVarsPrime[chc.srcRelation];
+					for (int i = 0; i < dstQueryVars.size(); i++)
+						chc.body = mk<AND>(chc.body, mk<EQ>(dstQueryVars[i], prodVarsPrime[i]));
+					chc.locVars.insert(chc.locVars.end(), dstQueryVars.begin(), dstQueryVars.end());
+					dstQueryVars = prodVarsPrime;
+				}
+
 			}
 		}
 
@@ -333,6 +344,9 @@ namespace ufo
 			vector<HornRuleExt> transformedCHCs;
 			vector<HornRuleExt> worklist;
 			HornRuleExt C_a;
+
+			concatenateVectors(srcFactVars, subRule1->srcFactVars, subRule2->srcFactVars);
+			concatenateVectors(dstQueryVars, subRule1->dstQueryVars, subRule2->dstQueryVars);
 
 			HornRuleExt queryPr;
 
@@ -401,7 +415,7 @@ namespace ufo
     EZ3 z3(ruleManager.m_efac);
     BndExpl bnd(ruleManager);
 
-    unsigned maxAttempts = 2000000, to = 1000;
+    unsigned maxAttempts = 2000000, to = 10000;
     bool freqs = false, aggp = false, enableDataLearning = true, doElim = false, doDisj = false;
     bool dAllMbp = false, dAddProp = false, dAddDat = false, dStrenMbp = false;
 
@@ -418,7 +432,7 @@ namespace ufo
       for (auto & t : tmp)
         if(hasOnlyVars(t, ruleManager.invVars[rel]))
           cands[rel].insert(t);
-      ds.mutateHeuristicEq(cands[rel], cands[rel], rel, true);
+      // ds.mutateHeuristicEq(cands[rel], cands[rel], rel, true);
       ds.initializeAux(bnd, i, pref);
     }
     // if (enableDataLearning) ds.getDataCandidates(cands);
@@ -431,12 +445,7 @@ namespace ufo
     // call bootstrap with option to only consider equalities as candidates for finding invariant
     // also add equalities for variable matchings
     bool check = ds.bootstrap(doDisj, currentMatching, true);
-    // if (!check)
-    // {
-    //   std::srand(std::time(0));
-    //   check = ds.synthesize(maxAttempts, doDisj);
-    // }
-    return check;
+    return check && ds.verifySolution(currentMatching);
   }
 
 
@@ -719,9 +728,6 @@ namespace ufo
 
 		}
 
-		// if iterator values do not match for any number of iterations, no alignment found
-		if (!impliesEq) return false;
-
 		HornRuleExt *query1 = ruleManager1.getQuery(), *query2 = ruleManager2.getQuery();
 
 		if (ruleManager1.srcFactVars.empty()) ruleManager1.srcFactVars = prefixRule1.dstVars;
@@ -729,7 +735,8 @@ namespace ufo
 		if (ruleManager1.dstQueryVars.empty()) ruleManager1.dstQueryVars = query1->srcVars;
 		if (ruleManager2.dstQueryVars.empty()) ruleManager2.dstQueryVars = query2->srcVars;
 
-		return true;
+		// if impliesEq is false, iterator values do not match for any number of iterations and no alignment found
+		return impliesEq;
 	}
 
 
@@ -761,8 +768,11 @@ namespace ufo
 
 	bool checkEquivalence(Extended_CHCs &ruleManager1, Extended_CHCs &ruleManager2, vector<vector<int>> &combVars)
 	{
-		auto &fac = ruleManager1.m_efac;
-		SMTUtils u(fac);
+		// create the product CHC system 
+		Product_CHCs ruleManagerProduct(ruleManager1, ruleManager2, "_pr_");
+
+	    // product of two CHC systems
+		ruleManagerProduct.createProduct();
 
 		// create pre and post conditions
 		Expr pre = mk<EQ>(ruleManager1.srcFactVars[ruleManager1.iter], ruleManager2.srcFactVars[ruleManager2.iter]); 
@@ -778,12 +788,6 @@ namespace ufo
 
 		Expr negPost = mkNeg(post);
 
-		// create the product 
-		Product_CHCs ruleManagerProduct(ruleManager1, ruleManager2, "_pr_");
-
-	    // product of two CHC systems
-		ruleManagerProduct.createProduct();
-
 		HornRuleExt *fact, *query, *ind;
 		for (auto &it : ruleManagerProduct.chcs)
 		{
@@ -794,9 +798,13 @@ namespace ufo
 		}
 		fact->body = mk<AND>(fact->body, pre);
 		query->body = simplifyBool(mk<AND>(query->body, negPost));
+		// ruleManagerProduct.serializeFormulas();
 
 		// outs() << "fact: " << *fact->body << "\n";
 		// outs() << "query: " << *query->body << "\n";
+
+		auto &fac = ruleManagerProduct.m_efac;
+		SMTUtils u(fac);
 
 		outs () << "   check fact sanity:  "  << bool(u.isSat(fact->body)) << "\n";
 		outs () << "   check query sanity:  "  << bool(u.isSat(query->body)) << "\n";

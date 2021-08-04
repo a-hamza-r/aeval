@@ -1562,6 +1562,20 @@ namespace ufo
         assert(hasOnlyVars(res, ruleManager.invVars[rel]));
       }
     }
+
+    bool verifySolution(Expr variableEqualities)
+    {
+      SamplFactory& sf = sfs[0].back();
+      ExprSet lms = sf.learnedExprs;
+      Expr res = simplifyArithm(conjoin(lms, m_efac));
+
+      bool sanityChecks = true;
+      HornRuleExt *fact, *query, *ind;
+      for (auto &it : ruleManager.chcs)
+        sanityChecks &= bool(u.isSat(it.body));
+   
+      return sanityChecks && bool(u.implies(res, variableEqualities));
+    }
   };
 
   inline void learnInvariants3(string smt, unsigned maxAttempts, unsigned to, bool freqs, bool aggp,

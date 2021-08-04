@@ -366,15 +366,7 @@ namespace ufo
         for (int i = 0; i < hr.dstVars.size(); i++)
           if (invVars[i] == NULL) quantified.insert(hr.dstVars[i]);
 
-      if (quantified.size() > 0)
-      {
-        AeValSolver ae(mk<TRUE>(m_efac), body, quantified);
-        if (ae.solve())
-        {
-          Expr bodyTmp = ae.getValidSubset();
-          if (bodyTmp != NULL) body = bodyTmp;
-        }
-      }
+      body = eliminateQuantifiers(body, quantified);
 
       // get seeds and normalize
       ExprSet conds;
@@ -404,20 +396,6 @@ namespace ufo
         for (auto & a : deltas) obtainSeeds(a);
         e = rewriteSelectStore(e);
         e = simpleQE(e, hr.dstVars);
-
-        // yet another round of QE: across selects
-        if (quantified.size() > 0)
-        {
-          ExprMap mp;
-          e = replaceSelects(e, mp);
-          AeValSolver ae(mk<TRUE>(m_efac), e, quantified);
-          if (ae.solve())
-          {
-            Expr bodyTmp = ae.getValidSubset();
-            if (bodyTmp != NULL) e = bodyTmp;
-          }
-          for (auto & a : mp) e = replaceAll(e, a.second, a.first);
-        }
         e = simplifyBool(e);
         e = rewriteBoolEq(e);
         e = convertToGEandGT(e);

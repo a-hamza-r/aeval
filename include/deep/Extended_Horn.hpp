@@ -269,9 +269,9 @@ namespace ufo
 					assump = mk<AND>(assump, conj);
 			}
 			
-			Expr correctedGuard = myAbduce(goal, assump, varsNotInc);
+			Expr newGuard = myAbduce(goal, assump, varsNotInc);
 			
-			rule.body = mk<AND>(rule.body, correctedGuard);
+			rule.body = mk<AND>(rule.body, newGuard);
 		}
 
 		void removePreLoop()
@@ -375,22 +375,74 @@ namespace ufo
 		}
 */
 
-		/*void serializeFormulas()
-		{
-			for (auto& it : chcs)
-			{
-				ExprVector v;
-				Expr q = createQuantifiedFormula(it.body, v);
-				u.serialize_formula(q);
+		// to be used for creating forall-exists formulas
+		void serializeFormulas(Expr body, ExprSet quantified)
+    {
+        auto &fac = body->getFactory();
+        SMTUtils u(fac);
 
-				Expr body = it.body;
-				for (auto v : it.locVars)
+        ExprVector quantifiedVec, varsVec;
+
+        ExprSet varsSet;
+        filter (body, bind::IsConst (), inserter(varsSet, varsSet.begin()));
+        minusSets(varsSet, quantified);
+        std::copy(quantified.begin(), quantified.end(), std::back_inserter(quantifiedVec));
+        std::copy(varsSet.begin(), varsSet.end(), std::back_inserter(varsVec));
+        body = createQuantifiedFormulaRestr(body, quantifiedVec, false);
+        body = createQuantifiedFormulaRestr(body, varsVec);
+        u.serialize_formula(body);
+    }
+
+    
+    // to convert CHCs into a forall formula to be taken input directly by freqhorn
+    // possibly, add exists formula too
+		void serializeFormulas()
+		{
+			ExprVector v;
+			ExprVector vars;
+
+			// assuming only one loop, makes things easier
+			Expr e = (*decls.begin())->arg(0);
+
+			for (auto &it : invVarsPrime[e])
+			{
+				Expr newVar = cloneVar(it, mkTerm<string>('|'+lexical_cast<string>(it)+'|', m_efac));
+				v.push_back(newVar);
+			}
+			concatenateVectors(vars, srcFactVars, v);
+
+			outs() << "(declare-fun " << e << " (";
+
+			for (int i = 0; i < v.size(); i++)
+      {
+        outs () << u.varType(v[i]);
+        if (i != v.size() - 1) outs () << " ";
+      }
+      outs () << ") Bool)\n";
+
+			for (auto& chc : chcs)
+			{
+				// outs() << (chc.isFact ? "Fact" : (chc.isQuery ? "Query" : "Inductive")) << ": \n";
+				Expr body = chc.body;
+
+				for (auto v : chc.locVars)
 				{
 					ExprSet s{v};
 					body = eliminateQuantifiers(body, s);
 				}
+
+				if (!isOpX<TRUE>(chc.srcRelation))
+					body = mk<AND>(body, fapp(getDecl(chc.srcRelation), invVars[chc.srcRelation]));
+
+				if (chc.dstRelation != failDecl)
+					body = mk<IMPL>(body, fapp(getDecl(chc.dstRelation), v));
+				else
+					body = mk<IMPL>(body, mk<FALSE>(m_efac));
+
+				body = createQuantifiedFormulaRestr(body, vars);
+				u.serialize_formula(body);
 			}
-		}*/
+		}
 
 		/*void getExprEqualities(Expr var, HornRuleExt& rule)
 	    {
