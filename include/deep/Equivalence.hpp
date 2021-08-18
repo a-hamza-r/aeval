@@ -412,40 +412,63 @@ namespace ufo
 	
 	inline bool learnInvariantsPr(CHCs &ruleManager, Expr currentMatching)
   {
-    EZ3 z3(ruleManager.m_efac);
-    BndExpl bnd(ruleManager);
-
     unsigned maxAttempts = 2000000, to = 10000;
-    bool freqs = false, aggp = false, enableDataLearning = true, doElim = false, doDisj = false;
+    bool freqs = false, aggp = false, enableDataLearning = false, doElim = false, doDisj = false;
     bool dAllMbp = false, dAddProp = false, dAddDat = false, dStrenMbp = false;
+    int debug = 0, doProp = 0;
 
-    RndLearnerV3 ds(ruleManager.m_efac, z3, ruleManager, to, freqs, aggp, dAllMbp, dAddProp, dAddDat, dStrenMbp);
+	  if (doDisj && (!dAddProp && !dAddDat))
+	  {
+	    if (debug) errs() << "WARNING: either \"" << dAddProp << "\" or \"" << dAddDat << "\" should be enabled\n"
+	           << "Enabling \"" << dAddDat << "\"\n";
+	    dAddDat = true;
+	  }
+
+	  if (doDisj && doProp == 0) doProp = 1;
+	  if (dAllMbp || dAddProp || dAddDat || dStrenMbp) doDisj = true;
+	  if (doDisj) enableDataLearning = true;
+    
+    EZ3 z3(ruleManager.m_efac);
+    BndExpl bnd(ruleManager, debug);
+
+    RndLearnerV3 ds(ruleManager.m_efac, z3, ruleManager, to, freqs, aggp, dAllMbp, dAddProp, dAddDat, dStrenMbp, debug);
+
     map<Expr, ExprSet> cands;
-    for (auto& dcl: ruleManager.decls) ds.initializeDecl(dcl);
-
     for (int i = 0; i < ruleManager.cycles.size(); i++)
     {
+      Expr dcl = ruleManager.chcs[ruleManager.cycles[i][0]].srcRelation;
+      if (ds.initializedDecl(dcl)) continue;
+      ds.initializeDecl(dcl);
       Expr pref = bnd.compactPrefix(i);
-      Expr rel = ruleManager.chcs[ruleManager.cycles[i][0]].srcRelation;
       ExprSet tmp;
       getConj(pref, tmp);
       for (auto & t : tmp)
-        if(hasOnlyVars(t, ruleManager.invVars[rel]))
-          cands[rel].insert(t);
-      // ds.mutateHeuristicEq(cands[rel], cands[rel], rel, true);
+        if (hasOnlyVars(t, ruleManager.invVars[dcl]))
+          cands[dcl].insert(t);
+
+      // ds.mutateHeuristicEq(cands[dcl], cands[dcl], dcl, true);
       ds.initializeAux(bnd, i, pref);
     }
-    // if (enableDataLearning) ds.getDataCandidates(cands);
-    
-    for (auto& dcl: ruleManager.wtoDecls) ds.getSeeds(dcl, cands);
-    ds.refreshCands(cands);
-    for (auto& dcl: ruleManager.decls) ds.doSeedMining(dcl->arg(0), cands[dcl->arg(0)], false);
-    ds.calculateStatistics();
+
+    if (enableDataLearning) ds.getDataCandidates(cands);
+
+    for (auto & dcl: ruleManager.wtoDecls)
+    {
+      for (int i = 0; i < doProp; i++)
+        for (auto & a : cands[dcl]) ds.propagate(dcl, a, true);
+      ds.addCandidates(dcl, cands[dcl]);
+      ds.prepareSeeds(dcl, cands[dcl]);
+    }
 
     // call bootstrap with option to only consider equalities as candidates for finding invariant
     // also add equalities for variable matchings
     bool check = ds.bootstrap(doDisj, currentMatching, true);
     return check && ds.verifySolution(currentMatching);
+
+    /*ds.calculateStatistics();
+    ds.deferredPriorities();
+    std::srand(std::time(0));
+    ds.synthesize(maxAttempts, doDisj);*/
   }
 
 
@@ -549,32 +572,18 @@ namespace ufo
     
     if (model) 
     {
-    	// outs() << "model: " << *model << "\n";
+    	// outs() << "model: " << model << "\n";
 			// iterative solving optimization query to get all minmodels
-			// verify if I need to find minimum coef1 and coef2 separately
-      Expr minModels = u.getMinModelInts(coef1);
-
-      findExpr<EQ>(coef1, minModels, minCoef1, true);
-      findExpr<EQ>(coef2, minModels, minCoef2, true);
-			findExpr<EQ>(const1, minModels, minConst1, true);
-      findExpr<EQ>(const2, minModels, minConst2, true);
-
-      u.isSat(mk<AND>(quantifiedFla, mk<AND>(minCoef1, minCoef2)));
-
-			if (minConst1->right() == mkMPZ(0, fac))
-				minModels = u.getMinModelInts(const2);
-			else 
-				minModels = u.getMinModelInts(const1);
-            
-			minConst1 = NULL;
-      minConst2 = NULL;
-      findExpr<EQ>(const1, minModels, minConst1, true);
-      findExpr<EQ>(const2, minModels, minConst2, true);
-
-      minCoef1 = minCoef1->right();
-      minCoef2 = minCoef2->right();
-      minConst1 = minConst1->right();
-      minConst2 = minConst2->right();
+      minCoef1 = u.getMinModel(coef1);
+    	quantifiedFla = mk<AND>(quantifiedFla, mk<EQ>(coef1, minCoef1));
+      u.isSat(quantifiedFla);
+      minCoef2 = u.getMinModel(coef2);
+    	quantifiedFla = mk<AND>(quantifiedFla, mk<EQ>(coef2, minCoef2));
+      u.isSat(quantifiedFla);
+      minConst1 = u.getMinModel(const1);
+      quantifiedFla = mk<AND>(quantifiedFla, mk<EQ>(const1, minConst1));
+      u.isSat(quantifiedFla);
+      minConst2 = u.getMinModel(const2);
     }
 		else
 		{
@@ -582,10 +591,10 @@ namespace ufo
 			return false;
 		}
 
-    outs() << "copy " << *minConst1 << " iterations of loop 1 to fact and query combined\n";
-    outs() << "copy " << *minConst2 << " iterations of loop 2 to fact and query combined\n";
-    outs() << "we need " << *minCoef1 << " iterations of loop 1 to align\n";
-    outs() << "we need " << *minCoef2 << " iterations of loop 2 to align\n";
+    outs() << "copy " << minConst1 << " iterations of loop 1 to fact and query combined\n";
+    outs() << "copy " << minConst2 << " iterations of loop 2 to fact and query combined\n";
+    outs() << "we need " << minCoef1 << " iterations of loop 1 to align\n";
+    outs() << "we need " << minCoef2 << " iterations of loop 2 to align\n";
 
     vals.push_back((int)lexical_cast<cpp_int>(minCoef1));
     vals.push_back((int)lexical_cast<cpp_int>(minConst1));
@@ -595,7 +604,7 @@ namespace ufo
     return true;
   }
 
-  bool alignPrograms(Extended_CHCs &ruleManager1, Extended_CHCs &ruleManager2, vector<vector<int>> &combVars)
+  bool alignPrograms(Extended_CHCs &ruleManager1, Extended_CHCs &ruleManager2, vector<vector<int>> &combVars, int debug)
 	{
 		auto &fac = ruleManager1.m_efac;
 		SMTUtils u(fac);
@@ -611,8 +620,8 @@ namespace ufo
 		vector<int> &prefix2 = ruleManager2.prefixes[cycleNum2];
 		HornRuleExt &prefixRule2 = ruleManager2.chcs[prefix2[0]];
 
-		BndExpl bnd1(ruleManager1);
-		BndExpl bnd2(ruleManager2);
+		BndExpl bnd1(ruleManager1, debug);
+		BndExpl bnd2(ruleManager2, debug);
 
 		Expr pref1 = bnd1.compactPrefix(cycleNum1), pref2 = bnd2.compactPrefix(cycleNum2);
 
@@ -844,8 +853,9 @@ namespace ufo
 		ruleManagerSrc.extraProcessing();
 		ruleManagerDst.extraProcessing();
 
-		BndExpl bndSrc(ruleManagerSrc);
-		BndExpl bndDst(ruleManagerDst);
+		int debug = 0;
+		BndExpl bndSrc(ruleManagerSrc, debug);
+		BndExpl bndDst(ruleManagerDst, debug);
 
 		// if no iterator was found, the tool exits stating non-equivalence. Support more
 		for (int i = 0; i < ruleManagerSrc.cycles.size(); i++) 
@@ -876,7 +886,7 @@ namespace ufo
 		for (auto &comb : nonIterCombinations)
 		{
 			Extended_CHCs ruleManagerSrcCopy = ruleManagerSrc, ruleManagerDstCopy = ruleManagerDst;
-			aligned = alignPrograms(ruleManagerSrcCopy, ruleManagerDstCopy, comb);
+			aligned = alignPrograms(ruleManagerSrcCopy, ruleManagerDstCopy, comb, debug);
 			if (aligned) 
 			{
 				if (checkEquivalence(ruleManagerSrcCopy, ruleManagerDstCopy, comb)) 
