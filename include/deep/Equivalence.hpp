@@ -286,7 +286,9 @@ namespace ufo
 				concatenateVectors(chc.locVars, srcVars, dstVars);
 				chc.srcVars.clear(); chc.dstVars.clear();
 
-				chc.assignVarsAndRewrite(srcVars, invVars[chc.srcRelation], dstVars, invVarsPrime[chc.dstRelation]);
+				ExprSet eqs;
+				chc.assignVarsAndRewrite(srcVars, invVars[chc.srcRelation], dstVars, invVarsPrime[chc.dstRelation], eqs);
+				chc.body = mk<AND>(chc.body, conjoin(eqs, m_efac));
 
 				// for srcFactVars and dstQueryVars, we might add unnecessary relations to the body, 
 				// also the locVars might contain duplicate variables. Fix later
