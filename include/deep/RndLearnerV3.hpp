@@ -138,8 +138,8 @@ namespace ufo
       eTmp = renameCand(eTmp, varsRenameFrom, invNum);
       if (printLog >= 4)
       {
-        outs () << "  QE: " << e << "\n  vars   ((("; pprint(varsRenameFrom); outs () << ")))\n";
-        outs () << "  QE res: " << eTmp << "\n";
+        outs () << "       QE [vars  "; pprint(varsRenameFrom); outs () << "]\n"; pprint(e, 9);
+        outs () << "       QE res:\n"; pprint(eTmp, 9);
       }
       return eTmp;
     }
@@ -750,10 +750,13 @@ namespace ufo
             s.insert(cnd);
           Expr newCand = keepQuantifiers (conjoin(s, m_efac), vars);
           newCand = u.removeITE(replaceAll(newCand, dstVars, srcVars));
-          if (isOpX<FORALL>(cnd))
-            cands[rel].insert(replaceAll(cnd, cnd->last(), newCand));
-          else
-            getConj(newCand, cands[rel]);
+          if (!isOpX<FALSE>(newCand))
+          {
+            if (isOpX<FORALL>(cnd))
+              cands[rel].insert(replaceAll(cnd, cnd->last(), newCand));
+            else
+              getConj(newCand, cands[rel]);
+          }
         }
 
         Expr nextModel;
@@ -808,11 +811,11 @@ namespace ufo
 
     bool synthesize(unsigned maxAttempts, bool doDisj)
     {
+      if (printLog) outs () << "\nSAMPLING\n========\n";
       if (printLog >= 3)
         for (auto & a : deferredCandidates)
           for (auto & b : a.second)
             outs () << "  Deferred cand for " << a.first << ": " << b << "\n";
-      if (printLog) outs () << "\nSAMPLING\n========\n";
 
       ExprSet cands;
       for (int i = 0; i < maxAttempts; i++)
@@ -1028,9 +1031,17 @@ namespace ufo
       prjcts1.insert(prjcts1.end(), prjcts2.begin(), prjcts2.end());
       for (auto p : prjcts1)
       {
-        getConj(hasArray ? replaceAll(p, dstVars, srcVars) : p, cands);
-        if (hasArray) p = ufo::eliminateQuantifiers(p, dstVars); // for the case of arrays
-        p = weakenForVars(p, dstVars);
+        if (hasArray)
+        {
+          getConj(replaceAll(p, dstVars, srcVars), cands);
+          p = ufo::eliminateQuantifiers(p, dstVars);
+          p = weakenForVars(p, dstVars);
+        }
+        else
+        {
+          p = weakenForVars(p, dstVars);
+          getConj(p, cands);
+        }
         p = simplifyArithm(p);
         mbps[invNum].insert(p);
         if (printLog >= 2) outs() << "Generated MBP: " << p << "\n";
@@ -1590,11 +1601,7 @@ namespace ufo
       ssas[invNum] = replaceAll(e, bnd.bindVars.back(), dstVars);
 
       if (qvits[invNum].size() > 0) return;
-
-      ExprSet ssa;
       if (!containsOp<ARRAY_TY>(ssas[invNum])) return; // todo: support
-
-      getConj(ssas[invNum], ssa);
 
       filter (ssas[invNum], bind::IsConst (), inserter(qvars[invNum], qvars[invNum].begin()));
       postconds[invNum] = ruleManager.getPrecondition(hr);
@@ -1619,8 +1626,6 @@ namespace ufo
         }
       }
 
-      ssa.clear();
-      getConj(pref, ssa);
       AeValSolver ae(mk<TRUE>(m_efac), pref, itersCur);
       ae.solve();
       Expr skol = u.simplifyITE(ae.getSimpleSkolemFunction(), ae.getValidSubset());
@@ -1673,8 +1678,8 @@ namespace ufo
     ExprFactory m_efac;
     EZ3 z3(m_efac);
 
-    CHCs ruleManager(m_efac, z3, (debug >= 2));
-    ruleManager.parse(smt, doElim, doArithm);
+    CHCs ruleManager(m_efac, z3, debug - 2);
+    if (!ruleManager.parse(smt, doElim, doArithm)) return;
     BndExpl bnd(ruleManager, to, debug);
     if (!ruleManager.hasCycles())
       return (void)bnd.exploreTraces(1, ruleManager.chcs.size(), true);

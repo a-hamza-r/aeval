@@ -417,7 +417,7 @@ namespace ufo
     unsigned maxAttempts = 2000000, to = 10000;
     bool freqs = false, aggp = false, enableDataLearning = false, doElim = false, doDisj = false;
     bool dAllMbp = false, dAddProp = false, dAddDat = false, dStrenMbp = false;
-    int debug = 0, doProp = 0;
+    int debug = 0, doProp = 0, mbpEqs = 0;
 
 	  if (doDisj && (!dAddProp && !dAddDat))
 	  {
@@ -433,7 +433,7 @@ namespace ufo
     EZ3 z3(ruleManager.m_efac);
     BndExpl bnd(ruleManager, debug);
 
-    RndLearnerV3 ds(ruleManager.m_efac, z3, ruleManager, to, freqs, aggp, dAllMbp, dAddProp, dAddDat, dStrenMbp, debug);
+    RndLearnerV3 ds(ruleManager.m_efac, z3, ruleManager, to, freqs, aggp, mbpEqs, dAllMbp, dAddProp, dAddDat, dStrenMbp, debug);
 
     map<Expr, ExprSet> cands;
     for (int i = 0; i < ruleManager.cycles.size(); i++)
@@ -847,10 +847,10 @@ namespace ufo
 		EZ3 z3(m_efac);
 
 		Extended_CHCs ruleManagerSrc(m_efac, z3, "_v1_");
-		ruleManagerSrc.parse(string(chcfileSrc), false);
+		ruleManagerSrc.parse(string(chcfileSrc));
 
 		Extended_CHCs ruleManagerDst(m_efac, z3, "_v2_");
-		ruleManagerDst.parse(string(chcfileDst), false);
+		ruleManagerDst.parse(string(chcfileDst));
 
 		ruleManagerSrc.extraProcessing();
 		ruleManagerDst.extraProcessing();
