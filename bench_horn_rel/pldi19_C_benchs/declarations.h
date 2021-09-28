@@ -14,7 +14,8 @@
 //   (ii) Single loop
 //   (iii) No leaf functions
 
-#include "stdlib.h"
+#include <stdlib.h>
+#include <math.h>
 
 #define LEN 128
 #define LEN2 16
@@ -30,6 +31,12 @@ TYPE c[LEN] __attribute__((section ("SEGMENT_C")));
 TYPE d[LEN] __attribute__((section ("SEGMENT_D")));
 TYPE e[LEN] __attribute__((section ("SEGMENT_E")));
 TYPE aa[LEN2][LEN2] __attribute__((section ("SEGMENT_F")));
+TYPE bb[LEN2][LEN2] __attribute__((section ("SEGMENT_G")));
+TYPE cc[LEN2][LEN2] __attribute__((section ("SEGMENT_H")));
+TYPE tt[LEN2][LEN2] __attribute__((section ("SEGMENT_I")));
+TYPE indx[LEN] __attribute__((section ("SEGMENT_J")));
+TYPE ip[LEN] __attribute__((section ("SEGMENT_K")));
+TYPE x[LEN] __attribute__((section ("SEGMENT_X")));
 
 void testing() {
   a[0] = 0;

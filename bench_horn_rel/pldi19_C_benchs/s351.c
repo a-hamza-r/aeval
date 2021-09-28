@@ -15,6 +15,16 @@ TYPE s351(int count) {
   return 0;
 }
 
+/*after loop rerolling:
+
+TYPE s351(int count) {
+  TYPE alpha = c[0];
+  for (int i = 0; i < count*8-(count*8)%5; i+=1) {
+    a[i] += alpha * b[i];
+  }
+  return 0;
+}*/
+
 
 int nondet();
 

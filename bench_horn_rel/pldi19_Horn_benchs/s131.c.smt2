@@ -1,4 +1,4 @@
-(declare-rel loop ((Array Int Int) (Array Int Int) Int Int Int ))
+(declare-rel loop ((Array Int Int) (Array Int Int) Int Int ))
 (declare-rel exit ())
 (declare-var m Int )
 (declare-var i Int )
@@ -13,23 +13,22 @@
 (rule (=> 
 	(and 
 		(= i 0)
-		(= m 1)
 		(> count 0)
 	)
-	(loop a_array b_array i m count)
+	(loop a_array b_array i count)
 ))
 (rule (=> 
 	(and 
-		(loop a_array b_array i m count)
+		(loop a_array b_array i count)
 		(< i (- (* count 8) 1))
-		(= a_i (+ (select a_array (+ i m)) (select b_array i)))
+		(= a_i (+ (select a_array (+ i 1)) (select b_array i)))
 		(= a_array_new (store a_array i a_i))
 	)
-	(loop a_array_new b_array (+ i 1) m count)
+	(loop a_array_new b_array (+ i 1) count)
 ))
 (rule (=> 
 	(and 
-		(loop a_array b_array i m count)
+		(loop a_array b_array i count)
 		(not (< i (- (* count 8) 1)))
 	)
 	exit

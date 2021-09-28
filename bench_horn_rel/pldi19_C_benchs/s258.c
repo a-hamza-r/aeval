@@ -4,8 +4,8 @@
 //	wrap-around scalar under an if
 
 TYPE s258(int count) {
-	s = 0.;
-	for (int i = 0; i < count; ++i) {
+	int s = 0.;
+	for (int i = 0; i < count*8; ++i) {
 		if (a[i] > 0.) {
 			s = d[i] * d[i];
 		}

@@ -1,7 +1,5 @@
-(declare-rel loop ((Array Int Int) (Array Int Int) Int Int Int Int ))
+(declare-rel loop ((Array Int Int) (Array Int Int) Int Int ))
 (declare-rel exit ())
-(declare-var n1 Int )
-(declare-var n3 Int )
 (declare-var i Int )
 (declare-var i1 Int )
 (declare-var i2 Int )
@@ -42,50 +40,47 @@
 
 (rule (=> 
 	(and 
-		(= i (- n1 1))
+		(= i 0)
 		(> count 0)
 	)
-	(loop a_array b_array i count n1 n3)
+	(loop a_array b_array i count)
 ))
 (rule (=> 
 	(and 
-		(loop a_array b_array i count n1 n3)
+		(loop a_array b_array i count)
 
 		(< i (* count 8))
 		
-		(= a_i (+ (select b_array i) 1))
+		(= a_i (select b_array i))
 		(= a_array1 (store a_array i a_i))
 
-		(= a_i1 (+ (select b_array (+ i (* 1 n3))) 1))
-		(= a_array2 (store a_array1 (+ i (* 1 n3)) a_i1))
+		(= a_i1 (select b_array (+ i 1)))
+		(= a_array2 (store a_array1 (+ i 1) a_i1))
 
-		(= a_i2 (+ (select b_array (+ i (* 2 n3))) 1))
-		(= a_array3 (store a_array2 (+ i (* 2 n3)) a_i2))
+		(= a_i2 (select b_array (+ i 2)))
+		(= a_array3 (store a_array2 (+ i 2) a_i2))
 
-		(= a_i3 (+ (select b_array (+ i (* 3 n3))) 1))
-		(= a_array4 (store a_array3 (+ i (* 3 n3)) a_i3))
+		(= a_i3 (select b_array (+ i 3)))
+		(= a_array4 (store a_array3 (+ i 3) a_i3))
 
-		(= a_i4 (+ (select b_array (+ i (* 4 n3))) 1))
-		(= a_array5 (store a_array4 (+ i (* 4 n3)) a_i4))
+		(= a_i4 (select b_array (+ i 4)))
+		(= a_array5 (store a_array4 (+ i 4) a_i4))
 
-		(= a_i5 (+ (select b_array (+ i (* 5 n3))) 1))
-		(= a_array6 (store a_array5 (+ i (* 5 n3)) a_i5))
+		(= a_i5 (select b_array (+ i 5)))
+		(= a_array6 (store a_array5 (+ i 5) a_i5))
 
-		(= a_i6 (+ (select b_array (+ i (* 6 n3))) 1))
-		(= a_array7 (store a_array6 (+ i (* 6 n3)) a_i6))
+		(= a_i6 (select b_array (+ i 6)))
+		(= a_array7 (store a_array6 (+ i 6) a_i6))
 
-		(= a_i7 (+ (select b_array (+ i (* 7 n3))) 1))
-		(= a_array8 (store a_array7 (+ i (* 7 n3)) a_i7))
+		(= a_i7 (select b_array (+ i 7)))
+		(= a_array8 (store a_array7 (+ i 7) a_i7))
 	)
-	(loop a_array8 b_array (+ i (* 8 n3)) count n1 n3)
+	(loop a_array8 b_array (+ i 8) count)
 ))
 (rule (=> 
 	(and 
-		(loop a_array b_array i count n1 n3)
+		(loop a_array b_array i count)
 		(not (< i (* count 8)))
-		;(<= 0 i1)
-		;(< i1 (* count 8))
-		;(not (< (select b_array i1) (select a_array i1)))
 	)
 	exit
 ))

@@ -52,21 +52,19 @@
 
 (rule (=> 
 	(and 
-		(= i 1)
+		(= i 0)
 	)
 	(preLoop a_array b_array i count)
 ))
 (rule (=> 
 	(and 
 		(preLoop a_array b_array i count)
-		(< i (- (* count 4) 1))
-		
 		(= b0 (select b_array 0))
 
-		(= a_i (ite (> b0 0) (+ (select a_array (- i 1)) (select b_array i)) (select a_array i)))
+		(= a_i (ite (> b0 0) (+ (select a_array (+ i 1)) (select b_array i)) (select a_array i)))
 		(= a_array1 (store a_array i a_i))
 
-		(= a_i1 (ite (> b0 0) (+ (select a_array1 i) (select b_array (+ i 1))) (select a_array1 (+ i 1))))
+		(= a_i1 (ite (> b0 0) (+ (select a_array1 (+ i 2)) (select b_array (+ i 1))) (select a_array1 (+ i 1))))
 		(= a_array2 (store a_array1 (+ i 1) a_i1))
 	)
 	(loop a_array2 b_array (+ i 2) count)))
@@ -74,19 +72,19 @@
 	(and 
 		(loop a_array b_array i count)
 
-		(< i (- (* count 4) 1))
+		(< i (- (* count 4) 2))
 		(= b0 (select b_array 0))
 		
-		(= a_i (ite (> b0 0) (+ (select a_array (- i 1)) (select b_array i)) (select a_array i)))
+		(= a_i (ite (> b0 0) (+ (select a_array (+ i 1)) (select b_array i)) (select a_array i)))
 		(= a_array1 (store a_array i a_i))
 
-		(= a_i1 (ite (> b0 0) (+ (select a_array1 i) (select b_array (+ i 1))) (select a_array1 (+ i 1))))
+		(= a_i1 (ite (> b0 0) (+ (select a_array1 (+ i 2)) (select b_array (+ i 1))) (select a_array1 (+ i 1))))
 		(= a_array2 (store a_array1 (+ i 1) a_i1))
 
-		(= a_i2 (ite (> b0 0) (+ (select a_array2 (+ i 1)) (select b_array (+ i 2))) (select a_array2 (+ i 2))))
+		(= a_i2 (ite (> b0 0) (+ (select a_array2 (+ i 3)) (select b_array (+ i 2))) (select a_array2 (+ i 2))))
 		(= a_array3 (store a_array2 (+ i 2) a_i2))
 
-		(= a_i3 (ite (> b0 0) (+ (select a_array3 (+ i 2)) (select b_array (+ i 3))) (select a_array3 (+ i 3))))
+		(= a_i3 (ite (> b0 0) (+ (select a_array3 (+ i 4)) (select b_array (+ i 3))) (select a_array3 (+ i 3))))
 		(= a_array4 (store a_array3 (+ i 3) a_i3))
 	)
 	(loop a_array4 b_array (+ i 4) count)
@@ -95,10 +93,10 @@
 	(and 
 		(loop a_array b_array i count)
 		
-		(= i (- (* count 4) 1))
+		(= i (- (* count 4) 2))
 		(= b0 (select b_array 0))
 
-		(= a_i (ite (> b0 0) (+ (select a_array (- i 1)) (select b_array i)) (select a_array i)))
+		(= a_i (ite (> b0 0) (+ (select a_array (+ i 1)) (select b_array i)) (select a_array i)))
 		(= a_array1 (store a_array i a_i))
 	)
 	(postLoop a_array1 b_array (+ i 1) count)
@@ -106,7 +104,7 @@
 (rule (=> 
 	(and
 		(postLoop a_array b_array i count)
-		(not (< i (* count 4)))
+		(not (< i (- (* count 4) 1)))
 	)
 	exit
 ))

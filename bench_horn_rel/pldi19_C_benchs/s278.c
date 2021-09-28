@@ -19,6 +19,22 @@ L30:
 }
 
 
+/*after removing gotos:
+
+TYPE s278(int count) {
+	for (int i = 0; i < count*8; i++) {
+		if (a[i] > (float)0.) {
+			c[i] = -c[i] + d[i] * e[i];
+		}
+		else {
+			b[i] = -b[i] + d[i] * e[i];
+		}
+		a[i] = b[i] + c[i] * d[i];
+	}
+	return 0;
+}*/
+
+
 int nondet();
 
 int main() {

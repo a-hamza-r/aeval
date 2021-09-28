@@ -7,11 +7,22 @@ TYPE s251(int count) {
   TYPE s;
   for (int i = 0; i < count*8; i++) {
    	s = b[i] + c[i] * d[i];
-	a[i] = s * s;
+	 a[i] = s * s;
   }
   return 0;
 }
 
+/*after scalar expansion:
+
+TYPE s251(int count) {
+  TYPE s[count*8];
+  for (int i = 0; i < count*8; i++) {
+    s[i] = b[i] + c[i] * d[i];
+    a[i] = s[i] * s[i];
+  }
+  return 0;
+}
+*/
 
 int nondet();
 

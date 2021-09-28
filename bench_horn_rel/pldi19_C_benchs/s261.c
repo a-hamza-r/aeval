@@ -4,7 +4,8 @@
 //	wrap-around scalar under an if
 
 TYPE s261(int count) {
-	for (int i = 1; i < count; ++i) {
+	int t;
+	for (int i = 1; i < count*8; ++i) {
 		t = a[i] + b[i];
 		a[i] = t + c[i-1];
 		t = c[i] * d[i];

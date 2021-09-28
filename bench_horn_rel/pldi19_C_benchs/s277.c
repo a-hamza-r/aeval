@@ -17,9 +17,22 @@ L30:
 L20:
 ;
 		
+	}
 	return 0;
 }
 
+
+/*after goto removal:
+
+TYPE s277(int count) {
+	for (int i = 0; i < count*8-1; i++) {
+		if (b[i] >= (float)0.) {
+			b[i+1] = c[i] + d[i] * e[i];
+		}
+	}
+	return 0;
+}
+*/
 
 int nondet();
 

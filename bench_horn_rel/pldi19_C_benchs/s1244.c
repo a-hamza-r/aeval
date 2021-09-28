@@ -11,6 +11,16 @@ TYPE s1244(int count) {
   return 0;
 }
 
+/*after node splitting:
+
+TYPE s1244(int count) {
+	for (int i = 0; i < count*8-1; i++) {
+		TYPE t = a[i+1];
+		a[i] = b[i] + c[i] * c[i] + b[i]*b[i] + c[i];
+		d[i] = a[i] + t;
+	}
+  return 0;
+}*/
 
 int nondet();
 

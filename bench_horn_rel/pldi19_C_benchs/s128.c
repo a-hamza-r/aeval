@@ -16,6 +16,16 @@ TYPE s128(int count) {
 }
 
 
+/*after induction variables recognition:
+
+TYPE s128(int count) {
+	for (int i = 0; i < count*4; i++) {
+		a[i] = b[2*i] - d[i];
+		b[2*i] = a[i] + c[2*i];
+	}
+  return 0;
+}*/
+
 int nondet();
 
 int main() {

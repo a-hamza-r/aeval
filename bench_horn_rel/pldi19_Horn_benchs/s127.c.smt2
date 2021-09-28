@@ -1,4 +1,4 @@
-(declare-rel loop ((Array Int Int) (Array Int Int) (Array Int Int) (Array Int Int) (Array Int Int) Int Int Int ))
+(declare-rel loop ((Array Int Int) (Array Int Int) (Array Int Int) (Array Int Int) (Array Int Int) Int Int ))
 (declare-rel exit ())
 (declare-var i Int )
 (declare-var i1 Int )
@@ -26,31 +26,28 @@
 (rule (=> 
 	(and 
 		(= i 0)
-		(= j -1)
 		(> count 0)
 	)
-	(loop a_array b_array c_array d_array e_array i j count)
+	(loop a_array b_array c_array d_array e_array i count)
 ))
 (rule (=> 
 	(and 
-		(loop a_array b_array c_array d_array e_array i j count)
+		(loop a_array b_array c_array d_array e_array i count)
 		(< i (- (* count 4) 1))
 		(= b_i (select b_array i))
 		(= c_i (select c_array i))
 		(= d_i (select d_array i))
 		(= e_i (select e_array i))
-		(= t0 (* c_i d_i))
-		(= t1 (* d_i e_i))
-		(= a_j (+ b_i t0))
-		(= a_j1 (+ b_i t1))
-		(= a_array1 (store a_array (+ j 1) a_j))
-		(= a_array2 (store a_array1 (+ j 2) a_j1))
+		(= a_j (+ b_i (* c_i d_i)))
+		(= a_j1 (+ b_i (* d_i e_i)))
+		(= a_array1 (store a_array (* 2 i) a_j))
+		(= a_array2 (store a_array1 (+ (* 2 i) 1) a_j1))
 	)
-	(loop a_array2 b_array c_array d_array e_array (+ i 1) (+ j 2) count)
+	(loop a_array2 b_array c_array d_array e_array (+ i 1) count)
 ))
 (rule (=> 
 	(and 
-		(loop a_array b_array c_array d_array e_array i j count)
+		(loop a_array b_array c_array d_array e_array i count)
 		(not (< i (- (* count 4) 1)))
 	)
 	exit

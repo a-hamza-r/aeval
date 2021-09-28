@@ -11,6 +11,16 @@ TYPE s211(int count) {
 	return 0;
 }
 
+/*after statement reordering:
+
+TYPE s211(int count) {
+	for (int i = 1; i < count*8-1; i++) {
+		b[i] = b[i + 1] - e[i] * d[i];
+		a[i] = b[i - 1] + c[i] * d[i];
+	}
+	return 0;
+}*/
+
 
 int nondet();
 

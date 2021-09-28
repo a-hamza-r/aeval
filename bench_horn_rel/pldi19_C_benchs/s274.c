@@ -4,7 +4,7 @@
 //	complex loop with dependent conditional
 
 TYPE s274(int count) {
-	for (int i = 0; i < LEN; i++) {
+	for (int i = 0; i < count*8; i++) {
 		a[i] = c[i] + e[i] * d[i];
 		if (a[i] > (float)0.) {
 			b[i] = a[i] + b[i];

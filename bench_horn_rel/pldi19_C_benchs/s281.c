@@ -5,6 +5,7 @@
 //	reverse data access
 
 TYPE s281(int count) {
+	int x;
 	for (int i = 0; i < count*8; i++) {
 		x = a[count*8-i-1] + b[i] * c[i];
 		a[i] = x-(float)1.0;

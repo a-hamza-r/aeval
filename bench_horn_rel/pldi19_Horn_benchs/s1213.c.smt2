@@ -24,17 +24,17 @@
 	(and 
 		(loop a_array b_array c_array d_array i count)
 		(< i (- (* count 8) 1))
+		(= b_i (* (select a_array (+ i 1)) (select d_array i)))
+		(= b_array_new (store b_array i b_i))
 		(= a_i (+ (select b_array (- i 1)) (select c_array i)))
 		(= a_array_new (store a_array i a_i))
-		(= b_i (* (select a_array_new (+ i 1)) (select d_array i)))
-		(= b_array_new (store b_array i b_i))
 	)
 	(loop a_array_new b_array_new c_array d_array (+ i 1) count)
 ))
 (rule (=> 
 	(and 
 		(loop a_array b_array c_array d_array i count)
-		(not (< i (- (* count 8))))
+		(not (< i (- (* count 8) 1)))
 	)
 	exit
 ))

@@ -4,8 +4,10 @@
 //	deriving assertions
 
 TYPE s162(int count) {
-  for (int i = 0; i < count*8-1; i++) {
-    a[i] = a[i + 1] + b[i] * c[i];
+  if (k > 0) {
+    for (int i = 0; i < count*8-1; i++) {
+      a[i] = a[i + k] + b[i] * c[i];
+    }
   }
   return 0;
 }

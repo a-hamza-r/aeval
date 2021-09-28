@@ -12,6 +12,16 @@ TYPE s453(int count) {
 }
 
 
+/*after induction variable recognition:
+
+TYPE s453(int count) {
+  for (int i = 0; i < count*8; i++) {
+    a[i] = 2*(i+1) * b[i];
+  }
+  return 0;
+}*/
+
+
 int nondet();
 
 int main() {

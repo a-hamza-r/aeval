@@ -1,4 +1,4 @@
-(declare-rel loop ((Array Int Int) (Array Int Int) (Array Int Int) (Array Int Int) (Array Int Int) Int Int Int ))
+(declare-rel loop ((Array Int Int) (Array Int Int) (Array Int Int) (Array Int Int) (Array Int Int) Int Int ))
 (declare-rel exit ())
 (declare-var mult Int )
 (declare-var mult1 Int )
@@ -45,62 +45,61 @@
 (rule (=> 
 	(and 
 		(= i 0)
-		(= j -1)
 		(> count 0)
 	)
-	(loop a_array b_array c_array d_array e_array i j count)
+	(loop a_array b_array c_array d_array e_array i count)
 ))
 (rule (=> 
 	(and 
-		(loop a_array b_array c_array d_array e_array i j count)
+		(loop a_array b_array c_array d_array e_array i count)
 
 		(< i (* count 8))
 		
 		(= b_i (select b_array i))
 		(= mult (* (select d_array i) (select e_array i)))
 		(= a_j (ite (> b_i 0) (+ b_i mult) (+ (select c_array i) mult)))
-		(= a_array1 (store a_array (+ j 1) a_j))
+		(= a_array1 (store a_array i a_j))
 
 		(= b_i1 (select b_array (+ i 1)))
 		(= mult1 (* (select d_array (+ i 1)) (select e_array (+ i 1))))
 		(= a_j1 (ite (> b_i1 0) (+ b_i1 mult1) (+ (select c_array (+ i 1)) mult1)))
-		(= a_array2 (store a_array1 (+ j 2) a_j1))
+		(= a_array2 (store a_array1 (+ i 1) a_j1))
 
 		(= b_i2 (select b_array (+ i 2)))
 		(= mult2 (* (select d_array (+ i 2)) (select e_array (+ i 2))))
 		(= a_j2 (ite (> b_i2 0) (+ b_i2 mult2) (+ (select c_array (+ i 2)) mult2)))
-		(= a_array3 (store a_array2 (+ j 3) a_j2))
+		(= a_array3 (store a_array2 (+ i 2) a_j2))
 
 		(= b_i3 (select b_array (+ i 3)))
 		(= mult3 (* (select d_array (+ i 3)) (select e_array (+ i 3))))
 		(= a_j3 (ite (> b_i3 0) (+ b_i3 mult3) (+ (select c_array (+ i 3)) mult3)))
-		(= a_array4 (store a_array3 (+ j 4) a_j3))
+		(= a_array4 (store a_array3 (+ i 3) a_j3))
 
 		(= b_i4 (select b_array (+ i 4)))
 		(= mult4 (* (select d_array (+ i 4)) (select e_array (+ i 4))))
 		(= a_j4 (ite (> b_i4 0) (+ b_i4 mult4) (+ (select c_array (+ i 4)) mult4)))
-		(= a_array5 (store a_array4 (+ j 5) a_j4))
+		(= a_array5 (store a_array4 (+ i 4) a_j4))
 
 		(= b_i5 (select b_array (+ i 5)))
 		(= mult5 (* (select d_array (+ i 5)) (select e_array (+ i 5))))
 		(= a_j5 (ite (> b_i5 0) (+ b_i5 mult5) (+ (select c_array (+ i 5)) mult5)))
-		(= a_array6 (store a_array5 (+ j 6) a_j5))
+		(= a_array6 (store a_array5 (+ i 5) a_j5))
 
 		(= b_i6 (select b_array (+ i 6)))
 		(= mult6 (* (select d_array (+ i 6)) (select e_array (+ i 6))))
 		(= a_j6 (ite (> b_i6 0) (+ b_i6 mult6) (+ (select c_array (+ i 6)) mult6)))
-		(= a_array7 (store a_array6 (+ j 7) a_j6))
+		(= a_array7 (store a_array6 (+ i 6) a_j6))
 
 		(= b_i7 (select b_array (+ i 7)))
 		(= mult7 (* (select d_array (+ i 7)) (select e_array (+ i 7))))
 		(= a_j7 (ite (> b_i7 0) (+ b_i7 mult7) (+ (select c_array (+ i 7)) mult7)))
-		(= a_array8 (store a_array7 (+ j 8) a_j7))
+		(= a_array8 (store a_array7 (+ i 7) a_j7))
 	)
-	(loop a_array8 b_array c_array d_array e_array (+ i 8) (+ j 8) count)
+	(loop a_array8 b_array c_array d_array e_array (+ i 8) count)
 ))
 (rule (=> 
 	(and 
-		(loop a_array b_array c_array d_array e_array i j count)
+		(loop a_array b_array c_array d_array e_array i count)
 		(not (< i (* count 8)))
 	)
 	exit

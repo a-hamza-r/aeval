@@ -15,15 +15,15 @@
 
 (rule (=> 
 	(and
-		(= i 1)
+		(= i 0)
 	)
 	(loop a_array b_array i count)
 ))
 (rule (=> 
 	(and 
 		(loop a_array b_array i count)
-		(< i (* count 4))
-		(= a_i (ite (> (select b_array 0) 0) (+ (select a_array (- i 1)) (select b_array i)) (select a_array i)))
+		(< i (- (* count 4) 1))
+		(= a_i (ite (> (select b_array 0) 0) (+ (select a_array (+ i 1)) (select b_array i)) (select a_array i)))
 		(= a_array_new (store a_array i a_i))
 	)
 	(loop a_array_new b_array (+ i 1) count)
@@ -31,7 +31,7 @@
 (rule (=> 
 	(and 
 		(loop a_array b_array i count)
-		(not (< i (* count 4)))
+		(not (< i (- (* count 4) 1)))
 	)
 	exit
 ))

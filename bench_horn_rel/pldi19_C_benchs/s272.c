@@ -3,7 +3,7 @@
 //	control flow
 //	loop with independent conditional
 
-TYPE s272(int count) {
+TYPE s272(int count, int t) {
 	for (int i = 0; i < count*8; i++) {
 		if (e[i] >= t) {
 			a[i] += c[i] * d[i];
@@ -18,5 +18,6 @@ int nondet();
 
 int main() {
 	int count = nondet();
-	s272(count);
+	int t = nondet();
+	s272(count, t);
 }

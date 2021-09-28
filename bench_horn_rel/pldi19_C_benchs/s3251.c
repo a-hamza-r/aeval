@@ -4,7 +4,6 @@
 //	scalar expansion
 
 TYPE s3251(int count) {
-  TYPE s;
   for (int i = 0; i < count*8-1; i++) {
 		a[i+1] = b[i]+c[i];
 		b[i]   = c[i]*e[i];

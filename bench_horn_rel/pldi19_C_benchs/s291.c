@@ -13,6 +13,16 @@ TYPE s291(int count) {
 }
 
 
+/*after loop peeling:
+
+TYPE s291(int count) {
+	a[0] = (b[0] + b[count*8-1]) * (float).5;
+	for (int i = 1; i < count*8; i++) {
+		a[i] = (b[i] + b[i-1]) * (float).5;
+	}
+  return 0;
+}*/
+
 int nondet();
 
 int main() {

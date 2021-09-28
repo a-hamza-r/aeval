@@ -14,6 +14,16 @@ TYPE s132(int count) {
 }
 
 
+/*after transformation:
+
+TYPE s132(int count) {
+	for (int i= 1; i < count*8; i++) {
+		aa[0][i] = aa[1][i-1] + b[i] * c[1];
+	}
+  return 0;
+}*/
+
+
 int nondet();
 
 int main() {

@@ -11,6 +11,16 @@ TYPE s212(int count) {
   return 0;
 }
 
+/*after statement reordering:
+
+TYPE s212(int count) {
+	for (int i = 0; i < count*8-1; i++) {
+		b[i] += a[i + 1] * d[i];
+		a[i] *= c[i];
+	}
+  return 0;
+}*/
+
 
 int nondet();
 

@@ -11,6 +11,15 @@ TYPE s131(int count) {
 	return 0;
 }
 
+/*after forward substitution:
+
+TYPE s131(int count) {
+	for (int i = 0; i < count*8 - 1; i++) {
+		a[i] = a[i + 1] + b[i];
+	}
+	return 0;
+}*/
+
 
 int nondet();
 

@@ -11,6 +11,17 @@ TYPE s293(int count) {
 }
 
 
+/*after loop peeling and assigning a[0] to t: 
+
+TYPE s293(int count) {
+	TYPE t = a[0];
+	a[0] = t;
+	for (int i = 1; i < count*8; i++) {
+		a[i] = t;
+	}
+  return 0;
+}*/
+
 int nondet();
 
 int main() {
