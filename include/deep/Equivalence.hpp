@@ -465,7 +465,7 @@ namespace ufo
   	outs() << "\n\nassuming iters: " << *rule1.srcVars[iter1] << " and " << *rule2.srcVars[iter2] << "\n";
     Expr numIters1 = ruleManager1.numOfIters;
     Expr numIters2 = ruleManager2.numOfIters;
-    //outs() << "numIters: " << *numIters1 << " and " << *numIters2 << "\n";
+    outs() << "numIters: " << *numIters1 << " and " << *numIters2 << "\n";
 
     if (numIters1 == mkMPZ(-1, fac) || numIters2 == mkMPZ(-1, fac)) 
     {
@@ -529,7 +529,7 @@ namespace ufo
     quantifiedFla = createQuantifiedFormulaRestr(fla, varsIters);
     quantifiedFla = mk<AND>(consts, mk<AND>(coefs, quantifiedFla));
 
-    // outs() << "quantifiedFla: " << *quantifiedFla << "\n";
+    outs() << "quantifiedFla: " << quantifiedFla << "\n";
 
     Expr constsZero = mk<AND>(mk<EQ>(const1, mkMPZ(0, fac)), mk<EQ>(const2, mkMPZ(0, fac)));
     Expr const1Zero = mk<EQ>(const1, mkMPZ(0, fac));
@@ -814,6 +814,9 @@ namespace ufo
 
 		Expr currentMatching = mk<TRUE>(fac);
 		int sz = ind->srcVars.size()/2;
+
+		// for (auto chc: ruleManagerProduct.chcs)
+			// u.serialize_formula2(chc.body);
 
 		// GF: hack to create pairs (to revisit) -- visited, works well
 		for (int i = 0; i < sz; i++)

@@ -694,6 +694,16 @@ namespace ufo
       else outs () << z3.toSmtLib (e);
     }
 
+    void serialize_formula2(Expr form)
+    {
+      // old version (to  merge, maybe?)
+     smt.reset();
+     smt.assertExpr(form);
+     smt.toSmtLib (outs());
+     outs().flush ();
+    }
+
+
     void serialize_formula(Expr form)
     {
       outs () << "(assert ";

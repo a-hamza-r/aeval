@@ -375,24 +375,6 @@ namespace ufo
 		}
 */
 
-		// to be used for creating forall-exists formulas
-		void serializeFormulas(Expr body, ExprSet quantified)
-    {
-        auto &fac = body->getFactory();
-        SMTUtils u(fac);
-
-        ExprVector quantifiedVec, varsVec;
-
-        ExprSet varsSet;
-        filter (body, bind::IsConst (), inserter(varsSet, varsSet.begin()));
-        minusSets(varsSet, quantified);
-        std::copy(quantified.begin(), quantified.end(), std::back_inserter(quantifiedVec));
-        std::copy(varsSet.begin(), varsSet.end(), std::back_inserter(varsVec));
-        body = createQuantifiedFormulaRestr(body, quantifiedVec, false);
-        body = createQuantifiedFormulaRestr(body, varsVec);
-        u.serialize_formula(body);
-    }
-
     
     // to convert CHCs into a forall formula to be taken input directly by freqhorn
     // possibly, add exists formula too
@@ -487,7 +469,7 @@ namespace ufo
 	      Expr divisible = mk<EQ>(mk<MOD>(numer, transition), mkMPZ(0, fac));
 
 	      Expr numIters = mk<PLUS>(mk<IDIV>(numer, transition), mk<ITE>(divisible, mkMPZ(0, fac), mkMPZ(1, fac)));
-	      return numIters;
+	      return simplifyArithm(numIters);
 	    }
 
 		bool findInitialValue(int i, Expr init, HornRuleExt& rule, Expr &initVal, SMTUtils &u)
@@ -499,7 +481,6 @@ namespace ufo
 	      if (initVal)
 	      {
 	        Expr newInit;
-	        // a hack to avoid mod operations
 	        if (isOpX<AND>(initVal))
 	        {
 	          ExprSet s;
@@ -769,17 +750,16 @@ namespace ufo
 	      Expr b = rule.dstVars[i];
 
 	      findExpr<EQ>(b, rule.body, e, true);
-	      // errs() << "\nfinding: " << *b << "\n\n";
 
 	      if (!e) return false;
 
 	      e = ineqSimplifier(b, e);
-	      // errs() << "found: " << *e << "\n\n";
 
 	      getConjAndDisj(e, allExprs);
 	      for (auto &it : allExprs)
 	      {
-	        if (contains(it, a)) 
+	      	Expr normalized = ineqSimplifier(b, simplifyArithm(it));
+	        if (contains(it, a) && isOpX<EQ>(normalized) && normalized->left() == b) 
 	        {
 	          if (allExprsConj) multipleTransVal = true;
 	          else allExprsConj = it;
@@ -859,7 +839,6 @@ namespace ufo
 	      if (limitEq) 
 	      {
 	        limitVal = limitEq->arg(1);
-	        // outs() << "limitVal: " << *limitVal << "\n";
 
 	        // check if limit value is constant; Eq. 8, section 4
 	        Expr replacedLimit = replaceAll(limitVal, rule.srcVars, rule.dstVars);
@@ -871,6 +850,7 @@ namespace ufo
 	        if (!constLimitValCheck || !loopEndCheck)
 	        {
 	          limitVal = NULL;
+	          limitEq = NULL;
 	          return false;
 	        }
 

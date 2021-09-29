@@ -11,6 +11,24 @@ using namespace std;
 using namespace boost;
 namespace ufo
 {
+  // to be used for creating forall-exists formulas
+    void serializeFormulas(Expr body, ExprSet quantified)
+    {
+        auto &fac = body->getFactory();
+        SMTUtils u(fac);
+
+        ExprVector quantifiedVec, varsVec;
+
+        ExprSet varsSet;
+        filter (body, bind::IsConst (), inserter(varsSet, varsSet.begin()));
+        minusSets(varsSet, quantified);
+        std::copy(quantified.begin(), quantified.end(), std::back_inserter(quantifiedVec));
+        std::copy(varsSet.begin(), varsSet.end(), std::back_inserter(varsVec));
+        body = createQuantifiedFormulaRestr(body, quantifiedVec, false);
+        body = createQuantifiedFormulaRestr(body, varsVec);
+        u.serialize_formula(body);
+    }
+  
   struct ArrAccessIter
   {
     bool grows;
