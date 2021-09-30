@@ -153,7 +153,7 @@ namespace ufo
 	    vector<int> varsArray;
 	    // map<Expr, Expr> exprEqualities;
 
-	    Extended_CHCs(ExprFactory &efac, EZ3 &z3, string n) : CHCs(efac, z3, n) {};
+	    Extended_CHCs(ExprFactory &efac, EZ3 &z3, string n, int d = false) : CHCs(efac, z3, n, d) {};
 
 	    Extended_CHCs(const Extended_CHCs &old_CHCs) : CHCs(old_CHCs), dstQueryVars(old_CHCs.dstQueryVars),
 	    	srcFactVars(old_CHCs.srcFactVars), iter(old_CHCs.iter), iterGrows(old_CHCs.iterGrows), 

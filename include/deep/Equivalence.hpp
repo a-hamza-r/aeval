@@ -15,8 +15,8 @@ namespace ufo
 	    Extended_CHCs* subRule1;
 	    Extended_CHCs* subRule2;
 
-	    Product_CHCs(Extended_CHCs &rules1, Extended_CHCs &rules2, string n) : 
-	    	Extended_CHCs(rules1.m_efac, rules1.m_z3, n), subRule1(&rules1), subRule2(&rules2) {};
+	    Product_CHCs(Extended_CHCs &rules1, Extended_CHCs &rules2, string n, int d = false) : 
+	    	Extended_CHCs(rules1.m_efac, rules1.m_z3, n, d), subRule1(&rules1), subRule2(&rules2) {};
 
 		void nonRecursiveProduct(HornRuleExt &chc1, HornRuleExt &chc2, Expr &product, ExprVector &vars)
 		{
@@ -415,25 +415,27 @@ namespace ufo
 	inline bool learnInvariantsPr(CHCs &ruleManager, Expr currentMatching)
   {
     unsigned maxAttempts = 2000000, to = 10000;
-    bool freqs = false, aggp = false, enableDataLearning = false, doElim = false, doDisj = false;
-    bool dAllMbp = false, dAddProp = false, dAddDat = false, dStrenMbp = false;
-    int debug = 0, doProp = 0, mbpEqs = 0;
+    bool freqs = false, aggp = false, enableDataLearning = false, doElim = true, doDisj = false;
+    bool dAllMbp = false, dAddProp = false, dAddDat = false, dStrenMbp = false, dSee = true;
+    int debug = 0, doProp = 0, mbpEqs = 0, mut = 0;
 
 	  if (doDisj && (!dAddProp && !dAddDat))
-	  {
-	    if (debug) errs() << "WARNING: either \"" << dAddProp << "\" or \"" << dAddDat << "\" should be enabled\n"
-	           << "Enabling \"" << dAddDat << "\"\n";
 	    dAddDat = true;
-	  }
 
 	  if (doDisj && doProp == 0) doProp = 1;
 	  if (dAllMbp || dAddProp || dAddDat || dStrenMbp) doDisj = true;
-	  if (doDisj) enableDataLearning = true;
+	  if (doDisj) 
+	  {
+	  	if (!dSee)
+	      dSee = true;
+	  	enableDataLearning = true;
+	  }
     
     EZ3 z3(ruleManager.m_efac);
-    BndExpl bnd(ruleManager, debug);
+    BndExpl bnd(ruleManager, to, debug);
 
-    RndLearnerV3 ds(ruleManager.m_efac, z3, ruleManager, to, freqs, aggp, mbpEqs, dAllMbp, dAddProp, dAddDat, dStrenMbp, debug);
+    RndLearnerV3 ds(ruleManager.m_efac, z3, ruleManager, to, freqs, aggp, mut, 
+    								doDisj, mbpEqs, dAllMbp, dAddProp, dAddDat, dStrenMbp, to, debug);
 
     map<Expr, ExprSet> cands;
     for (int i = 0; i < ruleManager.cycles.size(); i++)
@@ -441,6 +443,8 @@ namespace ufo
       Expr dcl = ruleManager.chcs[ruleManager.cycles[i][0]].srcRelation;
       if (ds.initializedDecl(dcl)) continue;
       ds.initializeDecl(dcl);
+      if (!dSee) continue;
+
       Expr pref = bnd.compactPrefix(i);
       ExprSet tmp;
       getConj(pref, tmp);
@@ -448,8 +452,8 @@ namespace ufo
         if (hasOnlyVars(t, ruleManager.invVars[dcl]))
           cands[dcl].insert(t);
 
-      // ds.mutateHeuristicEq(cands[dcl], cands[dcl], dcl, true);
-      ds.initializeAux(bnd, i, pref);
+      if (mut > 0) ds.mutateHeuristicEq(cands[dcl], cands[dcl], dcl, true);
+      ds.initializeAux(cands[dcl], bnd, i, pref);
     }
 
     if (enableDataLearning) ds.getDataCandidates(cands);
@@ -464,7 +468,7 @@ namespace ufo
 
     // call bootstrap with option to only consider equalities as candidates for finding invariant
     // also add equalities for variable matchings
-    bool check = ds.bootstrap(doDisj, currentMatching, true);
+    bool check = ds.bootstrap(currentMatching, true);
     return check && ds.verifySolution(currentMatching);
 
     /*ds.calculateStatistics();
@@ -779,8 +783,9 @@ namespace ufo
 
 	bool checkEquivalence(Extended_CHCs &ruleManager1, Extended_CHCs &ruleManager2, vector<vector<int>> &combVars)
 	{
+		int debug = 0;
 		// create the product CHC system 
-		Product_CHCs ruleManagerProduct(ruleManager1, ruleManager2, "_pr_");
+		Product_CHCs ruleManagerProduct(ruleManager1, ruleManager2, "_pr_", debug-2);
 
 	    // product of two CHC systems
 		ruleManagerProduct.createProduct();
@@ -846,16 +851,16 @@ namespace ufo
 		ExprFactory m_efac;
 		EZ3 z3(m_efac);
 
-		Extended_CHCs ruleManagerSrc(m_efac, z3, "_v1_");
+		int debug = 0;
+		Extended_CHCs ruleManagerSrc(m_efac, z3, "_v1_", debug-2);
 		ruleManagerSrc.parse(string(chcfileSrc));
 
-		Extended_CHCs ruleManagerDst(m_efac, z3, "_v2_");
+		Extended_CHCs ruleManagerDst(m_efac, z3, "_v2_", debug-2);
 		ruleManagerDst.parse(string(chcfileDst));
 
 		ruleManagerSrc.extraProcessing();
 		ruleManagerDst.extraProcessing();
 
-		int debug = 0;
 		BndExpl bndSrc(ruleManagerSrc, debug);
 		BndExpl bndDst(ruleManagerDst, debug);
 
