@@ -413,7 +413,7 @@ namespace ufo
   //      Need to restructure and move under some class.
   //      Don't duplicate objects, e.g., you create SMTUtils u(fac) four times, but need only once.
 
-	inline bool learnInvariantsPr(CHCs &ruleManager, Expr currentMatching, int debug)
+	inline bool learnInvariantsPr(CHCs &ruleManager, ExprSet& currentMatching, int debug)
   {
     // GF: ideally, need to get all of these from command line
     //     for that, just adapt the code from `DeepHorn.cpp` to `Rel.cpp`
@@ -448,8 +448,14 @@ namespace ufo
       Expr dcl = ruleManager.chcs[ruleManager.cycles[i][0]].srcRelation;
       if (ds.initializedDecl(dcl)) continue;
       ds.initializeDecl(dcl);
-      if (!dSee) continue;
+      cands[dcl] = currentMatching;  // adding the matching explicitly
 
+      // GF: most likely, you won't need any of these,
+      //     so I disabled it to improve performance.
+      //     In case some bench requires a specific invariant,
+      //     try to enable gradually.
+
+      if (!dSee) continue;
       Expr pref = bnd.compactPrefix(i);
       ExprSet tmp;
       getConj(pref, tmp);
@@ -473,7 +479,7 @@ namespace ufo
 
     // call bootstrap with option to only consider equalities as candidates for finding invariant
     // also add equalities for variable matchings
-    bool check = ds.bootstrap(currentMatching, true);
+    bool check = ds.bootstrap();
     return check && ds.verifySolution(currentMatching);
 
     /*ds.calculateStatistics();
@@ -837,7 +843,7 @@ namespace ufo
 
 		outs() << "------------------------CREATING ALIGNED PRODUCT DONE-----------------------------\n\n";
 
-		Expr currentMatching = mk<TRUE>(fac);
+    ExprSet currentMatching; // = mk<TRUE>(fac);
 		int sz = ind->srcVars.size()/2;
 
 		// for (auto chc: ruleManagerProduct.chcs)
@@ -846,7 +852,7 @@ namespace ufo
 		// GF: hack to create pairs (to revisit) -- visited, works well
 		for (int i = 0; i < sz; i++)
 			if (bind::typeOf(ind->srcVars[i]) == bind::typeOf(ind->srcVars[sz + i]))
-				currentMatching = mk<AND>(currentMatching, mk<EQ>(ind->srcVars[i], (ind->srcVars[sz + i])));
+				currentMatching.insert(mk<EQ>(ind->srcVars[i], (ind->srcVars[sz + i])));
 
 		// call the function with all default values for arguments that are not relevant
 		// probably, do a cleaner way of calling the function
@@ -984,7 +990,8 @@ namespace ufo
 		fact->body = mk<AND>(fact->body, pre);
 		query->body = simplifyBool(mk<AND>(query->body, negPost));
 
-		if (learnInvariantsPr(ruleManagerProduct, mk<TRUE>(m_efac), debug))
+    ExprSet empt;
+		if (learnInvariantsPr(ruleManagerProduct, empt, debug))
 			outs() << "programs are equivalent\n";
 		else
 			outs() << "programs are not equivalent\n";

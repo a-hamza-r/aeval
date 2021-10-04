@@ -1106,7 +1106,7 @@ namespace ufo
       ExprVector& dstVars = ruleManager.invVarsPrime[invRel];
 
       SamplFactory& sf = sfs[invNum].back();
-      ExprSet candsFromCode, tmpArrAccess, tmpArrSelects, tmpArrCands, tmpArrFuns;
+      ExprSet candsFromCode, tmpArrCands;
       bool analyzedExtras, isFalse, hasArrays = false;
 
       for (auto &hr : ruleManager.chcs)
@@ -1129,8 +1129,6 @@ namespace ufo
         if (ruleManager.hasArrays[invRel])
         {
           tmpArrCands.insert(sm.arrCands.begin(), sm.arrCands.end());
-          tmpArrSelects.insert(sm.arrSelects.begin(), sm.arrSelects.end());
-          // tmpArrFuns.insert(sm.arrFs.begin(), sm.arrFs.end());
           hasArrays = true;
         }
       }
@@ -1187,7 +1185,6 @@ namespace ufo
          */
 
         // process all quantified seeds
-        /* 
         for (auto & a : tmpArrCands)
         {
           if (u.isTrue(a) || u.isFalse(a)) continue;
@@ -1210,7 +1207,6 @@ namespace ufo
                     replaceAll(replCand, *allVars.begin(), q->qv));
           }
         }
-	   */
       }
 
       // process all quantifier-free seeds
@@ -1384,39 +1380,11 @@ namespace ufo
       if (printLog >= 2 && !printedAny) outs () << "  none\n";
     }
 
-    bool bootstrap(Expr eqs=NULL, bool keepOnlyEqualities=false)
+    bool bootstrap()
     {
       if (printLog) outs () << "\nBOOTSTRAPPING\n=============\n";
-      for (int i = 0; i < invNumber; i++)
-      {
-        // keep only equalities in the candidates
-        if (keepOnlyEqualities)
-        {
-          for (auto it = candidates[i].begin(); it != candidates[i].end(); )
-          {
-            if (isOpX<EQ>(*it) && ((isIntConst((*it)->right()) && isIntConst((*it)->left())) 
-              || ((isConst<ARRAY_TY> ((*it)->right())) && (isConst<ARRAY_TY> ((*it)->left()))))) it++;
-            else it = candidates[i].erase(it);
-          }
-        }
-
-        // add equalities that match variables of two programs
-        if (eqs)
-        {
-          ExprSet s;
-          getConj(eqs, s);
-          for (auto &eq : s) candidates[i].push_back(eq);
-        }
-      }
-
-      // for (int i = 0; i < decls.size(); i++)
-      // {
-      //   Expr rel = decls[i];
-      //   candidates[0].push_back(mk<GT>(ruleManager.invVars[rel][2], mkMPZ(0, m_efac)));
-      // }
-
-
       filterUnsat();
+
       if (multiHoudini(ruleManager.wtoCHCs))
       {
         assignPrioritiesForLearned();
@@ -1809,7 +1777,7 @@ namespace ufo
         }
     }
 
-    bool verifySolution(Expr variableEqualities)
+    bool verifySolution(ExprSet& variableEqualities)
     {
       SamplFactory& sf = sfs[0].back();
       ExprSet lms = sf.learnedExprs;
@@ -1820,7 +1788,7 @@ namespace ufo
       for (auto &it : ruleManager.chcs)
         sanityChecks &= bool(u.isSat(it.body));
    
-      return sanityChecks && bool(u.implies(res, variableEqualities));
+      return sanityChecks && bool(u.implies(res, conjoin(variableEqualities, res->getFactory())));
     }
   };
 
