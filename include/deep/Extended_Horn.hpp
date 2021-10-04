@@ -536,18 +536,12 @@ namespace ufo
 			  allExprs.insert(e);
 		}
 
-
-	    void rulesOfPredicate(Expr decl, vector<HornRuleExt> &rulesOfP)
-	    {
-			for (auto it = chcs.begin(); it != chcs.end(); it++)
-			{
-				if (decl == it->head)
-				{
-					rulesOfP.push_back(*it);
-				}
-			}
-	    }
-
+    void rulesOfPredicate(Expr decl, vector<HornRuleExt*> &rulesOfP)
+    {
+      for (auto it = chcs.begin(); it != chcs.end(); it++)
+        if (decl == it->dstRelation)
+          rulesOfP.push_back(&*it);
+    }
 
 		void mergeIterationsFact(HornRuleExt &fact, int num, ExprVector &ssa, BndExpl &bnd, bool actualAlign)
 		{
@@ -657,19 +651,19 @@ namespace ufo
       ExprVector ssa1;
       bnd.getSSA(trace, ssa1);
 
-	if (unrollQuery > 0)
-	{
-		if (unrollQuery == 1) lastIterVars = query->srcVars;
-		else 
-		{
-			for (auto &var : bnd.bindVars[unrollQuery-1])
-			{
-				Expr newVar = mkTerm<string>(varname+lexical_cast<string>(var), m_efac);
-				newVar = cloneVar(var, newVar);
-				lastIterVars.push_back(newVar);
-			}
-		}
-	}
+      if (unrollQuery > 0)
+      {
+        if (unrollQuery == 1) lastIterVars = query->srcVars;
+        else
+        {
+          for (auto &var : bnd.bindVars[unrollQuery-1])
+          {
+            Expr newVar = mkTerm<string>(varname+lexical_cast<string>(var), m_efac);
+            newVar = cloneVar(var, newVar);
+            lastIterVars.push_back(newVar);
+          }
+        }
+      }
 
       ssa1.erase(ssa1.begin());
 
@@ -940,7 +934,7 @@ namespace ufo
 				for (int i = 0; i < chcs.size(); i++)
 		        outgs[chcs[i].srcRelation].push_back(i);
 
-				wtoSort();
+        wtoSort();      // GF: you don't need any of these...
 	    }
 	};
 }

@@ -213,25 +213,18 @@ namespace ufo
 		}
 
 
-	    void calculateProductOfRules(Expr rel1, Expr rel2, vector<HornRuleExt> &rulesOfP)
-	    {
-			vector<vector<HornRuleExt>> rulesOfPredicates, combinations;
-			vector<HornRuleExt> rulesOfCurrentP;
+    void calculateProductOfRules(Expr rel1, Expr rel2, vector<HornRuleExt> &rulesOfP)
+    {
+      // GF: refactored: used to be too complicated for such a simple algorithm
+			vector<HornRuleExt*> rules1, rules2;
+			subRule1->rulesOfPredicate(rel1, rules1);
+      subRule2->rulesOfPredicate(rel2, rules2);
+      assert(rules1.size() == rules2.size());
 
-			subRule1->rulesOfPredicate(rel1, rulesOfCurrentP);
-			rulesOfPredicates.push_back(rulesOfCurrentP);
-			rulesOfCurrentP.clear();
-
-			subRule2->rulesOfPredicate(rel2, rulesOfCurrentP);
-			rulesOfPredicates.push_back(rulesOfCurrentP);
-
-			calculateCombinations(rulesOfPredicates, combinations);
-
-			for (auto &it : combinations)
-			{
-				productOfCHCs(it[0], it[1], rulesOfP);
-			}
-	    }
+      for (auto it1 : rules1)
+        for (auto it2 : rules2)
+          productOfCHCs(*it1, *it2, rulesOfP);
+    }
 
 
 		void productRelationSymbols(ExprVector predicates, Expr &predicateP, vector<HornRuleExt> &rulesOfP, 
@@ -249,12 +242,16 @@ namespace ufo
 			predicateP = bind::fdecl(productRel, productTypes);
 			
 			if (calculateRulesOfP) 
-				calculateProductOfRules(rel1, rel2, rulesOfP);
+				calculateProductOfRules(rel1->left(), rel2->left(), rulesOfP);
 		}
 
 
 		void productOfCHCs(HornRuleExt &chc1, HornRuleExt &chc2, vector<HornRuleExt> &rulesOfP)
 		{
+      // GF: use the global `debug` option for all such prints
+      outs () << "  product of two CHCs: "
+          << chc1.srcRelation << " -> " << chc1.dstRelation << " and "
+          << chc2.srcRelation << " -> " << chc2.dstRelation << "\n";
 			Expr head, body;
 			vector<HornRuleExt> nullV;
 			vector<ExprVector> nullV1;
@@ -313,7 +310,8 @@ namespace ufo
 			}
 		}
 
-
+    // GF: refactor this! What's the point of having a function
+    //     that does nothing but calling another functions
 		void simplifyRules()
 		{
 			renamingAsProductRules();
@@ -363,7 +361,7 @@ namespace ufo
 				Expr freshP;
 				ExprVector partition;
 				vector<HornRuleExt> rulesOfP;
-				C_a = worklist[0];
+        C_a = worklist[0];                     // GF: you should avoid copying here
 				worklist.erase(worklist.begin());
 
 				// AH: In the original algorithm, the operation PARTITION is used that is defined: 
@@ -411,12 +409,18 @@ namespace ufo
 		}
 	};
 
-	
+  //  GF: Poor design overall. Many static methods, need to pass data structures back and forth.
+  //      Need to restructure and move under some class.
+  //      Don't duplicate objects, e.g., you create SMTUtils u(fac) four times, but need only once.
+
 	inline bool learnInvariantsPr(CHCs &ruleManager, Expr currentMatching, int debug)
   {
+    // GF: ideally, need to get all of these from command line
+    //     for that, just adapt the code from `DeepHorn.cpp` to `Rel.cpp`
+
     unsigned maxAttempts = 2000000, to = 10000;
     bool freqs = false, aggp = false, enableDataLearning = false, doElim = true, doDisj = false;
-    bool dAllMbp = false, dAddProp = false, dAddDat = false, dStrenMbp = false, dSee = true;
+    bool dAllMbp = false, dAddProp = false, dAddDat = false, dStrenMbp = false, dSee = false;
     int doProp = 0, mbpEqs = 0, mut = 0;
 
 	  if (doDisj && (!dAddProp && !dAddDat))
@@ -430,7 +434,8 @@ namespace ufo
 	      dSee = true;
 	  	enableDataLearning = true;
 	  }
-    
+
+    if (debug > 4) ruleManager.print(true);
     EZ3 z3(ruleManager.m_efac);
     BndExpl bnd(ruleManager, to, debug);
 
@@ -481,7 +486,8 @@ namespace ufo
   bool getAlignmentVals(Extended_CHCs &ruleManager1, Extended_CHCs &ruleManager2, Expr pre, vector<int> &vals)
   {
   	auto &fac = ruleManager1.m_efac;
-		SMTUtils u(fac);
+
+		SMTUtils u(fac, 10000); // hardcoded TO for now, need to get from command line
 		int cycleNum1 = 0, cycleNum2 = 0;
 
 		vector<int> &cycle1 = ruleManager1.cycles[cycleNum1];
@@ -580,6 +586,9 @@ namespace ufo
     {
     	// outs() << "model: " << model << "\n";
 			// iterative solving optimization query to get all minmodels
+
+      // GF: replace `getMinModel` by `getOptModel`
+
       minCoef1 = u.getMinModel(coef1);
     	quantifiedFla = mk<AND>(quantifiedFla, mk<EQ>(coef1, minCoef1));
       u.isSat(quantifiedFla);
@@ -788,9 +797,10 @@ namespace ufo
 
 	    // product of two CHC systems
 		ruleManagerProduct.createProduct();
+    assert(ruleManagerProduct.chcs.size() == 3);
 
 		// create pre and post conditions
-		Expr pre = mk<EQ>(ruleManager1.srcFactVars[ruleManager1.iter], ruleManager2.srcFactVars[ruleManager2.iter]); 
+		Expr pre = mk<EQ>(ruleManager1.srcFactVars[ruleManager1.iter], ruleManager2.srcFactVars[ruleManager2.iter]);
 		Expr post = mk<EQ>(ruleManager1.dstQueryVars[ruleManager1.iter], ruleManager2.dstQueryVars[ruleManager2.iter]);
 		if (combVars[0][0] != -1)
 		{
@@ -851,10 +861,10 @@ namespace ufo
 		EZ3 z3(m_efac);
 
 		Extended_CHCs ruleManagerSrc(m_efac, z3, "_v1_", debug-2);
-		ruleManagerSrc.parse(string(chcfileSrc));
+		ruleManagerSrc.parse(string(chcfileSrc), 1);
 
 		Extended_CHCs ruleManagerDst(m_efac, z3, "_v2_", debug-2);
-		ruleManagerDst.parse(string(chcfileDst));
+		ruleManagerDst.parse(string(chcfileDst), 1);
 
 		ruleManagerSrc.extraProcessing();
 		ruleManagerDst.extraProcessing();

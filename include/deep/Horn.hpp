@@ -241,7 +241,7 @@ namespace ufo
       return true;
     }
 
-    bool parse(string smt, bool doElim = true, bool doArithm = true)
+    bool parse(string smt, int doElim = 2, bool doArithm = true)
     {
       if (debug > 0) outs () << "\nPARSING" << "\n=======\n";
       std::unique_ptr<ufo::ZFixedPoint <EZ3> > m_fp;
@@ -318,7 +318,7 @@ namespace ufo
         hr.assignVarsAndRewrite (origSrcSymbs, invVars[hr.srcRelation],
                                  origDstSymbs, invVarsPrime[hr.dstRelation], lin);
 
-        if (doElim)
+        if (doElim >= 1)
         {
           hr.body = eliminateQuantifiers(conjoin(lin, m_efac), hr.locVars, doArithm, false);
           hr.body = u.removeITE(hr.body);
@@ -328,7 +328,7 @@ namespace ufo
           hr.body = conjoin(lin, m_efac);
       }
 
-      if (doElim)
+      if (doElim >= 2)
       {
         int sz = chcs.size();
         for (int c = 0; c < chcs.size(); c++)
