@@ -412,12 +412,12 @@ namespace ufo
 	};
 
 	
-	inline bool learnInvariantsPr(CHCs &ruleManager, Expr currentMatching)
+	inline bool learnInvariantsPr(CHCs &ruleManager, Expr currentMatching, int debug)
   {
     unsigned maxAttempts = 2000000, to = 10000;
     bool freqs = false, aggp = false, enableDataLearning = false, doElim = true, doDisj = false;
     bool dAllMbp = false, dAddProp = false, dAddDat = false, dStrenMbp = false, dSee = true;
-    int debug = 0, doProp = 0, mbpEqs = 0, mut = 0;
+    int doProp = 0, mbpEqs = 0, mut = 0;
 
 	  if (doDisj && (!dAddProp && !dAddDat))
 	    dAddDat = true;
@@ -781,9 +781,8 @@ namespace ufo
 	}
 
 
-	bool checkEquivalence(Extended_CHCs &ruleManager1, Extended_CHCs &ruleManager2, vector<vector<int>> &combVars)
+	bool checkEquivalence(Extended_CHCs &ruleManager1, Extended_CHCs &ruleManager2, vector<vector<int>> &combVars, int debug)
 	{
-		int debug = 0;
 		// create the product CHC system 
 		Product_CHCs ruleManagerProduct(ruleManager1, ruleManager2, "_pr_", debug-2);
 
@@ -841,17 +840,16 @@ namespace ufo
 
 		// call the function with all default values for arguments that are not relevant
 		// probably, do a cleaner way of calling the function
-	    return learnInvariantsPr(ruleManagerProduct, currentMatching);
+	    return learnInvariantsPr(ruleManagerProduct, currentMatching, debug);
 	}
 
 
 	// check equivalence of programs with alignment
-	inline void checkEquivalenceWithAligning(const char *chcfileSrc, const char *chcfileDst)
+	inline void checkEquivalenceWithAligning(const char *chcfileSrc, const char *chcfileDst, int debug)
 	{
 		ExprFactory m_efac;
 		EZ3 z3(m_efac);
 
-		int debug = 0;
 		Extended_CHCs ruleManagerSrc(m_efac, z3, "_v1_", debug-2);
 		ruleManagerSrc.parse(string(chcfileSrc));
 
@@ -896,7 +894,7 @@ namespace ufo
 			aligned = alignPrograms(ruleManagerSrcCopy, ruleManagerDstCopy, comb, debug);
 			if (aligned) 
 			{
-				if (checkEquivalence(ruleManagerSrcCopy, ruleManagerDstCopy, comb)) 
+				if (checkEquivalence(ruleManagerSrcCopy, ruleManagerDstCopy, comb, debug))
 				{
 					outs() << "\nprograms are equivalent\n";
 					return;
@@ -908,7 +906,7 @@ namespace ufo
 
 
   	// check equivalence of programs with no alignment
-	inline void checkEquivalenceWithoutAligning(const char *chcfileSrc, const char *chcfileDst)
+	inline void checkEquivalenceWithoutAligning(const char *chcfileSrc, const char *chcfileDst, int debug)
 	{
 		ExprFactory m_efac;
 		EZ3 z3(m_efac);
@@ -976,7 +974,7 @@ namespace ufo
 		fact->body = mk<AND>(fact->body, pre);
 		query->body = simplifyBool(mk<AND>(query->body, negPost));
 
-		if (learnInvariantsPr(ruleManagerProduct, mk<TRUE>(m_efac)))
+		if (learnInvariantsPr(ruleManagerProduct, mk<TRUE>(m_efac), debug))
 			outs() << "programs are equivalent\n";
 		else
 			outs() << "programs are not equivalent\n";
