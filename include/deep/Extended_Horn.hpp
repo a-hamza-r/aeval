@@ -142,7 +142,6 @@ namespace ufo
 	class Extended_CHCs : public CHCs
 	{
 		public:
-	    ExprVector dstQueryVars;
 	    ExprVector srcFactVars;
 
 	    int iter;
@@ -151,14 +150,17 @@ namespace ufo
 	    vector<int> varsInt;
 	    vector<int> varsBool;
 	    vector<int> varsArray;
+      Expr postLoopBody;
+      ExprVector postLoopSrcVars;
+      ExprVector postLoopDstVars;
 	    // map<Expr, Expr> exprEqualities;
 
 	    Extended_CHCs(ExprFactory &efac, EZ3 &z3, string n, int d = false) : CHCs(efac, z3, n, d) {};
 
-	    Extended_CHCs(const Extended_CHCs &old_CHCs) : CHCs(old_CHCs), dstQueryVars(old_CHCs.dstQueryVars),
+	    Extended_CHCs(const Extended_CHCs &old_CHCs) : CHCs(old_CHCs),
 	    	srcFactVars(old_CHCs.srcFactVars), iter(old_CHCs.iter), iterGrows(old_CHCs.iterGrows), 
 	    	numOfIters(old_CHCs.numOfIters), varsInt(old_CHCs.varsInt), varsBool(old_CHCs.varsBool), 
-	    	varsArray(old_CHCs.varsArray) {}
+	    	varsArray(old_CHCs.varsArray), postLoopBody(old_CHCs.postLoopBody), postLoopSrcVars(old_CHCs.postLoopSrcVars), postLoopDstVars(old_CHCs.postLoopDstVars) {}
 
       Expr getDecl(Expr relation)
 			{
@@ -330,16 +332,13 @@ namespace ufo
 
 			if (!postLoopFound) return;
 			HornRuleExt &q = *query, &pl = *postLoop;
-			Expr body = replaceAll(q.body, q.srcVars, pl.dstVars);
-			pl.body = mk<AND>(pl.body, body);
-			dstQueryVars = pl.dstVars;
-			pl.dstVars.clear();
-			pl.head = q.head;
+      q.srcRelation = pl.srcRelation;
+      postLoopBody = pl.body;
+      postLoopSrcVars = pl.srcVars;
+      postLoopDstVars = pl.dstVars;
 			removeDecl(pl.dstRelation);
-			pl.dstRelation = q.dstRelation;
-			pl.isQuery = true;
 
-			chcs.erase(query);
+			chcs.erase(postLoop);
 		}
 
 
@@ -574,34 +573,11 @@ namespace ufo
 			ssa[num-1] = replaceAll(ssa[num-1], bnd.bindVars[num], loop.dstVars);
 		}
 
-		void mergeIterationsQuery(HornRuleExt *query, int num, ExprVector &ssa, BndExpl &bnd)
+		
+    void createAlignment(int unrollTrans, int unrollFact, int unrollQuery, Expr& prefRuleBody, 
+			ExprVector& prefRuleLocVars, /*ExprVector& lastIterVars, */BndExpl &bnd, bool actualAlign=true)
 		{
-			if (num <= 0) return;
-
-			ssa[0] = replaceAll(ssa[0], bnd.bindVars[0], query->srcVars);
-			if (dstQueryVars.empty()) 
-			{
-				for (int i = 0; i < bnd.bindVars[num].size(); i++)
-				{
-					Expr newVar = mkTerm<string>(varname+"query_var_"+lexical_cast<string>(i), query->body->getFactory());
-					newVar = cloneVar(bnd.bindVars[num][i], newVar);
-
-					dstQueryVars.push_back(newVar);
-				}
-				ssa[num-1] = replaceAll(ssa[num-1], bnd.bindVars[num], dstQueryVars);
-				query->body = replaceAll(query->body, query->srcVars, dstQueryVars);
-			}
-			else
-			{
-				query->body = replaceAll(query->body, query->srcVars, bnd.bindVars[num]);
-			}
-		}
-
-
-		void createAlignment(int unrollTrans, int unrollFact, int unrollQuery, Expr& prefRuleBody, 
-			ExprVector& prefRuleLocVars, ExprVector& lastIterVars, BndExpl &bnd, bool actualAlign=true)
-		{
-			if (!(unrollTrans == 0 && unrollQuery == 0))
+			if (actualAlign)
 			{
 				cout << "Iterations in the loop: " << unrollTrans << "\n";
 				cout << "Iterations added to fact: " << unrollFact << "\n";
@@ -653,24 +629,14 @@ namespace ufo
 
       if (unrollQuery > 0)
       {
-        if (unrollQuery == 1) lastIterVars = query->srcVars;
-        else
-        {
-          for (auto &var : bnd.bindVars[unrollQuery-1])
-          {
-            Expr newVar = mkTerm<string>(varname+lexical_cast<string>(var), m_efac);
-            newVar = cloneVar(var, newVar);
-            lastIterVars.push_back(newVar);
-          }
-        }
+        postLoopSrcVars = bnd.bindVars[0];
+        postLoopDstVars = bnd.bindVars[bnd.bindVars.size()-1];
       }
 
       ssa1.erase(ssa1.begin());
 
 			ExprSet queryBndVars;
 	    filter(conjoin(ssa1, m_efac), IsConst(), inserter(queryBndVars, queryBndVars.begin()));
-
-	    mergeIterationsQuery(query, unrollQuery, ssa1, bnd);
 
 	    trace.clear();
 
@@ -695,9 +661,6 @@ namespace ufo
       if (unrollFact > 0) 
       {
       	prefRuleBody = conjoin(ssa, m_efac);
-				// for (auto &var : srcFactVars) {
-				// 	factBndVars.erase(var);
-				// }
         for (auto &var : factBndVars)
 				{
 					Expr new_name = mkTerm<string>(varname+lexical_cast<string>(var), m_efac);
@@ -728,10 +691,19 @@ namespace ufo
 					Expr new_name = mkTerm<string>(varname+lexical_cast<string>(var), m_efac);
       		Expr var1 = cloneVar(var, new_name);
       		addToQuery = replaceAll(addToQuery, var, var1);
-      		query->locVars.push_back(var1);
 				}
-				query->body = mk<AND>(query->body, addToQuery);
-			}
+			  for (int i = 0; i < postLoopSrcVars.size(); i++)
+				{
+          Expr new_name = mkTerm<string>(varname+lexical_cast<string>(postLoopSrcVars[i]), m_efac);
+          postLoopSrcVars[i] = cloneVar(postLoopSrcVars[i], new_name);
+				}
+				for (int i = 0; i < postLoopDstVars.size(); i++)
+				{
+          Expr new_name = mkTerm<string>(varname+lexical_cast<string>(postLoopDstVars[i]), m_efac);
+          postLoopDstVars[i] = cloneVar(postLoopDstVars[i], new_name);
+        }
+        postLoopBody = addToQuery;
+      }
 		}
 
 	    bool findTransitionValue(int i, HornRuleExt& rule, Expr& transitionVal, SMTUtils &u)
@@ -916,7 +888,7 @@ namespace ufo
 	      return (iter >= 0);
 	    }
 
-	    void extraProcessing()
+	    void preprocessing()
 	    {
   			removePreLoop();
 				removePostLoop();
