@@ -12,6 +12,7 @@
 (declare-var count Int )
 (declare-var a_array (Array Int Int) )
 (declare-var a_array1 (Array Int Int) )
+(declare-var b_array (Array Int Int) )
 (declare-var b_array1 (Array Int Int) )
 (declare-var c_array (Array Int Int) )
 (declare-var d_array (Array Int Int) )

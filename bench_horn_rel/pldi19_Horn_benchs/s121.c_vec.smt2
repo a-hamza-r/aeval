@@ -65,7 +65,6 @@
 (rule (=> 
 	(and
 		(preLoop a_array b_array i count)
-		(< i (- (* count 8) 1))
 
 		(= a_i (+ (select b_array i) (select a_array (+ i 1))))
 		(= a_array1 (store a_array i a_i))

@@ -110,7 +110,7 @@
 
 		(< i (- (* count 4) 1))
 		
-				(= b_i (select b_array i))
+		(= b_i (select b_array i))
 		(= c_i (select c_array i))
 		(= d_i (select d_array i))
 		(= e_i (select e_array i))
