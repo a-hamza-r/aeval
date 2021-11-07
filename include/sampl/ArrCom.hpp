@@ -79,7 +79,9 @@ namespace ufo
       for (auto & a : arrCands)
         filter (a, bind::IsSelect (), inserter(se, se.begin()));
 
-      for (auto & b : se) postFac.addVar(b);
+      for (auto & b : se)
+        if (isOpX<INT_TY>(typeOf(b)))
+          postFac.addVar(b);
 	*/
       pre = arrRange;
       tmp1 = arrCands;
