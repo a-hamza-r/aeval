@@ -101,20 +101,6 @@ namespace ufo
       }
     }
 
-    /*Expr getMinModelInts(Expr v)
-    {
-      while (true)
-      {
-        Expr tmp;
-        Expr allModels;
-        ZSolver<EZ3>::Model m = smt.getModel();
-        tmp = m.eval(v);
-        allModels = getModel();
-        smt.assertExpr(mk<LT>(v, tmp));
-        if (smt.solve() == false) return allModels;
-      }
-    } */
-
     ExprSet allVars;
     Expr getModel() { return getModel(allVars); }
 

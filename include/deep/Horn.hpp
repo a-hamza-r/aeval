@@ -63,22 +63,21 @@ namespace ufo
     void printMemberVars()
     {
       outs() << "\nStarting to print a HornRuleExt: \n";
-      outs() << "body: " << *body << "\n";
-      outs() << "head: " << *head << "\n";
+      outs() << "body: " << body << "\n";
 
       outs() << "srcVars: ";
       for (auto it = srcVars.begin(); it != srcVars.end(); it++)
-        outs() << **it << " ";
+        outs() << *it << " ";
       outs() << "\n";
 
       outs() << "dstVars: ";
       for (auto it = dstVars.begin(); it != dstVars.end(); it++)
-        outs() << **it << " ";
+        outs() << *it << " ";
       outs() << "\n";
 
       outs() << "locVars: ";
       for (auto it = locVars.begin(); it != locVars.end(); it++)
-        outs() << **it << " ";
+        outs() << *it << " ";
       outs() << "\n";
 
       outs() << "srcRelation: " << *srcRelation << "\n";
@@ -129,7 +128,7 @@ namespace ufo
       indeces(old_CHCs.indeces), varname(old_CHCs.varname), failDecl(old_CHCs.failDecl), chcs(old_CHCs.chcs),
       wtoCHCs(old_CHCs.wtoCHCs), wtoDecls(old_CHCs.wtoDecls), decls(old_CHCs.decls), invVars(old_CHCs.invVars), 
       invVarsPrime(old_CHCs.invVarsPrime), outgs(old_CHCs.outgs), prefixes(old_CHCs.prefixes), cycles(old_CHCs.cycles),
-      hasAnyArrays(old_CHCs.hasAnyArrays), iterators(old_CHCs.iterators), hasArrays(old_CHCs.hasArrays), debug(old_CHCs.debug) {}
+      hasAnyArrays(old_CHCs.hasAnyArrays), hasArrays(old_CHCs.hasArrays), debug(old_CHCs.debug) {}
     CHCs(ExprFactory &efac, EZ3 &z3, int d = false) :
       u(efac), m_efac(efac), m_z3(z3), hasAnyArrays(false), debug(d), varname("FH") {};
 
@@ -317,7 +316,7 @@ namespace ufo
         hr.assignVarsAndRewrite (origSrcSymbs, invVars[hr.srcRelation],
                                  origDstSymbs, invVarsPrime[hr.dstRelation], lin);
 
-        if (doElim >= 1)
+        if (doElim)
         {
           hr.body = eliminateQuantifiers(conjoin(lin, m_efac), hr.locVars, doArithm, false);
           hr.body = u.removeITE(hr.body);
@@ -327,21 +326,21 @@ namespace ufo
           hr.body = conjoin(lin, m_efac);
       }
 
-      if (doElim >= 2)
-      {
-        int sz = chcs.size();
-        for (int c = 0; c < chcs.size(); c++)
-        {
-          chcsToCheck1.insert(c);
-          chcsToCheck2.insert(c);
-        }
-        if (!eliminateDecls()) return false;
+      // if (doElim)
+      // {
+      //   int sz = chcs.size();
+      //   for (int c = 0; c < chcs.size(); c++)
+      //   {
+      //     chcsToCheck1.insert(c);
+      //     chcsToCheck2.insert(c);
+      //   }
+      //   if (!eliminateDecls()) return false;
 
-        // eliminating all at once, otherwise elements at chcsToCheck* need updates
-        for (auto it = toEraseChcs.rbegin(); it != toEraseChcs.rend(); ++it)
-          chcs.erase(chcs.begin() + *it);
-        toEraseChcs.clear();
-      }
+      //   // eliminating all at once, otherwise elements at chcsToCheck* need updates
+      //   for (auto it = toEraseChcs.rbegin(); it != toEraseChcs.rend(); ++it)
+      //     chcs.erase(chcs.begin() + *it);
+      //   toEraseChcs.clear();
+      // }
 
       for (int i = 0; i < chcs.size(); i++)
         outgs[chcs[i].srcRelation].push_back(i);

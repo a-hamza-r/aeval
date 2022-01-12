@@ -1701,8 +1701,6 @@ namespace ufo
 
       ExprSet exprs = {hr.body};
 
-      // outs() << (hr.isFact ? "Fact" : (hr.isQuery ? "Query" : "Inductive")) << "\n";
-
       if (!hr.isFact)
       {
         ExprSet lms = sfs[srcNum].back().learnedExprs;
@@ -1726,7 +1724,6 @@ namespace ufo
         }
         exprs.insert(disjoin(negged, m_efac));
       }
-      // outs() << "exprs: " << *conjoin(exprs, m_efac) << "\n";
       return u.isSat(exprs);
     }
 

@@ -145,6 +145,7 @@ namespace ufo
 	    ExprVector srcFactVars;
 
 	    int iter;
+	    Expr loopRel;
 	    bool iterGrows;
 	    Expr numOfIters;
 	    vector<int> varsInt;
@@ -153,7 +154,6 @@ namespace ufo
       Expr postLoopBody;
       ExprVector postLoopSrcVars;
       ExprVector postLoopDstVars;
-	    // map<Expr, Expr> exprEqualities;
 
 	    Extended_CHCs(ExprFactory &efac, EZ3 &z3, string n, int d = false) : CHCs(efac, z3, n, d) {};
 
@@ -223,7 +223,16 @@ namespace ufo
 			return NULL;
 		}
 
-		void fixLoopGuard(ExprVector lastIterVars)
+		HornRuleExt *getFact()
+		{
+			for (auto &chc : chcs)
+			{
+				if (chc.isFact) return &chc;
+			}
+			return NULL;
+		}
+
+		/*void fixLoopGuard(ExprVector lastIterVars)
 		{
 			// works in the case of vectorization, verify for generic alignment
 			int cycleNum = 0;
@@ -256,7 +265,7 @@ namespace ufo
 			}
 			Expr allIters = mk<AND>(loopIter, remainingIters);
 
-			findFinalValue(iter, rule, dummyExp, limitEq, dummyExp, iterGrows, u);
+			findFinalValue(iter, rule.srcRelation, rule.body, dummyExp, limitEq, dummyExp, iterGrows);
 			Expr goal = replaceAll(limitEq, rule.srcVars, lastIterVars);
 			filter(limitEq, bind::IsConst(), inserter(varsNotInc, varsNotInc.begin()));
 			filter(goal, bind::IsConst(), inserter(varsNotInc1, varsNotInc1.begin()));
@@ -274,7 +283,7 @@ namespace ufo
 			Expr newGuard = myAbduce(goal, assump, varsNotInc);
 			
 			rule.body = mk<AND>(rule.body, newGuard);
-		}
+		}*/
 
 		void removePreLoop()
 		{
@@ -425,56 +434,21 @@ namespace ufo
 			}
 		}
 
-		/*void getExprEqualities(Expr var, HornRuleExt& rule)
+    Expr numIterations(Expr init, Expr transition, Expr final, Expr add)
+    {
+      if (!(init && transition && final)) return mkMPZ(-1, m_efac);
+      Expr numer = mk<MINUS>(final, init);
+
+      if (add) numer = mk<PLUS>(numer, add);
+      Expr divisible = mk<EQ>(mk<MOD>(numer, transition), mkMPZ(0, m_efac));
+
+      Expr numIters = mk<PLUS>(mk<IDIV>(numer, transition), mk<ITE>(divisible, mkMPZ(0, m_efac), mkMPZ(1, m_efac)));
+      return simplifyArithm(numIters);
+    }
+
+		bool findInitialValue(int i, Expr init, Expr rel, Expr &initVal)
 	    {
-	      Expr body = rule.body;
-	      ExprSet s;
-	      Expr final;
-	      getConj(body, s);
-	      for (auto &e : s)
-	      {
-	        bool skip = false;
-	        if (contains(e, var) && !containsOp<ARRAY_TY>(e) && containsOp<EQ>(e))
-	        {
-	          ExprSet ss;
-	          filter(e, IsConst(), inserter(ss, ss.begin()));
-	          for (auto &it : ss)
-	          {
-	            if (find(rule.dstVars.begin(), rule.dstVars.end(), it) != rule.dstVars.end())
-	            {
-	              skip = true;
-	              break;
-	            }
-	          }
-	          if (skip) continue;
-	          else 
-	          { 
-	            if (final) final = mk<AND>(final, e);
-	            else final = e;
-	          }
-	        }
-	      }
-	      exprEqualities[var] = final;
-	    }*/
-
-
-	    Expr numIterations(Expr init, Expr transition, Expr final, Expr add)
-	    {
-	      auto &fac = init->getFactory();
-	      if (!(init && transition && final)) return mkMPZ(-1, fac);
-	      Expr numer = mk<MINUS>(final, init);
-
-	      if (add) numer = mk<PLUS>(numer, add);
-	      Expr divisible = mk<EQ>(mk<MOD>(numer, transition), mkMPZ(0, fac));
-
-	      Expr numIters = mk<PLUS>(mk<IDIV>(numer, transition), mk<ITE>(divisible, mkMPZ(0, fac), mkMPZ(1, fac)));
-	      return simplifyArithm(numIters);
-	    }
-
-		bool findInitialValue(int i, Expr init, HornRuleExt& rule, Expr &initVal, SMTUtils &u)
-	    {
-	      Expr iter = rule.srcVars[i];
-	      // outs() << "init: " << *init << "\n";
+	      Expr iter = invVars[rel][i];
 
 	      findExpr<EQ>(iter, init, initVal, true);
 	      if (initVal)
@@ -501,23 +475,8 @@ namespace ufo
 	        	Expr normalized = ineqSimplifier(iter, simplifyArithm(initVal));
 	          initVal = normalized->right();
 	          // assigns non-primed variables
-	          initVal = replaceAll(initVal, rule.dstVars, rule.srcVars);
+	          initVal = replaceAll(initVal, invVarsPrime[rel], invVars[rel]);
 	          return true;
-
-	          // use when local vars are not eliminated, so extra equalities need to be calculated
-	          // initVar is then the iterator
-	          /*getExprEqualities(initVar, rule);
-	          outs() << "exprEqualities for " << *initVar << ": " << *exprEqualities[initVar] << "\n";
-
-	          ExprSet s;
-	          filter(initVal, IsConst(), inserter(s, s.begin()));
-	          if (!s.empty())
-	          {
-	            // outs() << "var: " << **s.begin() << "\n";
-
-	            getExprEqualities(*s.begin(), rule);
-	            // outs() << "exprEqualities for " << **s.begin() << ": " << *exprEqualities[*s.begin()] << "\n";
-	          }*/
 
 	        }
 	      }
@@ -706,16 +665,16 @@ namespace ufo
       }
 		}
 
-	    bool findTransitionValue(int i, HornRuleExt& rule, Expr& transitionVal, SMTUtils &u)
+	    bool findTransitionValue(int i, Expr rel, Expr body, Expr& transitionVal)
 	    {
 	      ExprSet allExprs;
 	      Expr allExprsConj, e;
 	      bool multipleTransVal = false;
 
-	      Expr a = rule.srcVars[i];
-	      Expr b = rule.dstVars[i];
+	      Expr a = invVars[rel][i];
+	      Expr b = invVarsPrime[rel][i];
 
-	      findExpr<EQ>(b, rule.body, e, true);
+	      findExpr<EQ>(b, body, e, true);
 
 	      if (!e) return false;
 
@@ -745,27 +704,26 @@ namespace ufo
 	        transitionVal = right->arg(0);
 
 	      // check if delta value is constant; Eq. 10, section 4 in paper
-	      Expr replacedTrans = replaceAll(transitionVal, rule.srcVars, rule.dstVars);
-	      if (!u.implies(rule.body, mk<EQ>(transitionVal, replacedTrans)))
+	      Expr replacedTrans = replaceAll(transitionVal, invVars[rel], invVarsPrime[rel]);
+	      if (!u.implies(body, mk<EQ>(transitionVal, replacedTrans)))
 	      {
 	        transitionVal = NULL;
 	        return false;
 	      }
 
-	      // outs() << "transitionVal: " << *transitionVal << "\n";
 	      return true;
 	    }
 
-	    bool findFinalValue(int i, HornRuleExt& rule, Expr& limitVal, Expr& limitEq, Expr& add, bool iterIncreases, SMTUtils &u)
+	    bool findFinalValue(int i, Expr rel, Expr body, Expr& limitVal, Expr& limitEq, Expr& add, bool iterIncreases)
 	    {
-	      Expr a = rule.srcVars[i];
-	      Expr b = rule.dstVars[i];
+	      Expr a = invVars[rel][i];
+	      Expr b = invVarsPrime[rel][i];
 
 	      Expr gt, ge, lt, le;
 	      if (iterIncreases)
 	      {
-	        findExpr<LT>(a, rule.body, lt, true);
-	        findExpr<LEQ>(a, rule.body, le, true);
+	        findExpr<LT>(a, body, lt, true);
+	        findExpr<LEQ>(a, body, le, true);
 
 	        // make sure there is no case where both lt and le are not null
 	        // cannot think of any but could be
@@ -784,8 +742,8 @@ namespace ufo
 	      }
 	      else 
 	      {
-	        findExpr<GT>(a, rule.body, gt);
-	        findExpr<GEQ>(a, rule.body, ge);
+	        findExpr<GT>(a, body, gt);
+	        findExpr<GEQ>(a, body, ge);
 
 	        // make sure there is no case where both gt and ge are not null
 	        // cannot think of any but could be
@@ -807,11 +765,11 @@ namespace ufo
 	        limitVal = limitEq->arg(1);
 
 	        // check if limit value is constant; Eq. 8, section 4
-	        Expr replacedLimit = replaceAll(limitVal, rule.srcVars, rule.dstVars);
-	        bool constLimitValCheck = bool(u.implies(rule.body, mk<EQ>(limitVal, replacedLimit)));
+	        Expr replacedLimit = replaceAll(limitVal, invVars[rel], invVarsPrime[rel]);
+	        bool constLimitValCheck = bool(u.implies(body, mk<EQ>(limitVal, replacedLimit)));
 	        
 	        // check the case that iter does not exceed limit value during transition; Eq. 7, section 4
-	        bool loopEndCheck = limitEq && !u.isSat(mk<AND>(mkNeg(limitEq), rule.body));
+	        bool loopEndCheck = limitEq && !u.isSat(mk<AND>(mkNeg(limitEq), body));
 
 	        if (!constLimitValCheck || !loopEndCheck)
 	        {
@@ -819,16 +777,6 @@ namespace ufo
 	          limitEq = NULL;
 	          return false;
 	        }
-
-	        // s.clear();
-	        // filter(limitVal, IsConst(), inserter(s, s.begin()));
-	        // if (!s.empty())
-	        // {
-	          // outs() << "var: " << **s.begin() << "\n";
-	          // for (auto &it : s)
-	          //   getExprEqualities(it, rule);
-	          // outs() << "exprEqualities for " << **s.begin() << ": " << *exprEqualities[*s.begin()] << "\n";
-	        // }
 	        return true;
 	      }
 	      return false;
@@ -843,12 +791,11 @@ namespace ufo
 	      Expr rel = rule.srcRelation;
 	      iter = -1;
 
-	      int invNum = getVarIndex(rel, decls);
-
-	      for (int i = 0; i < rule.srcVars.size(); i++)
+	      for (int i = 0; i < invVars[rel].size(); i++)
 	      {
-	        Expr a = rule.srcVars[i];
-	        Expr b = rule.dstVars[i];
+	        Expr a = invVars[rel][i];
+	        Expr b = invVarsPrime[rel][i];
+
 	        bool isAnIter = false;
 
 	        bool iterDecreases = bind::isIntConst(a) && bool(u.implies(rule.body, mk<GT>(a, b)));
@@ -860,17 +807,17 @@ namespace ufo
 	          Expr add, limitEq;
 
 	          // AH: handle the case where it is iterator but any of values are not available
-	          bool hasInitVal = findInitialValue(i, pref, rule, initVal, u);
+	          bool hasInitVal = findInitialValue(i, pref, rel, initVal);
 
-	          bool hasTransitionVal = findTransitionValue(i, rule, transitionVal, u);
+	          bool hasTransitionVal = findTransitionValue(i, rel, rule.body, transitionVal);
 
-	          bool hasLimitVal = findFinalValue(i, rule, limitVal, limitEq, add, iterIncreases, u);
+	          bool hasLimitVal = findFinalValue(i, rel, rule.body, limitVal, limitEq, add, iterIncreases);
 
 	          isAnIter = hasInitVal && hasTransitionVal && hasLimitVal;
 	          if (isAnIter)
 	          {
 	            iter = i;
-	          
+	          	loopRel = rel;
 	            // if iter is increasing/decreasing
 	            iterGrows = iterIncreases;
 	            numOfIters = numIterations(initVal, transitionVal, limitVal, add);
