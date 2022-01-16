@@ -3262,7 +3262,7 @@ namespace expr
           return typeOf(v->left());
         }
 
-      std::cerr << "WARNING: could not infer type of: " << *v << "\n";
+      // std::cerr << "WARNING: could not infer type of: " << *v << "\n";
       //      assert (0 && "Unreachable");
 
         return Expr();

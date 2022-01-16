@@ -569,12 +569,12 @@ namespace ufo
     return true;
   }
 
-  bool initialSanityChecks(int cycleNum)
+  bool initialSanityChecks()
   {
   	BndExpl bnd1(ruleManager1, debug);
 		BndExpl bnd2(ruleManager2, debug);
 
-  	Expr pref1 = bnd1.compactPrefix(cycleNum), pref2 = bnd2.compactPrefix(cycleNum);
+  	Expr pref1 = bnd1.compactPrefix(0), pref2 = bnd2.compactPrefix(0);
 
   	for (int i = 0; i < ruleManager1.invVars[ruleManager1.loopRel].size(); i++)
 		{
@@ -592,22 +592,22 @@ namespace ufo
 		return true;
   }
 
-  bool alignPrograms(int cycleNum)
+  bool alignPrograms()
 	{
-		vector<int> &cycle1 = ruleManager1.cycles[cycleNum];
+		vector<int> &cycle1 = ruleManager1.cycles[0];
 		HornRuleExt &rule1 = ruleManager1.chcs[cycle1[0]];
-		vector<int> &prefix1 = ruleManager1.prefixes[cycleNum];
+		vector<int> &prefix1 = ruleManager1.prefixes[0];
 		HornRuleExt &prefixRule1 = ruleManager1.chcs[prefix1[0]];
 
-		vector<int> &cycle2 = ruleManager2.cycles[cycleNum];
+		vector<int> &cycle2 = ruleManager2.cycles[0];
 		HornRuleExt &rule2 = ruleManager2.chcs[cycle2[0]];
-		vector<int> &prefix2 = ruleManager2.prefixes[cycleNum];
+		vector<int> &prefix2 = ruleManager2.prefixes[0];
 		HornRuleExt &prefixRule2 = ruleManager2.chcs[prefix2[0]];
 
 		BndExpl bnd1(ruleManager1, debug);
 		BndExpl bnd2(ruleManager2, debug);
 
-		Expr pref1 = bnd1.compactPrefix(cycleNum), pref2 = bnd2.compactPrefix(cycleNum);
+		Expr pref1 = bnd1.compactPrefix(0), pref2 = bnd2.compactPrefix(0);
 
 		int iter1 = ruleManager1.iter, iter2 = ruleManager2.iter;
 
@@ -725,13 +725,14 @@ namespace ufo
 	}
 
 
-	bool checkEquivalence()
+	bool checkEquivalence(bool innerLoop)
 	{
 		// create the product CHC system 
 		Product_CHCs ruleManagerProduct(ruleManager1, ruleManager2, "_pr_", debug-2);
 
 	    // product of two CHC systems
 		ruleManagerProduct.createProduct();
+
     assert(ruleManagerProduct.chcs.size() == 3);
 
     HornRuleExt *q1 = ruleManager1.getQuery(), *q2 = ruleManager2.getQuery();
@@ -739,12 +740,16 @@ namespace ufo
 		
     // create pre and post conditions
 		Expr pre = mk<TRUE>(m_efac);
-		Expr post = mk<EQ>(q1->srcVars[ruleManager1.iter], q2->srcVars[ruleManager2.iter]);
+		Expr post;
+		if (ruleManager1.iter >= 0)
+			post = mk<EQ>(q1->srcVars[ruleManager1.iter], q2->srcVars[ruleManager2.iter]);
+		else
+			post = mk<TRUE>(m_efac);
 		if (pairings[0][0] != -1)
 		{
 			for (auto &pair : pairings)
 			{
-				if (ruleManager1.srcFactVars.empty() || ruleManager2.srcFactVars.empty())
+				if (ruleManager1.srcFactVars.empty() || ruleManager2.srcFactVars.empty()) 
 					pre = mk<AND>(pre, mk<EQ>(f1->dstVars[pair[0]], f2->dstVars[pair[1]]));
 				else
 					pre = mk<AND>(pre, mk<EQ>(ruleManager1.srcFactVars[pair[0]], ruleManager2.srcFactVars[pair[1]]));
@@ -776,18 +781,30 @@ namespace ufo
     else
       query->body = simplifyBool(mk<AND>(query->body, negPost));
 
-		outs () << "   check fact sanity:  "  << bool(u.isSat(fact->body)) << "\n";
-		outs () << "   check query sanity:  "  << bool(u.isSat(query->body)) << "\n";
-		outs () << "   check ind sanity:  "  << bool(u.isSat(ind->body)) << "\n";
-
-		outs() << "------------------------PRODUCT CREATED-----------------------------\n\n";
-
     ExprSet currentMatching;
 		int sz = ind->srcVars.size()/2;
 
 		for (int i = 0; i < sz; i++)
 			if (bind::typeOf(ind->srcVars[i]) == bind::typeOf(ind->srcVars[sz + i]))
 				currentMatching.insert(mk<EQ>(ind->srcVars[i], (ind->srcVars[sz + i])));
+
+		if (!innerLoop)
+		{
+			Expr srcEq = conjoin(currentMatching, m_efac);
+			Expr dstEq = replaceAll(srcEq, ind->srcVars, ind->dstVars);
+			ind->body = mk<AND>(ind->body, mk<IMPL>(srcEq, dstEq));
+		}
+
+    for (auto &chc : ruleManagerProduct.chcs)
+    	chc.body = eliminateQuantifiers(chc.body, chc.locVars, true, false);
+
+    // ruleManagerProduct.print(true);
+
+		outs () << "   check fact sanity:  "  << bool(u.isSat(fact->body)) << "\n";
+		outs () << "   check query sanity:  "  << bool(u.isSat(query->body)) << "\n";
+		outs () << "   check ind sanity:  "  << bool(u.isSat(ind->body)) << "\n";
+
+		outs() << "------------------------PRODUCT CREATED-----------------------------\n\n";
 
 		// call the function with all default values for arguments that are not relevant
 		// probably, do a cleaner way of calling the function
@@ -815,8 +832,178 @@ namespace ufo
 	}
 
 
+  bool checkEquivalenceSingleLoop(Extended_CHCs &ruleManager1, Extended_CHCs &ruleManager2, bool doAlign, 
+			unsigned maxAttempts, unsigned to, bool freqs, bool aggp, int dat, int mut, bool doElim, 
+      bool doArithm, bool doDisj, int doProp, int mbpEqs, bool dAllMbp, bool dAddProp, 
+      bool dAddDat, bool dStrenMbp, int dFwd, bool dRec, bool dGenerous, bool dSee, int debug, bool innerLoop)
+  {
+
+		ruleManager1.preprocessing();
+		ruleManager2.preprocessing();
+
+
+		BndExpl bndSrc(ruleManager1, debug);
+		BndExpl bndDst(ruleManager2, debug);
+
+		// if no iterator was found, the tool exits stating non-equivalence. Support more
+    bool iterFound = ruleManager1.findIterators(bndSrc);
+    if (innerLoop && !iterFound) 
+    {
+      outs() << "no iterator was found for program 1. programs are not equivalent\n";
+      return false;
+    }
+
+    iterFound = ruleManager2.findIterators(bndDst);
+    if (innerLoop && !iterFound) 
+    {
+      outs() << "no iterator was found for program 2. programs are not equivalent\n";
+      return false;
+    }
+
+		vector<vector<vector<int>>> nonIterCombs;
+		createNonIterCombs(ruleManager1, ruleManager2, nonIterCombs);
+
+		// check for all combinations of variables, such that we match same type of variables
+		for (auto &pairings : nonIterCombs)
+		{
+      Equivalence eq(ruleManager1, ruleManager2, ruleManager1.m_efac, ruleManager1.m_z3, pairings, maxAttempts, to, freqs, 
+					aggp, dat, mut, doElim, doArithm, doDisj, doProp, mbpEqs, dAllMbp, dAddProp, dAddDat,
+					dStrenMbp, dFwd, dRec, dGenerous, dSee, debug);
+
+      if (innerLoop && !eq.initialSanityChecks()) return false;
+      if (innerLoop && doAlign && !eq.alignPrograms()) return false;
+			if (eq.checkEquivalence(innerLoop))
+			{
+				outs() << "\ncurrent loop is equivalent\n";
+				return true;
+			}
+		}
+		outs() << "\ncurrent loop is not equivalent\n";
+		return false;
+  }
+	
+
+  void constructNewRuleManager(Extended_CHCs &newRM, Extended_CHCs &oldRM, Expr loop, bool addTransition)
+	{
+    newRM.chcs.clear();
+
+    Expr newName1 = mkTerm<string>("newInv1", oldRM.m_efac);
+  	Expr newName2 = mkTerm<string>("newInv2", oldRM.m_efac);
+  	ExprVector types;
+  	for (auto &v : oldRM.invVars[loop])
+  		types.push_back(v->last()->last());
+  	types.push_back(mk<BOOL_TY>(oldRM.m_efac));
+  	Expr f1 = fdecl(newName1, types);
+  	Expr f2 = fdecl(newName2, types);
+  	Expr fAppl1 = fapp(f1, oldRM.invVars[loop]);
+  	Expr fAppl2 = fapp(f2, oldRM.invVarsPrime[loop]);
+
+  	newRM.addDecl(f1);
+  	newRM.addDecl(f2);
+
+  	for (auto it = oldRM.wtoCHCs.begin(); it != oldRM.wtoCHCs.end(); )
+    {
+      auto chc = *(*it);
+      if (loop == chc.srcRelation || loop == chc.dstRelation)
+      {
+        if (chc.srcRelation != loop)
+        {
+          chc.srcRelation = newName1;
+          chc.srcVars = oldRM.invVars[loop];
+          chc.isFact = false;
+
+		    	newRM.chcs.push_back(HornRuleExt());
+          HornRuleExt &hr = newRM.chcs.back();
+		      hr.dstVars = newRM.invVarsPrime[newName1];
+		      hr.srcRelation = mk<TRUE>(oldRM.m_efac);
+		      hr.dstRelation = newName1;
+		      hr.isFact = true;
+		      hr.isQuery = false;
+		      hr.isInductive = false;
+		      hr.body = mk<TRUE>(oldRM.m_efac);
+        }
+
+        if (chc.dstRelation != loop)
+        {
+          chc.dstRelation = newName2;
+          chc.dstVars = oldRM.invVarsPrime[loop];
+          chc.isQuery = false;
+
+		    	newRM.chcs.push_back(HornRuleExt());
+          HornRuleExt &hr = newRM.chcs.back();
+		      hr.srcVars = newRM.invVars[newName2];
+		      hr.srcRelation = newName2;
+		      hr.dstRelation = newRM.failDecl;
+		      hr.isFact = false;
+		      hr.isQuery = true;
+		      hr.isInductive = false;
+		      hr.body = mk<TRUE>(oldRM.m_efac);
+        }
+
+        newRM.chcs.push_back(chc);
+        oldRM.wtoCHCs.erase(it);
+  	  }
+      else it++;
+    }
+
+    if (addTransition)
+    {
+    	newRM.chcs.push_back(HornRuleExt());
+      HornRuleExt &hr = newRM.chcs.back();
+      hr.srcVars = newRM.invVars[loop];
+      hr.dstVars = newRM.invVarsPrime[loop];
+      hr.srcRelation = loop;
+      hr.dstRelation = loop;
+      hr.isFact = false;
+      hr.isQuery = false;
+      hr.isInductive = true;
+      hr.body = mk<TRUE>(oldRM.m_efac);
+    }
+
+    newRM.cycles.clear();
+    newRM.prefixes.clear();
+    newRM.outgs.clear();
+
+    for (int i = 0; i < newRM.chcs.size(); i++)
+      newRM.outgs[newRM.chcs[i].srcRelation].push_back(i);
+
+    newRM.hasCycles();
+	}
+
+
+  bool checkEquivalence(Extended_CHCs &ruleManager1, Extended_CHCs &ruleManager2, bool doAlign, 
+			unsigned maxAttempts, unsigned to, bool freqs, bool aggp, int dat, int mut, bool doElim, 
+      bool doArithm, bool doDisj, int doProp, int mbpEqs, bool dAllMbp, bool dAddProp, 
+      bool dAddDat, bool dStrenMbp, int dFwd, bool dRec, bool dGenerous, bool dSee, int debug)
+	{
+    assert(ruleManager1.cycles.size() == ruleManager2.cycles.size());
+
+    for (int i = 0; i < ruleManager1.cycles.size(); i++)
+    {
+      Expr loop1 = ruleManager1.chcs[ruleManager1.cycles[i][0]].srcRelation;
+      Expr loop2 = ruleManager2.chcs[ruleManager2.cycles[i][0]].srcRelation;
+    	outs() << "currently processing: " << loop1 << " and " << loop2 << "\n";
+
+      Extended_CHCs newRuleManager1 = ruleManager1, newRuleManager2 = ruleManager2; 
+      if (ruleManager1.cycles.size() > 1)
+      {
+	    	constructNewRuleManager(newRuleManager1, ruleManager1, loop1, i>0);
+	    	constructNewRuleManager(newRuleManager2, ruleManager2, loop2, i>0);
+      }
+
+		  if (!checkEquivalenceSingleLoop(newRuleManager1, newRuleManager2, doAlign, maxAttempts, to, freqs, aggp, 
+		  	dat, mut, doElim, doArithm, doDisj, doProp, mbpEqs, dAllMbp, dAddProp, dAddDat, dStrenMbp, dFwd, dRec, 
+		  	dGenerous, dSee, debug, i <= 0)) 
+			  return false;
+	  }
+    return true;
+  }
+
+
+
+
 	// check equivalence of programs
-	inline void checkEquivalence(const char *chcfileSrc, const char *chcfileDst, bool doAlign, 
+	inline void checkEquivalenceOfPrograms(const char *chcfileSrc, const char *chcfileDst, bool doAlign, 
 			unsigned maxAttempts, unsigned to, bool freqs, bool aggp, int dat, int mut, bool doElim, bool doArithm,
 			bool doDisj, int doProp, int mbpEqs, bool dAllMbp, bool dAddProp, bool dAddDat,
 			bool dStrenMbp, int dFwd, bool dRec, bool dGenerous, bool dSee, int debug)
@@ -830,52 +1017,11 @@ namespace ufo
 		if (!ruleManagerSrc.parse(string(chcfileSrc), doElim, doArithm)) return;
 		if (!ruleManagerDst.parse(string(chcfileDst), doElim, doArithm)) return;
 
-		ruleManagerSrc.preprocessing();
-		ruleManagerDst.preprocessing();
-
-		BndExpl bndSrc(ruleManagerSrc, debug);
-		BndExpl bndDst(ruleManagerDst, debug);
-
-		// if no iterator was found, the tool exits stating non-equivalence. Support more
-		for (int i = 0; i < ruleManagerSrc.cycles.size(); i++) 
-		{
-			bool iterFound = ruleManagerSrc.findIterators(bndSrc, i);
-			if (!iterFound) 
-			{
-				outs() << "no iterator was found for program 1. programs are not equivalent\n";
-				return;
-			}
-		}
-
-		for (int i = 0; i < ruleManagerDst.cycles.size(); i++) 
-		{
-			bool iterFound = ruleManagerDst.findIterators(bndDst, i);
-			if (!iterFound) 
-			{
-				outs() << "no iterator was found for program 2. programs are not equivalent\n";
-				return;
-			}
-		}
-
-		vector<vector<vector<int>>> nonIterCombs;
-		createNonIterCombs(ruleManagerSrc, ruleManagerDst, nonIterCombs);
-
-		// check for all combinations of variables, such that we match same type of variables
-		for (auto &pairings : nonIterCombs)
-		{
-      Equivalence eq(ruleManagerSrc, ruleManagerDst, m_efac, z3, pairings, maxAttempts, to, freqs, 
-					aggp, dat, mut, doElim, doArithm, doDisj, doProp, mbpEqs, dAllMbp, dAddProp, dAddDat,
-					dStrenMbp, dFwd, dRec, dGenerous, dSee, debug);
-
-      if (!eq.initialSanityChecks(0)) return;
-      if (doAlign && !eq.alignPrograms(0)) return;
-			if (eq.checkEquivalence())
-			{
-				outs() << "\nprograms are equivalent\n";
-				return;
-			}
-		}
-		outs() << "\nprograms are not equivalent\n";
+		if (checkEquivalence(ruleManagerSrc, ruleManagerDst, doAlign, maxAttempts, to, freqs, aggp, dat, mut, doElim, 
+			doArithm, doDisj, doProp, mbpEqs, dAllMbp, dAddProp, dAddDat, dStrenMbp, dFwd, dRec, dGenerous, dSee, debug))
+      outs() << "\nprograms are equivalent\n"; 
+    else 
+      outs() << "\nprograms are not equivalent\n";
   };
 }
 

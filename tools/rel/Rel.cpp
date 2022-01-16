@@ -127,7 +127,7 @@ int main (int argc, char ** argv)
 
 	if (!base && !aligned) aligned = true; // default
 
-  checkEquivalence(argv[argc-2], argv[argc-1], aligned, max_attempts, to, densecode, aggressivepruning,
+  checkEquivalenceOfPrograms(argv[argc-2], argv[argc-1], aligned, max_attempts, to, densecode, aggressivepruning,
                      do_dl, do_mu, do_elim, do_arithm, do_disj, do_prop, mbp_eqs,
                      d_m, d_p, d_d, d_s, d_f, d_r, d_g, d_se, debug);
 

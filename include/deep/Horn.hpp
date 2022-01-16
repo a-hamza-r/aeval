@@ -333,21 +333,21 @@ namespace ufo
           hr.body = conjoin(lin, m_efac);
       }
 
-      // if (doElim)
-      // {
-      //   int sz = chcs.size();
-      //   for (int c = 0; c < chcs.size(); c++)
-      //   {
-      //     chcsToCheck1.insert(c);
-      //     chcsToCheck2.insert(c);
-      //   }
-      //   if (!eliminateDecls()) return false;
+      /*if (doElim)
+      {
+        int sz = chcs.size();
+        for (int c = 0; c < chcs.size(); c++)
+        {
+          chcsToCheck1.insert(c);
+          chcsToCheck2.insert(c);
+        }
+        if (!eliminateDecls()) return false;
 
-      //   // eliminating all at once, otherwise elements at chcsToCheck* need updates
-      //   for (auto it = toEraseChcs.rbegin(); it != toEraseChcs.rend(); ++it)
-      //     chcs.erase(chcs.begin() + *it);
-      //   toEraseChcs.clear();
-      // }
+        // eliminating all at once, otherwise elements at chcsToCheck* need updates
+        for (auto it = toEraseChcs.rbegin(); it != toEraseChcs.rend(); ++it)
+          chcs.erase(chcs.begin() + *it);
+        toEraseChcs.clear();
+      }*/
 
       for (int i = 0; i < chcs.size(); i++)
         outgs[chcs[i].srcRelation].push_back(i);
@@ -856,14 +856,25 @@ namespace ufo
         // TODO: some cycles can be redundant
         if (newCycle)
         {
-          cycles.push_back(vector<int>());
-          prefixes.push_back(vector<int>());
-          for (int j = 0; j < i; j++) prefixes.back().push_back(vec[j]);
           res = true;
-        }
-        if (res)
-        {
-          cycles.back().push_back(c);
+          for (auto & cl : cycles)
+          {
+            if (cl.size() > 0)
+            {
+              if (cl[0] == c)
+              {
+                res = false;
+                break;
+              }
+            }
+          }
+          if (res)
+          {
+            cycles.push_back(vector<int>());
+            prefixes.push_back(vector<int>());
+            for (int j = 0; j < i; j++) prefixes.back().push_back(vec[j]);
+            cycles.back().push_back(c);
+          }
         }
       }
 
@@ -1193,9 +1204,9 @@ namespace ufo
         if (full)
         {
           outs() << "\n    body: \n";
-          if (treeSize(hr.body) < 1000)
+          // if (treeSize(hr.body) < 1000)
             pprint(hr.body, 4);
-          else outs () << " < . . . . too large . . . . >\n";
+          // else outs () << " < . . . . too large . . . . >\n";
         }
         else outs() << "\n";
       }
