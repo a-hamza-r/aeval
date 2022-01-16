@@ -18,7 +18,10 @@
     (inv1 a b 1 j count)
 ))
 
-(rule (=> (and (inv1 a b i j count) (< i count) (= j 1)) (inv2 a b i j count)))
+(rule (=> (and 
+  (inv1 a b i j count) 
+  (< i count))
+(inv2 a b i 1 count)))
 
 (rule (=> (and (inv2 a b i j count)
   (< j (* count 8))

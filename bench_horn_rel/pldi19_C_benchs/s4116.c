@@ -4,7 +4,7 @@
 //    more complicated sparse sdot
 //    gather is required
 
-TYPE s4116(int count, int j) {
+TYPE s4116(int count, int j, int inc) {
     TYPE sum = 0;
     for (int i = 0; i < count*8-1; i++) {
         off = inc + i;

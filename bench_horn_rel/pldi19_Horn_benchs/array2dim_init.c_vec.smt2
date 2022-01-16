@@ -38,9 +38,6 @@
 (rule (=> (and (inv2 a i j M N)
   (not (< j (* N 8))) (= i1 (+ i 1))) (inv1 a i1 j M N)))
 
-(rule (=> (and (inv1 a i j M N) (not (< i M))
-  (<= 0 i1) (< i1 M)
-    (<= 0 j1) (< j1 N)
-      (not (= (select (select a i1) j1) 0))) fail))
+(rule (=> (and (inv1 a i j M N) (not (< i M))) fail))
 
 (query fail)

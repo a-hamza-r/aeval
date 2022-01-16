@@ -1,0 +1,48 @@
+(declare-rel loop ((Array Int (Array Int Int)) (Array Int (Array Int Int)) (Array Int (Array Int Int)) Int Int ))
+(declare-rel exit ())
+(declare-var i Int )
+(declare-var i1 Int )
+(declare-var count Int )
+(declare-var a (Array Int (Array Int Int)) )
+(declare-var b (Array Int (Array Int Int)) )
+(declare-var c (Array Int (Array Int Int)) )
+(declare-var a1 (Array Int (Array Int Int)) )
+(declare-var a2 (Array Int (Array Int Int)) )
+(declare-var a3 (Array Int (Array Int Int)) )
+(declare-var a4 (Array Int (Array Int Int)) )
+(declare-var a5 (Array Int (Array Int Int)) )
+(declare-var a6 (Array Int (Array Int Int)) )
+(declare-var a7 (Array Int (Array Int Int)) )
+(declare-var a8 (Array Int (Array Int Int)) )
+
+(rule (=> 
+	(and 
+		(= i 0)
+		(> count 0)
+	)
+	(loop a b c i count)
+))
+(rule (=> 
+	(and 
+		(loop a b c i count)
+		(< i (* count 8))
+		(= a1 (store a i (store (select a i) i (+ (select (select a i) i) (* (select (select b i) i) (select (select c i) i))))))
+		(= a2 (store a1 (+ i 1) (store (select a1 (+ i 1)) (+ i 1) (+ (select (select a1 (+ i 1)) (+ i 1)) (* (select (select b (+ i 1)) (+ i 1)) (select (select c (+ i 1)) (+ i 1)))))))
+		(= a3 (store a2 (+ i 2) (store (select a2 (+ i 2)) (+ i 2) (+ (select (select a2 (+ i 2)) (+ i 2)) (* (select (select b (+ i 2)) (+ i 2)) (select (select c (+ i 2)) (+ i 2)))))))
+		(= a4 (store a3 (+ i 3) (store (select a3 (+ i 3)) (+ i 3) (+ (select (select a3 (+ i 3)) (+ i 3)) (* (select (select b (+ i 3)) (+ i 3)) (select (select c (+ i 3)) (+ i 3)))))))
+		(= a5 (store a4 (+ i 4) (store (select a4 (+ i 4)) (+ i 4) (+ (select (select a4 (+ i 4)) (+ i 4)) (* (select (select b (+ i 4)) (+ i 4)) (select (select c (+ i 4)) (+ i 4)))))))
+		(= a6 (store a5 (+ i 5) (store (select a5 (+ i 5)) (+ i 5) (+ (select (select a5 (+ i 5)) (+ i 5)) (* (select (select b (+ i 5)) (+ i 5)) (select (select c (+ i 5)) (+ i 5)))))))
+		(= a7 (store a6 (+ i 6) (store (select a6 (+ i 6)) (+ i 6) (+ (select (select a6 (+ i 6)) (+ i 6)) (* (select (select b (+ i 6)) (+ i 6)) (select (select c (+ i 6)) (+ i 6)))))))
+		(= a8 (store a7 (+ i 7) (store (select a7 (+ i 7)) (+ i 7) (+ (select (select a7 (+ i 7)) (+ i 7)) (* (select (select b (+ i 7)) (+ i 7)) (select (select c (+ i 7)) (+ i 7)))))))
+		(= i1 (+ i 8))
+	)
+	(loop a8 b c i1 count)
+))
+(rule (=> 
+	(and 
+		(loop a b c i count)
+		(not (< i (* count 8)))
+	)
+	exit
+))
+(query exit)

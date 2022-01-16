@@ -5,8 +5,8 @@
 
 /** vectorizes with gcc */
 TYPE s176(int count) {
-  int m = count;
-  for (int j = 0; j < m; j++) {
+  int m = count*4;
+  for (int j = 0; j < count; j++) {
     for (int i = 0; i < m; i++) {
       a[i] += b[i+m-j-1] * c[j];
     }

@@ -1,0 +1,50 @@
+(declare-rel inv1 ((Array Int Int) (Array Int (Array Int Int)) (Array Int (Array Int Int)) (Array Int (Array Int Int)) Int Int Int))
+(declare-rel inv2 ((Array Int Int) (Array Int (Array Int Int)) (Array Int (Array Int Int)) (Array Int (Array Int Int)) Int Int Int))
+(declare-var a (Array Int (Array Int Int)))
+(declare-var array (Array Int Int))
+(declare-var b (Array Int (Array Int Int)))
+(declare-var b1 (Array Int (Array Int Int)))
+(declare-var b2 (Array Int (Array Int Int)))
+(declare-var b3 (Array Int (Array Int Int)))
+(declare-var b4 (Array Int (Array Int Int)))
+(declare-var b5 (Array Int (Array Int Int)))
+(declare-var b6 (Array Int (Array Int Int)))
+(declare-var b7 (Array Int (Array Int Int)))
+(declare-var b8 (Array Int (Array Int Int)))
+(declare-var c (Array Int (Array Int Int)))
+(declare-var count Int)
+(declare-var i Int)
+(declare-var i1 Int)
+(declare-var j Int)
+(declare-var j1 Int)
+
+(declare-rel fail ())
+
+(rule (=> 
+    (and 
+        (> count 0)
+    )
+    (inv1 array a b c 1 i count)
+))
+
+(rule (=> (and (inv1 array a b c j i count) (< j count)) (inv2 array a b c j 0 count)))
+
+(rule (=> (and (inv2 array a b c j i count)
+ (< i (* count 8))
+ (= b1 (store b j (store (select b j) i (+ (select (select b (- j 1)) i) (* (select array (- (+ i j))) (select (select c j) i))))))
+ (= b2 (store b1 j (store (select b1 j) (+ i 1) (+ (select (select b1 (- j 1)) (+ i 1)) (* (select array (- (+ (+ i 1) j))) (select (select c j) (+ i 1)))))))
+ (= b3 (store b2 j (store (select b2 j) (+ i 2) (+ (select (select b2 (- j 1)) (+ i 2)) (* (select array (- (+ (+ i 2) j))) (select (select c j) (+ i 2)))))))
+ (= b4 (store b3 j (store (select b3 j) (+ i 3) (+ (select (select b3 (- j 1)) (+ i 3)) (* (select array (- (+ (+ i 3) j))) (select (select c j) (+ i 3)))))))
+ (= b5 (store b4 j (store (select b4 j) (+ i 4) (+ (select (select b4 (- j 1)) (+ i 4)) (* (select array (- (+ (+ i 4) j))) (select (select c j) (+ i 4)))))))
+ (= b6 (store b5 j (store (select b5 j) (+ i 5) (+ (select (select b5 (- j 1)) (+ i 5)) (* (select array (- (+ (+ i 5) j))) (select (select c j) (+ i 5)))))))
+ (= b7 (store b6 j (store (select b6 j) (+ i 6) (+ (select (select b6 (- j 1)) (+ i 6)) (* (select array (- (+ (+ i 6) j))) (select (select c j) (+ i 6)))))))
+ (= b8 (store b7 j (store (select b7 j) (+ i 7) (+ (select (select b7 (- j 1)) (+ i 7)) (* (select array (- (+ (+ i 7) j))) (select (select c j) (+ i 7)))))))
+ (= i1 (+ i 8)))
+  (inv2 array a b8 c j i1 count)))
+
+(rule (=> (and (inv2 array a b c j i count)
+ (not (< j (* count 8))) (= j1 (+ j 1))) (inv1 array a b c j1 i count)))
+
+(rule (=> (and (inv1 array a b c j i count) (not (< j count))) fail))
+
+(query fail)
