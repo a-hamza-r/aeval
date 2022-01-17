@@ -430,6 +430,17 @@ namespace ufo
       //     In case some bench requires a specific invariant,
       //     try to enable gradually.
 
+			auto & chc = ruleManager.chcs[ruleManager.prefixes[i][0]];
+			if (chc.dstRelation == dcl)
+				for (auto & v : chc.dstVars)
+				{
+					if (containsOp<ARRAY_TY>(v)) continue;
+					ExprVector tmp = {v};
+					getConj(replaceAll(keepQuantifiers(chc.body, tmp),
+						 chc.dstVars, ruleManager.invVars[dcl]), cands[dcl]);
+				}
+			// GF: if the code above takes significant time, make it parametric
+
       if (!dSee) continue;
       Expr pref = bnd.compactPrefix(i);
       ExprSet tmp;
@@ -511,10 +522,6 @@ namespace ufo
     quantifiedFla = createQuantifiedFormulaRestr(fla, varsIters);
     quantifiedFla = mk<AND>(consts, mk<AND>(coefs, quantifiedFla));
 
-    outs() << "quantifiedFla: \n";
-		pprint(quantifiedFla);
-		outs() << "\n";
-
 		ExprMap c1, c2, c12, m1, m2, m12;
 		for (auto &c : {const1, const2}) c12[c] = mkMPZ(0, m_efac);
 		c1[const1] = mkMPZ(0, m_efac);
@@ -531,7 +538,6 @@ namespace ufo
 			return false;
     }
 
-  	// outs() << "model: " << model << "\n";
 		// iterative solving optimization query to get all minmodels
 
   	ExprMap mp;	ExprSet s{coef1, coef2, const1, const2};
@@ -667,7 +673,7 @@ namespace ufo
 		bool impliesEq = false;
 		for (auto &possibleAlign : possibleFactQueryAligns)
 		{
-			// check if adding certain iterations to query will make the initial values of iterators equal
+ 			// check if adding certain iterations to query will make the initial values of iterators equal
 			// it is not greedy approach currently
 			Expr prefRuleBody1, prefRuleBody2;
 			ruleManager1.createAlignment(0, possibleAlign[0], 0, prefRuleBody1, dummy, bnd1, false);
@@ -675,8 +681,9 @@ namespace ufo
 
 			preForEqualityCheck.insert(prefRuleBody1);
 			preForEqualityCheck.insert(prefRuleBody2);
+
 			Expr eq = mk<EQ>(iterF, iterS);
-			impliesEq = bool(u.implies(conjoin(preForEqualityCheck, m_efac), eq));
+			impliesEq = bool(u.implies(mk<AND>(prefRuleBody1, prefRuleBody2), eq));
 
 			if (impliesEq)
 			{
@@ -795,6 +802,7 @@ namespace ufo
 		  ind->body = mk<AND>(ind->body, mk<IMPL>(srcEq, dstEq));
 		}
 
+    // GF: local vars seem incomplete here. To fix
     for (auto &chc : ruleManagerProduct.chcs)
     	chc.body = eliminateQuantifiers(chc.body, chc.locVars, true, false);
 

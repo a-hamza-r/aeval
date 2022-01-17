@@ -68,14 +68,14 @@ namespace ufo
           }
         }
       }
-      else if (isOpX<T>(conj)) 
+      else if (isOpX<T>(conj))
       {
         if (skipArray && containsOp<ARRAY_TY>(conj)) return;
         if (contains(conj, toFind)) result = conj;
       }
     }
 
-	void combinations(vector<int> &vars1, vector<int> &vars2, vector<vector<int>> c, 
+	void combinations(vector<int> &vars1, vector<int> &vars2, vector<vector<int>> c,
 		vector<int> vars2Used, vector<vector<vector<int>>> &combs, int pos)
 	{
 		if (c.size() >= vars1.size())
@@ -93,7 +93,7 @@ namespace ufo
 				c.pop_back();
 				vars2Used.pop_back();
 			}
-		} 
+		}
 	}
 
 
@@ -108,14 +108,14 @@ namespace ufo
 		}
 	}
 
-	void joinVars(vector<vector<vector<int>>> &vec1, vector<vector<vector<int>>> &vec2, 
+	void joinVars(vector<vector<vector<int>>> &vec1, vector<vector<vector<int>>> &vec2,
 	  vector<vector<vector<int>>> &combs)
 	{
 		if (vec1.empty() || vec2.empty())
 		{
 			concatenateVectors(combs, vec1, vec2);
 		}
-		else 
+		else
 		{
 			for (auto &it : vec1)
 			{
@@ -158,9 +158,9 @@ namespace ufo
 	    Extended_CHCs(ExprFactory &efac, EZ3 &z3, string n, int d = false) : CHCs(efac, z3, n, d) {};
 
 	    Extended_CHCs(const Extended_CHCs &old_CHCs) : CHCs(old_CHCs),
-	    	srcFactVars(old_CHCs.srcFactVars), iter(old_CHCs.iter), iterGrows(old_CHCs.iterGrows), 
-	    	numOfIters(old_CHCs.numOfIters), varsInt(old_CHCs.varsInt), varsBool(old_CHCs.varsBool), 
-	    	varsArray(old_CHCs.varsArray), postLoopBody(old_CHCs.postLoopBody), postLoopSrcVars(old_CHCs.postLoopSrcVars), 
+	    	srcFactVars(old_CHCs.srcFactVars), iter(old_CHCs.iter), iterGrows(old_CHCs.iterGrows),
+	    	numOfIters(old_CHCs.numOfIters), varsInt(old_CHCs.varsInt), varsBool(old_CHCs.varsBool),
+	    	varsArray(old_CHCs.varsArray), postLoopBody(old_CHCs.postLoopBody), postLoopSrcVars(old_CHCs.postLoopSrcVars),
 	    	postLoopDstVars(old_CHCs.postLoopDstVars) {}
 
       Expr getDecl(Expr relation)
@@ -257,11 +257,11 @@ namespace ufo
 				newVar = cloneVar(var, newVar);
 				loopIter = replaceAll(loopIter, var, newVar);
 				remainingIters = replaceAll(remainingIters, query->srcVars[i], newVar);
-				// for case where only one iter was added to query 
-				// in that case, when srcVars of query were replaced by renamed vars to conjoin one iter of loop and 
+				// for case where only one iter was added to query
+				// in that case, when srcVars of query were replaced by renamed vars to conjoin one iter of loop and
 				// whole query to be used as the assumption, the lastIterVars still contained srcVars. But whole formula
-				// does not contain variables in lastIterVars. hence, they need to be updated too. 
-				// find a better way to handle this  
+				// does not contain variables in lastIterVars. hence, they need to be updated too.
+				// find a better way to handle this
 				if (lastIterVars[i] == query->srcVars[i]) lastIterVars[i] = newVar;
 			}
 			Expr allIters = mk<AND>(loopIter, remainingIters);
@@ -277,12 +277,12 @@ namespace ufo
 			Expr assump = mk<TRUE>(m_efac);
 			for (auto &conj : conjs)
 			{
-				if (isOpX<EQ>(conj)) 
+				if (isOpX<EQ>(conj))
 					assump = mk<AND>(assump, conj);
 			}
-			
+
 			Expr newGuard = myAbduce(goal, assump, varsNotInc);
-			
+
 			rule.body = mk<AND>(rule.body, newGuard);
 		}*/
 
@@ -295,13 +295,13 @@ namespace ufo
 			bool preLoopFound = false, postLoopFound = false;
 			for (auto it = chcs.begin(); it != chcs.end(); it++)
 			{
-				if (it->isFact) 
+				if (it->isFact)
 					fact = it;
 
-				if (it->isQuery) 
+				if (it->isQuery)
 					query = it;
 
-				if (!it->isFact && !it->isInductive && !it->isQuery) 
+				if (!it->isFact && !it->isInductive && !it->isQuery)
 				{
 					if (it->dstRelation == loop.srcRelation)
 					{
@@ -380,7 +380,7 @@ namespace ufo
 					chc.head = renameFdecl(chc.head);
 					chc.dstRelation = chc.head->arg(0);
 				}
-				else 
+				else
 				{
 					chc.head = failDecl;
 					chc.dstRelation = failDecl;
@@ -391,7 +391,7 @@ namespace ufo
 		}
 */
 
-    
+
     // to convert CHCs into a forall formula to be taken input directly by freqhorn
     // possibly, add exists formula too
 		void serializeFormulas()
@@ -469,7 +469,7 @@ namespace ufo
 	          for (auto &it : s)
 	          {
 	            Expr normalized = ineqSimplifier(iter, simplifyArithm(it));
-	            if (isOpX<EQ>(normalized) && normalized->left() == iter)  
+	            if (isOpX<EQ>(normalized) && normalized->left() == iter)
 	            {
 	              // if multiple equalities are found, just return; support more
 	              if (newInit) return false;
@@ -478,7 +478,7 @@ namespace ufo
 	          }
 	          initVal = newInit;
 	        }
-	        if (initVal) 
+	        if (initVal)
 	        {
 	        	Expr normalized = ineqSimplifier(iter, simplifyArithm(initVal));
 	          initVal = normalized->right();
@@ -511,11 +511,12 @@ namespace ufo
 
 		void mergeIterationsFact(HornRuleExt &fact, int num, ExprVector &ssa, BndExpl &bnd, bool actualAlign)
 		{
-			if (num <= 0) return;
+			// GF: `num` can be zero since even if we unroll zero times, we still need to have the prefix
+		  // if (num <= 0) return;
 
 			// case when we do not already have processed a preloop; we need to save variables in srcFactVars
 			// in the other case we already have srcFactVars info, the ssa has already done proper unrolling
-			// should only work when we are actually aligning and not just checking, as we do not want to 
+			// should only work when we are actually aligning and not just checking, as we do not want to
 			// modify srcFactVars if we are not aligning; if not modifying srcFactVars, ssa already has handled
 			ExprVector tempVars;
 			// if (actualAlign)
@@ -527,7 +528,7 @@ namespace ufo
 
 				// 	tempVars.push_back(newVar);
 				// }
-			
+
 				// ssa[0] = replaceAll(ssa[0], bnd.bindVars[0], tempVars);
 				// ssa[1] = replaceAll(ssa[1], bnd.bindVars[0], tempVars);
 
@@ -545,8 +546,8 @@ namespace ufo
 			ssa[num-1] = replaceAll(ssa[num-1], bnd.bindVars[num], loop.dstVars);
 		}
 
-		
-    void createAlignment(int unrollTrans, int unrollFact, int unrollQuery, Expr& prefRuleBody, 
+
+    void createAlignment(int unrollTrans, int unrollFact, int unrollQuery, Expr& prefRuleBody,
 			ExprVector& prefRuleLocVars, /*ExprVector& lastIterVars, */BndExpl &bnd, bool actualAlign=true)
 		{
 			if (actualAlign)
@@ -566,7 +567,7 @@ namespace ufo
 			for (auto &it : outgs[rel])
 				if (chcs[it].isQuery)
 					query = &chcs[it];
-			
+
 			rel = getDecl(rel);
 
 			prefRuleBody = prefixRule.body;
@@ -585,7 +586,7 @@ namespace ufo
 
       ExprSet factBndVars;
       filter(conjoin(ssa, m_efac), IsConst(), inserter(factBndVars, factBndVars.begin()));
-		
+
       mergeIterationsFact(prefixRule, unrollFact, ssa, bnd, actualAlign);
 			trace.clear();
 
@@ -630,7 +631,7 @@ namespace ufo
       mergeIterationsLoop(rule, unrollTrans-1, ssa2, bnd);
 
       // make required changes to the CHC system
-      if (unrollFact > 0) 
+      if (unrollFact > 0)
       {
       	prefRuleBody = conjoin(ssa, m_efac);
     //     for (auto &var : factBndVars)
@@ -641,7 +642,7 @@ namespace ufo
     //   		prefRuleLocVars.push_back(var1);
 				// }
       }
-			if (unrollTrans > 1) 
+			if (unrollTrans > 1)
 			{
 				Expr addToRule = conjoin(ssa2, m_efac);
         for (auto &var : ruleBndVars)
@@ -654,10 +655,10 @@ namespace ufo
 				}
 				rule.body = mk<AND>(rule.body, addToRule);
 			}
-			if (unrollQuery > 0) 
+			if (unrollQuery > 0)
 			{
 				Expr addToQuery = conjoin(ssa1, m_efac);
-		        
+
 				for (auto &var : queryBndVars)
 				{
 					Expr new_name = mkTerm<string>(varname+lexical_cast<string>(var), m_efac);
@@ -697,7 +698,7 @@ namespace ufo
 	      for (auto &it : allExprs)
 	      {
 	      	Expr normalized = ineqSimplifier(b, simplifyArithm(it));
-	        if (contains(it, a) && isOpX<EQ>(normalized) && normalized->left() == b) 
+	        if (contains(it, a) && isOpX<EQ>(normalized) && normalized->left() == b)
 	        {
 	          if (allExprsConj) multipleTransVal = true;
 	          else allExprsConj = it;
@@ -705,7 +706,7 @@ namespace ufo
 	      }
 
 	      // Cases when transition can't be found: multiple transition rels, no transition rel, contains an ITE
-	      if (multipleTransVal || !allExprsConj || allExprsConj->right()->arity() <= 1 || containsOp<ITE>(allExprsConj)) 
+	      if (multipleTransVal || !allExprsConj || allExprsConj->right()->arity() <= 1 || containsOp<ITE>(allExprsConj))
 	        return false;
 
 	      Expr right = allExprsConj->right();
@@ -713,7 +714,7 @@ namespace ufo
 	      // assuming no local vars
 	      if (right->arg(0) == a)
 	        transitionVal = right->arg(1);
-	      else 
+	      else
 	        transitionVal = right->arg(0);
 
 	      // check if delta value is constant; Eq. 10, section 4 in paper
@@ -741,31 +742,31 @@ namespace ufo
 	        // make sure there is no case where both lt and le are not null
 	        // cannot think of any but could be
 	        // in case lt and le are either conjunction or disjunction, handle better
-	        if (lt) 
+	        if (lt)
 	        {
 	          lt = ineqSimplifier(a, lt);
 	          if (!(isOpX<AND>(lt) || isOpX<OR>(lt))) limitEq = lt;
 	        }
-	        if (le) 
+	        if (le)
 	        {
 	          add = mkMPZ(1, a->getFactory());
 	          le = ineqSimplifier(a, le);
 	          if (!(isOpX<AND>(le) || isOpX<OR>(le))) limitEq = le;
 	        }
 	      }
-	      else 
+	      else
 	      {
 	        findExpr<GT>(a, body, gt);
 	        findExpr<GEQ>(a, body, ge);
 
 	        // make sure there is no case where both gt and ge are not null
 	        // cannot think of any but could be
-	        if (gt) 
+	        if (gt)
 	        {
 	          gt = ineqSimplifier(a, gt);
 	          if (!(isOpX<AND>(gt) || isOpX<OR>(gt))) limitEq = gt;
 	        }
-	        if (ge) 
+	        if (ge)
 	        {
 	          add = mkMPZ(-1, a->getFactory());
 	          ge = ineqSimplifier(a, ge);
@@ -773,14 +774,14 @@ namespace ufo
 	        }
 	      }
 
-	      if (limitEq) 
+	      if (limitEq)
 	      {
 	        limitVal = limitEq->arg(1);
 
 	        // check if limit value is constant; Eq. 8, section 4
 	        Expr replacedLimit = replaceAll(limitVal, invVars[rel], invVarsPrime[rel]);
 	        bool constLimitValCheck = bool(u.implies(body, mk<EQ>(limitVal, replacedLimit)));
-	        
+
 	        // check the case that iter does not exceed limit value during transition; Eq. 7, section 4
 	        bool loopEndCheck = limitEq && !u.isSat(mk<AND>(mkNeg(limitEq), body));
 
