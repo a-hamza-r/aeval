@@ -935,19 +935,20 @@ namespace ufo
       ExprVector ops;
       getMultOps (e, ops);
 
-      ExprVector rem;
-      for (auto a : ops)
+      for (auto it = ops.begin(); it != ops.end();)
       {
-        if (isOpX<MPZ>(a))
-          coef *= lexical_cast<cpp_int>(a);
-        else
-          rem.push_back(a);
+        if (isOpX<MPZ>(*it))
+        {
+          coef *= lexical_cast<cpp_int>(*it);
+          it = ops.erase(it);
+        }
+        else ++it;
       }
 
       Expr num = mkMPZ (coef, e->getFactory());
-      if (rem.empty() || coef == 0) return num;
+      if (ops.empty() || coef == 0) return num;
 
-      Expr remTerm = mkmult(rem, e->getFactory());
+      Expr remTerm = mkmult(ops, e->getFactory());
       if (coef == 1) return remTerm;
 
       return mk<MULT>(num, remTerm);
@@ -978,22 +979,39 @@ namespace ufo
   {
     if (isOpX<IDIV>(e) && isOpX<MPZ>(e->right()))
     {
+      auto & efac = e->getFactory();
       cpp_int coef = 1;
       cpp_int divider = lexical_cast<cpp_int>(e->right());
+      if (divider == 1)
+        return e->left();
       ExprVector ops;
       getMultOps (e->left(), ops);
 
       bool onlyNum = true;
-      for (auto a : ops)
-        if (isOpX<MPZ>(a))
-          coef *= lexical_cast<cpp_int>(a);
+      for (auto it = ops.begin(); it != ops.end();)
+      {
+        if (isOpX<MPZ>(*it))
+        {
+          coef *= lexical_cast<cpp_int>(*it);
+          it = ops.erase(it);
+        }
         else
+        {
           onlyNum = false;
+          ++it;
+        }
+      }
 
       if (coef == 0)
-        return mkMPZ (0, e->getFactory());
+        return mkMPZ (0, efac);
       if (onlyNum)
-        return mkMPZ (coef / divider, e->getFactory());
+        return mkMPZ (coef / divider, efac);
+      if (coef % divider == 0)
+      {
+        if (coef / divider != 1)
+          ops.push_back(mkMPZ (coef / divider, efac));
+        return mkmult(ops, efac);
+      }
     }
     return e;
   }

@@ -15,14 +15,14 @@ namespace ufo
 	    Extended_CHCs* subRule1;
 	    Extended_CHCs* subRule2;
 
-	    Product_CHCs(Extended_CHCs &rules1, Extended_CHCs &rules2, string n, int d = false) : 
+	    Product_CHCs(Extended_CHCs &rules1, Extended_CHCs &rules2, string n, int d = false) :
 	    	Extended_CHCs(rules1.m_efac, rules1.m_z3, n, d), subRule1(&rules1), subRule2(&rules2) {};
 
 		void nonRecursiveProduct(HornRuleExt &chc1, HornRuleExt &chc2, Expr &product, ExprVector &vars)
 		{
 			ExprVector chc1NonRecPart, chc2NonRecPart;
 			Expr rel;
-			
+
 			getSpecificSrcRelations(chc1.srcRelation, chc1.dstRelation, false, chc1NonRecPart);
 			getSpecificSrcRelations(chc2.srcRelation, chc2.dstRelation, false, chc2NonRecPart);
 
@@ -99,16 +99,16 @@ namespace ufo
 			RTransform(chc1, transformed, 0);	RTransform(chc2, transformed, 1);
 
 			// might have to check if there are more than two relation symbols in transformed
-			productRelationSymbols(ExprVector{transformed[0]->left()->left(), transformed[1]->left()->left()}, 
+			productRelationSymbols(ExprVector{transformed[0]->left()->left(), transformed[1]->left()->left()},
 				product, nullV, false);
 
 			// remove head(C) from body
-			if (bind::fapp(transformed[0]->left(), chc1.dstVars) == transformed[0] 
-				&& bind::fapp(transformed[1]->left(), chc2.dstVars) == transformed[1]) 
+			if (bind::fapp(transformed[0]->left(), chc1.dstVars) == transformed[0]
+				&& bind::fapp(transformed[1]->left(), chc2.dstVars) == transformed[1])
 			{
 				product = NULL;
 			}
-			else 
+			else
 			{
 				vars.insert(vars.end(), transformed[0]->args_begin()+1, transformed[0]->args_end());
 				vars.insert(vars.end(), transformed[1]->args_begin()+1, transformed[1]->args_end());
@@ -137,22 +137,22 @@ namespace ufo
 
 			newProductRule.body = constraintPr;
 
-			if (nonRecursivePr && recursivePr) 
+			if (nonRecursivePr && recursivePr)
 			{
 				newProductRule.srcRelation = mk<AND>(nonRecursivePr, recursivePr);
 				concatenateVectors(newProductRule.srcVars, nonRecursivePrVars, recursivePrVars);
 			}
-			else if (nonRecursivePr) 
+			else if (nonRecursivePr)
 			{
 				newProductRule.srcRelation = nonRecursivePr;
 				newProductRule.srcVars = nonRecursivePrVars;
 			}
-			else if (recursivePr) 
+			else if (recursivePr)
 			{
 				newProductRule.srcRelation = recursivePr;
 				newProductRule.srcVars = recursivePrVars;
 			}
-			else 
+			else
 			{
 				newProductRule.srcRelation = mk<TRUE>(m_efac);
 				newProductRule.srcVars = ExprVector();
@@ -185,14 +185,14 @@ namespace ufo
 			queryPr.body = mk<AND>(query1->body, query2->body);
 
 			queryPr.srcRelation = mk<AND>(query1->srcRelation, query2->srcRelation);
-			queryPr.dstRelation = mkTerm<string>(lexical_cast<string>(query1->dstRelation) + 
+			queryPr.dstRelation = mkTerm<string>(lexical_cast<string>(query1->dstRelation) +
 				"*" + lexical_cast<string>(query2->dstRelation), m_efac);
 
 			// queries do not have dstVars
 			queryPr.dstVars = ExprVector();
 			concatenateVectors(queryPr.srcVars, query1->srcVars, query2->srcVars);
 			concatenateVectors(queryPr.locVars, query1->locVars, query2->locVars);
-			
+
 			queryPr.isFact = false;
 			queryPr.isQuery = true;
 			queryPr.isInductive = false;
@@ -216,7 +216,7 @@ namespace ufo
     }
 
 
-		void productRelationSymbols(ExprVector predicates, Expr &predicateP, vector<HornRuleExt> &rulesOfP, 
+		void productRelationSymbols(ExprVector predicates, Expr &predicateP, vector<HornRuleExt> &rulesOfP,
 			bool calculateRulesOfP)
 		{
 			ExprVector productTypes;
@@ -224,15 +224,15 @@ namespace ufo
 
 			Expr decl1 = subRule1->getDecl(rel1), decl2 = subRule2->getDecl(rel2);
 
-			Expr productRel = mkTerm<string>(lexical_cast<string>(rel1) + "*" + 
+			Expr productRel = mkTerm<string>(lexical_cast<string>(rel1) + "*" +
 				lexical_cast<string>(rel2), m_efac);
 
 			productTypes.insert(productTypes.end(), decl1->args_begin()+1, decl1->args_begin()+decl1->arity()-1);
 			productTypes.insert(productTypes.end(), decl2->args_begin()+1, decl2->args_begin()+decl2->arity());
 
 			predicateP = bind::fdecl(productRel, productTypes);
-			
-			if (calculateRulesOfP) 
+
+			if (calculateRulesOfP)
 				calculateProductOfRules(rel1, rel2, rulesOfP);
 		}
 
@@ -252,23 +252,23 @@ namespace ufo
 			productRelationSymbols(ExprVector{chc1.dstRelation, chc2.dstRelation}, head, nullV, false/*, nullV1*/);
 			newProductRule.dstRelation = head->left();
 			concatenateVectors(newProductRule.dstVars, chc1.dstVars, chc2.dstVars);
-			
+
 			// body product
 			bodyProduct(chc1, chc2, newProductRule);
 
 			concatenateVectors(newProductRule.locVars, chc1.locVars, chc2.locVars);
 
 			// do not push if one is inductive and other one is not. Push in all other cases
-			if ((newProductRule.isInductive && chc1.isInductive && chc2.isInductive) || !newProductRule.isInductive) 
+			if ((newProductRule.isInductive && chc1.isInductive && chc2.isInductive) || !newProductRule.isInductive)
 				rulesOfP.push_back(newProductRule);
 		}
 
 		void assignVarsAndRewrite()
 		{
-			for (auto &chc : chcs) 
+			for (auto &chc : chcs)
 			{
 				ExprVector srcVars = chc.srcVars, dstVars = chc.dstVars;
-				
+
 				// might add dstVars of one of the CHCs to product locVars twice in some cases, should not be a problem
 				concatenateVectors(chc.locVars, srcVars, dstVars);
 				chc.srcVars.clear(); chc.dstVars.clear();
@@ -277,7 +277,7 @@ namespace ufo
 				chc.assignVarsAndRewrite(srcVars, invVars[chc.srcRelation], dstVars, invVarsPrime[chc.dstRelation], eqs);
 				chc.body = mk<AND>(chc.body, conjoin(eqs, m_efac));
 
-				// for srcFactVars, we might add unnecessary relations to the body, 
+				// for srcFactVars, we might add unnecessary relations to the body,
 				// also the locVars might contain duplicate variables. Fix later
 				if (chc.isFact)
 				{
@@ -292,7 +292,7 @@ namespace ufo
 
 
 		// generates the product of two CHC systems
-		// At many places, it is assumed that there are only two systems, 
+		// At many places, it is assumed that there are only two systems,
 		// hence the operations done are not generic i.e. for product of more than two CHC systems
 		void createProduct()
 		{
@@ -317,17 +317,17 @@ namespace ufo
         C_a = worklist[0];                     // GF: you should avoid copying here
 				worklist.erase(worklist.begin());
 
-				// AH: In the original algorithm, the operation PARTITION is used that is defined: 
+				// AH: In the original algorithm, the operation PARTITION is used that is defined:
 				// 'operator partition from a set to a set of its disjoint subsets'
-				// Here, just one partition created of two symbols because there are only two relation symbols here 
+				// Here, just one partition created of two symbols because there are only two relation symbols here
 
 				// argument false for non-recursive; getting non-recursive parts of the srcrelation
 				getSpecificSrcRelations(C_a.srcRelation, C_a.dstRelation, false, partition);
 				getSpecificSrcRelations(C_a.srcRelation, C_a.dstRelation, false, partition);
 
-				if (partition.size() >= 2) 
+				if (partition.size() >= 2)
 				{
-					// take product of relation symbols in partition, 
+					// take product of relation symbols in partition,
 					// true specified if product of rules of relations is to be calculated
 					productRelationSymbols(partition, freshP, rulesOfP, true);
 					C_a.srcRelation = freshP->left();
@@ -338,12 +338,12 @@ namespace ufo
 				if (!isOpX<AND>(C_a.srcRelation))
 				{
 					// if freshP is not NULL, it went into the if-statement (partition.size() >= 2)
-					if (freshP) addDecl(freshP);					
+					if (freshP) addDecl(freshP);
 					chcs.push_back(C_a);
 				}
 			}
 
-			// changes variables from _v1_ and _v2_ prefixes to _pr_ with necessary changes 
+			// changes variables from _v1_ and _v2_ prefixes to _pr_ with necessary changes
 			assignVarsAndRewrite();
 
 			for (int i = 0; i < chcs.size(); i++)
@@ -357,7 +357,7 @@ namespace ufo
 	};
 
 
-	class Equivalence 
+	class Equivalence
 	{
 		private:
 			ExprFactory &m_efac;
@@ -370,47 +370,47 @@ namespace ufo
 			int itersOutLoopR2;
 			int itersInLoopR1;
 			int itersInLoopR2;
-	
+
 		public:
 			vector<vector<int>> pairings;
-			unsigned maxAttempts; 
-			unsigned to; 
-			bool freqs; 
-			bool aggp; 
-			int dat; 
-			int mut; 
-			bool doElim; 
+			unsigned maxAttempts;
+			unsigned to;
+			bool freqs;
+			bool aggp;
+			int dat;
+			int mut;
+			bool doElim;
 			bool doArithm;
-			bool doDisj; 
-			int doProp; 
-			int mbpEqs; 
-			bool dAllMbp; 
-			bool dAddProp; 
+			bool doDisj;
+			int doProp;
+			int mbpEqs;
+			bool dAllMbp;
+			bool dAddProp;
 			bool dAddDat;
-			bool dStrenMbp; 
-			int dFwd; 
-			bool dRec; 
+			bool dStrenMbp;
+			int dFwd;
+			bool dRec;
 			bool dGenerous;
-			int debug; 
-			bool dSee; 
+			int debug;
+			bool dSee;
 
 			Equivalence(Extended_CHCs r1, Extended_CHCs r2, ExprFactory &efac, EZ3 &z3,
-				vector<vector<int>> combs, unsigned _maxAttempts, unsigned _to, bool _freqs, bool _aggp, int _dat, int _mut, 
+				vector<vector<int>> combs, unsigned _maxAttempts, unsigned _to, bool _freqs, bool _aggp, int _dat, int _mut,
 				bool _doElim, bool _doArithm, bool _doDisj, int _doProp, int _mbpEqs, bool _dAllMbp, bool _dAddProp, bool _dAddDat,
-				bool _dStrenMbp, int _dFwd, bool _dRec, bool _dGenerous, bool _dSee, int _debug) : 
-				m_efac(efac), m_z3(z3), u(efac, to), ruleManager1(r1), ruleManager2(r2), pairings(combs), 
-				maxAttempts(_maxAttempts), to(_to), freqs(_freqs), aggp(_aggp), dat(_dat), mut(_mut), 
-				doElim(_doElim), doArithm(_doArithm), doDisj(_doDisj), doProp(_doProp), mbpEqs(_mbpEqs), dAllMbp(_dAllMbp), 
-				dAddProp(_dAddProp), dAddDat(_dAddDat), dStrenMbp(_dStrenMbp), dFwd(_dFwd), dRec(_dRec), 
+				bool _dStrenMbp, int _dFwd, bool _dRec, bool _dGenerous, bool _dSee, int _debug) :
+				m_efac(efac), m_z3(z3), u(efac, _to), ruleManager1(r1), ruleManager2(r2), pairings(combs),
+				maxAttempts(_maxAttempts), to(_to), freqs(_freqs), aggp(_aggp), dat(_dat), mut(_mut),
+				doElim(_doElim), doArithm(_doArithm), doDisj(_doDisj), doProp(_doProp), mbpEqs(_mbpEqs), dAllMbp(_dAllMbp),
+				dAddProp(_dAddProp), dAddDat(_dAddDat), dStrenMbp(_dStrenMbp), dFwd(_dFwd), dRec(_dRec),
 				dGenerous(_dGenerous), dSee(_dSee), debug(_debug)
 			 {}
 
-	bool learnInvariantsPr(CHCs &ruleManager, ExprSet& currentMatching, unsigned maxAttempts, 
+	bool learnInvariantsPr(CHCs &ruleManager, ExprSet& currentMatching, unsigned maxAttempts,
 		unsigned to, bool freqs, bool aggp, int dat, int mut, bool doElim, bool doArithm,
 		bool doDisj, int doProp, int mbpEqs, bool dAllMbp, bool dAddProp, bool dAddDat,
 		bool dStrenMbp, int dFwd, bool dRec, bool dGenerous, bool dSee)
   {
-    
+
     if (debug > 4) ruleManager.print(true);
     BndExpl bnd(ruleManager, to, debug);
 
@@ -459,22 +459,22 @@ namespace ufo
   }
 
 
-  bool getAlignmentVals(Expr pre, Expr rel1, Expr rel2)
+  bool getAlignmentVals(ExprSet& pre, Expr rel1, Expr rel2)
   {
-  	
+
   	int iter1 = ruleManager1.iter, iter2 = ruleManager2.iter;
-  	
-  	outs() << "\n\nassuming iters: " 
+
+  	outs() << "\n\nassuming iters: "
   		<< ruleManager1.invVars[rel1][iter1] << " and " << ruleManager2.invVars[rel2][iter2] << "\n";
-    
+
     Expr numIters1 = ruleManager1.numOfIters;
     Expr numIters2 = ruleManager2.numOfIters;
     outs() << "numIters: " << numIters1 << " and " << numIters2 << "\n";
 
-    if (numIters1 == mkMPZ(-1, m_efac) || numIters2 == mkMPZ(-1, m_efac)) 
+    if (numIters1 == mkMPZ(-1, m_efac) || numIters2 == mkMPZ(-1, m_efac))
     {
     	outs() << "number of iterations were not found\n";
-    	return false; 
+    	return false;
     }
 
   	// create a quantified formula for optimization query
@@ -483,10 +483,8 @@ namespace ufo
 
     Expr const1 = bind::intConst(mkTerm<string>("const1", m_efac));
     Expr const2 = bind::intConst(mkTerm<string>("const2", m_efac));
-    
-    Expr minCoef1, minCoef2, minConst1, minConst2;
 
-    Expr quantifiedFla;
+    Expr minCoef1, minCoef2, minConst1, minConst2, quantifiedFla;
 
     Expr coefs = mk<AND>(mk<GT>(coef1, mkMPZ(0, m_efac)), mk<GT>(coef2, mkMPZ(0, m_efac)));
     Expr consts = mk<AND>(mk<GEQ>(const1, mkMPZ(0, m_efac)), mk<GEQ>(const2, mkMPZ(0, m_efac)));
@@ -494,42 +492,42 @@ namespace ufo
     Expr numIters = bind::intConst(mkTerm<string>("numIters1", m_efac));
     Expr numItersP = bind::intConst(mkTerm<string>("numIters2", m_efac));
 
-    Expr fla = mk<AND>(mk<EQ>(numIters, numIters1), mk<EQ>(numItersP, numIters2));
-
     ExprVector varsIters;
-    
-    fla = mk<AND>(pre, fla);
-    Expr implFla = mk<EQ>(mk<MULT>(coef2, mk<MINUS>(numIters, const1)), 
+    Expr implFla = mk<EQ>(mk<MULT>(coef2, mk<MINUS>(numIters, const1)),
     	mk<MULT>(coef1, mk<MINUS>(numItersP, const2)));
-    
-    filter(fla, IsConst(), inserter(varsIters, varsIters.begin()));
-    
-    fla = mk<IMPL>(fla, implFla); 
+
+		for (auto it = pre.begin(); it != pre.end(); )
+			if (emptyIntersect(*it, numIters1) &&
+				  emptyIntersect(*it, numIters2)) it = pre.erase(it);
+			else ++it;
+
+		pre.insert(mk<EQ>(numIters, numIters1));
+		pre.insert(mk<EQ>(numItersP, numIters2));
+
+    filter(conjoin(pre, m_efac), IsConst(), inserter(varsIters, varsIters.begin()));
+
+    Expr fla = mk<IMPL>(conjoin(pre, m_efac), implFla);
 
     quantifiedFla = createQuantifiedFormulaRestr(fla, varsIters);
     quantifiedFla = mk<AND>(consts, mk<AND>(coefs, quantifiedFla));
 
-    // outs() << "quantifiedFla: " << quantifiedFla << "\n";
+    outs() << "quantifiedFla: \n";
+		pprint(quantifiedFla);
+		outs() << "\n";
 
-    Expr constsZero = mk<AND>(mk<EQ>(const1, mkMPZ(0, m_efac)), mk<EQ>(const2, mkMPZ(0, m_efac)));
-    Expr const1Zero = mk<EQ>(const1, mkMPZ(0, m_efac));
-    Expr const2Zero = mk<EQ>(const2, mkMPZ(0, m_efac));
+		ExprMap c1, c2, c12, m1, m2, m12;
+		for (auto &c : {const1, const2}) c12[c] = mkMPZ(0, m_efac);
+		c1[const1] = mkMPZ(0, m_efac);
+		c2[const2] = mkMPZ(0, m_efac);
 
-    Expr model;
-    
-    if (u.isSat(mk<AND>(quantifiedFla, constsZero))) model = u.getModel();
-    else if (u.isSat(mk<AND>(quantifiedFla, const1Zero))) model = u.getModel();
-    else if (u.isSat(mk<AND>(quantifiedFla, const2Zero))) model = u.getModel();
-    else if (u.isSat(quantifiedFla)) model = u.getModel();
-    else 
+    Expr model = NULL;
+    if (true == u.isSat(replaceAll(quantifiedFla, c12))) model = u.getModel();
+    else if (true == u.isSat(replaceAll(quantifiedFla, c1))) model = u.getModel();
+    else if (true == u.isSat(replaceAll(quantifiedFla, c2))) model = u.getModel();
+    else if (true == u.isSat(quantifiedFla)) model = u.getModel();
+		if (model == NULL)
     {
-    	outs() << "Not satisfiable\n";
-    	return false;
-    }
-    
-    if (!model) 
-    {
-    	outs() << "No satisfying assignment for quantified formula was found\n";
+			outs() << "No satisfying assignment for quantified formula was found\n";
 			return false;
     }
 
@@ -537,7 +535,7 @@ namespace ufo
 		// iterative solving optimization query to get all minmodels
 
   	ExprMap mp;	ExprSet s{coef1, coef2, const1, const2};
-  	
+
   	u.getOptModel<LT>(s, mp, coef1);
   	minCoef1 = mp[coef1];
   	quantifiedFla = mk<AND>(quantifiedFla, mk<EQ>(coef1, minCoef1));
@@ -552,7 +550,7 @@ namespace ufo
   	minConst1 = mp[const1];
   	quantifiedFla = mk<AND>(quantifiedFla, mk<EQ>(const1, minConst1));
   	u.isSat(quantifiedFla);
-  	
+
   	u.getOptModel<LT>(s, mp, const2);
   	minConst2 = mp[const2];
 
@@ -583,7 +581,7 @@ namespace ufo
 
 			// check if for any pair, one has a model in prefix and other one does not;
 			// if we encounter such scenario, we cannot argue about equivalence in terms of such pair
-			if (!((!u.hasOneModel(var1, pref1) && !u.hasOneModel(var2, pref2)) 
+			if (!((!u.hasOneModel(var1, pref1) && !u.hasOneModel(var2, pref2))
 				|| (u.hasOneModel(var1, pref1) && u.hasOneModel(var2, pref2))))
 			{
 				return false;
@@ -616,8 +614,8 @@ namespace ufo
 		ruleManager1.findInitialValue(iter1, pref1, rule1.srcRelation, iterFVal);
 		ruleManager2.findInitialValue(iter2, pref2, rule2.srcRelation, iterSVal);
 
-		Expr preForEqualityCheck = mk<TRUE>(m_efac), preForQuantifiedFla = mk<TRUE>(m_efac);
-		
+		ExprSet preForEqualityCheck, preForQuantifiedFla;
+
 		// checks if initial values of iterators depend on any variables; also constant values are also added to pre
 		// we might as well check that the pair[1] variable is also constant, similar to third check
 		// arrays are not added because they make it difficult for solver to find solution
@@ -634,22 +632,23 @@ namespace ufo
 				// we do not want to add arrays to any of the pre version
 				if (!isOpX<ARRAY_TY>(bind::typeOf(var1Src)))
 				{
-					// if any pair of vars the initial values of iters are depending, we want to add the 
-					// equality constraint for that var pair; we need this for both pre versions; 
-					// we also want to add any constants e.g. count, that will be required in the quantified formula
-					// we do not need this for pre to check equality of iters, but it does not hurt to add
-					if (contains(iterFVal, var1Src) || contains(iterSVal, var2Src) 
-						|| u.implies(rule1.body, mk<EQ>(var1Src, var1Dst)) || u.implies(rule2.body, mk<EQ>(var2Src, var2Dst)))
-					{
-						preForEqualityCheck = mk<AND>(preForEqualityCheck, mk<EQ>(var1Dst, var2Dst));
-						preForQuantifiedFla = mk<AND>(preForQuantifiedFla, mk<EQ>(var1Src, var2Src));
-					}
+				// 	// if any pair of vars the initial values of iters are depending, we want to add the
+				// 	// equality constraint for that var pair; we need this for both pre versions;
+				// 	// we also want to add any constants e.g. count, that will be required in the quantified formula
+				// 	// we do not need this for pre to check equality of iters, but it does not hurt to add
+				//
+				// 	if (contains(iterFVal, var1Src) || contains(iterSVal, var2Src)
+				// 		|| u.implies(rule1.body, mk<EQ>(var1Src, var1Dst)) || u.implies(rule2.body, mk<EQ>(var2Src, var2Dst)))
+				// 	{
+						preForEqualityCheck.insert(mk<EQ>(var1Dst, var2Dst));
+						preForQuantifiedFla.insert(mk<EQ>(var1Src, var2Src));
+				// 	}
 				}
 			}
 		}
 
 		if (!getAlignmentVals(preForQuantifiedFla, rule1.srcRelation, rule2.srcRelation)) return false;
-		
+
 		// Currently, it does all combinations to check the number of iterations to be added to fact and query
 		vector<int> v1, v2;
 		vector<vector<int>> possibleFactQueryAligns;
@@ -674,26 +673,27 @@ namespace ufo
 			ruleManager1.createAlignment(0, possibleAlign[0], 0, prefRuleBody1, dummy, bnd1, false);
 			ruleManager2.createAlignment(0, possibleAlign[1], 0, prefRuleBody2, dummy, bnd2, false);
 
-			Expr tempProdFact = mk<AND>(mk<AND>(prefRuleBody1, prefRuleBody2), preForEqualityCheck);
+			preForEqualityCheck.insert(prefRuleBody1);
+			preForEqualityCheck.insert(prefRuleBody2);
 			Expr eq = mk<EQ>(iterF, iterS);
-			impliesEq = bool(u.implies(tempProdFact, eq));
+			impliesEq = bool(u.implies(conjoin(preForEqualityCheck, m_efac), eq));
 
 			if (impliesEq)
 			{
 				ExprVector prefRuleLocVars1, prefRuleLocVars2;
 				// actual alignment created here
-				ruleManager1.createAlignment(itersInLoopR1, possibleAlign[0], itersOutLoopR1-possibleAlign[0], prefRuleBody1, 
+				ruleManager1.createAlignment(itersInLoopR1, possibleAlign[0], itersOutLoopR1-possibleAlign[0], prefRuleBody1,
 					prefRuleLocVars1, bnd1);
 				prefixRule1.body = prefRuleBody1;
 				std::copy(prefRuleLocVars1.begin(), prefRuleLocVars1.end(), std::back_inserter(prefixRule1.locVars));
-				
-				ruleManager2.createAlignment(itersInLoopR2, possibleAlign[1], itersOutLoopR2-possibleAlign[1], prefRuleBody2, 
+
+				ruleManager2.createAlignment(itersInLoopR2, possibleAlign[1], itersOutLoopR2-possibleAlign[1], prefRuleBody2,
 					prefRuleLocVars2, bnd2);
 				prefixRule2.body = prefRuleBody2;
 				std::copy(prefRuleLocVars2.begin(), prefRuleLocVars2.end(), std::back_inserter(prefixRule2.locVars));
 
 				// break out of the loop if for any alignment, we have iterators initially equal;
-				// consequently, all remaining iterations are added to query; 
+				// consequently, all remaining iterations are added to query;
 				// support checking other combinations
 				break;
 			}
@@ -720,14 +720,14 @@ namespace ufo
     phi = myAbduce(post, mk<AND>(postBody1, postBody2), postSrc);
     phi = replaceAll(phi, postSrc1, query1->srcVars);
     phi = replaceAll(phi, postSrc2, query2->srcVars);
-		
+
     return impliesEq;
 	}
 
 
 	bool checkEquivalence(bool innerLoop)
 	{
-		// create the product CHC system 
+		// create the product CHC system
 		Product_CHCs ruleManagerProduct(ruleManager1, ruleManager2, "_pr_", debug-2);
 
 	    // product of two CHC systems
@@ -737,7 +737,7 @@ namespace ufo
 
     HornRuleExt *q1 = ruleManager1.getQuery(), *q2 = ruleManager2.getQuery();
     HornRuleExt *f1 = ruleManager1.getFact(), *f2 = ruleManager2.getFact();
-		
+
     // create pre and post conditions
 		Expr pre = mk<TRUE>(m_efac);
 		Expr post;
@@ -749,7 +749,7 @@ namespace ufo
 		{
 			for (auto &pair : pairings)
 			{
-				if (ruleManager1.srcFactVars.empty() || ruleManager2.srcFactVars.empty()) 
+				if (ruleManager1.srcFactVars.empty() || ruleManager2.srcFactVars.empty())
 					pre = mk<AND>(pre, mk<EQ>(f1->dstVars[pair[0]], f2->dstVars[pair[1]]));
 				else
 					pre = mk<AND>(pre, mk<EQ>(ruleManager1.srcFactVars[pair[0]], ruleManager2.srcFactVars[pair[1]]));
@@ -774,7 +774,7 @@ namespace ufo
       ExprSet lin;
       concatenateVectors(q, q1->srcVars, q2->srcVars);
       query->srcVars.clear();
-      query->assignVarsAndRewrite(q, ruleManagerProduct.invVars[query->srcRelation], 
+      query->assignVarsAndRewrite(q, ruleManagerProduct.invVars[query->srcRelation],
         qprime, ruleManagerProduct.invVarsPrime[query->dstRelation], lin);
       query->body = simplifyBool(mk<AND>(simplifyBool(mkNeg(phi)), conjoin(lin, m_efac)));
     }
@@ -792,7 +792,7 @@ namespace ufo
 		{
 			Expr srcEq = conjoin(currentMatching, m_efac);
 			Expr dstEq = replaceAll(srcEq, ind->srcVars, ind->dstVars);
-			ind->body = mk<AND>(ind->body, mk<IMPL>(srcEq, dstEq));
+		  ind->body = mk<AND>(ind->body, mk<IMPL>(srcEq, dstEq));
 		}
 
     for (auto &chc : ruleManagerProduct.chcs)
@@ -808,14 +808,14 @@ namespace ufo
 
 		// call the function with all default values for arguments that are not relevant
 		// probably, do a cleaner way of calling the function
-	    return learnInvariantsPr(ruleManagerProduct, currentMatching, maxAttempts, to, freqs, 
-	    	aggp, dat, mut, doElim, doArithm, doDisj, doProp, mbpEqs, dAllMbp, dAddProp, dAddDat, 
+	    return learnInvariantsPr(ruleManagerProduct, currentMatching, maxAttempts, to, freqs,
+	    	aggp, dat, mut, doElim, doArithm, doDisj, doProp, mbpEqs, dAllMbp, dAddProp, dAddDat,
 	    	dStrenMbp, dFwd, dRec, dGenerous, dSee);
 		}
 
 	};
 
-	void createNonIterCombs(Extended_CHCs &ruleManager1, Extended_CHCs &ruleManager2, 
+	void createNonIterCombs(Extended_CHCs &ruleManager1, Extended_CHCs &ruleManager2,
 		vector<vector<vector<int>>> &nonIterCombs)
 	{
 		vector<vector<vector<int>>> combsArray, combsInt, combsBool, combs1;
@@ -832,9 +832,9 @@ namespace ufo
 	}
 
 
-  bool checkEquivalenceSingleLoop(Extended_CHCs &ruleManager1, Extended_CHCs &ruleManager2, bool doAlign, 
-			unsigned maxAttempts, unsigned to, bool freqs, bool aggp, int dat, int mut, bool doElim, 
-      bool doArithm, bool doDisj, int doProp, int mbpEqs, bool dAllMbp, bool dAddProp, 
+  bool checkEquivalenceSingleLoop(Extended_CHCs &ruleManager1, Extended_CHCs &ruleManager2, bool doAlign,
+			unsigned maxAttempts, unsigned to, bool freqs, bool aggp, int dat, int mut, bool doElim,
+      bool doArithm, bool doDisj, int doProp, int mbpEqs, bool dAllMbp, bool dAddProp,
       bool dAddDat, bool dStrenMbp, int dFwd, bool dRec, bool dGenerous, bool dSee, int debug, bool innerLoop)
   {
 
@@ -847,14 +847,14 @@ namespace ufo
 
 		// if no iterator was found, the tool exits stating non-equivalence. Support more
     bool iterFound = ruleManager1.findIterators(bndSrc);
-    if (innerLoop && !iterFound) 
+    if (innerLoop && !iterFound)
     {
       outs() << "no iterator was found for program 1. programs are not equivalent\n";
       return false;
     }
 
     iterFound = ruleManager2.findIterators(bndDst);
-    if (innerLoop && !iterFound) 
+    if (innerLoop && !iterFound)
     {
       outs() << "no iterator was found for program 2. programs are not equivalent\n";
       return false;
@@ -866,7 +866,7 @@ namespace ufo
 		// check for all combinations of variables, such that we match same type of variables
 		for (auto &pairings : nonIterCombs)
 		{
-      Equivalence eq(ruleManager1, ruleManager2, ruleManager1.m_efac, ruleManager1.m_z3, pairings, maxAttempts, to, freqs, 
+      Equivalence eq(ruleManager1, ruleManager2, ruleManager1.m_efac, ruleManager1.m_z3, pairings, maxAttempts, to, freqs,
 					aggp, dat, mut, doElim, doArithm, doDisj, doProp, mbpEqs, dAllMbp, dAddProp, dAddDat,
 					dStrenMbp, dFwd, dRec, dGenerous, dSee, debug);
 
@@ -881,7 +881,7 @@ namespace ufo
 		outs() << "\ncurrent loop is not equivalent\n";
 		return false;
   }
-	
+
 
   void constructNewRuleManager(Extended_CHCs &newRM, Extended_CHCs &oldRM, Expr loop, bool addTransition)
 	{
@@ -971,9 +971,9 @@ namespace ufo
 	}
 
 
-  bool checkEquivalence(Extended_CHCs &ruleManager1, Extended_CHCs &ruleManager2, bool doAlign, 
-			unsigned maxAttempts, unsigned to, bool freqs, bool aggp, int dat, int mut, bool doElim, 
-      bool doArithm, bool doDisj, int doProp, int mbpEqs, bool dAllMbp, bool dAddProp, 
+  bool checkEquivalence(Extended_CHCs &ruleManager1, Extended_CHCs &ruleManager2, bool doAlign,
+			unsigned maxAttempts, unsigned to, bool freqs, bool aggp, int dat, int mut, bool doElim,
+      bool doArithm, bool doDisj, int doProp, int mbpEqs, bool dAllMbp, bool dAddProp,
       bool dAddDat, bool dStrenMbp, int dFwd, bool dRec, bool dGenerous, bool dSee, int debug)
 	{
     assert(ruleManager1.cycles.size() == ruleManager2.cycles.size());
@@ -984,16 +984,16 @@ namespace ufo
       Expr loop2 = ruleManager2.chcs[ruleManager2.cycles[i][0]].srcRelation;
     	outs() << "currently processing: " << loop1 << " and " << loop2 << "\n";
 
-      Extended_CHCs newRuleManager1 = ruleManager1, newRuleManager2 = ruleManager2; 
+      Extended_CHCs newRuleManager1 = ruleManager1, newRuleManager2 = ruleManager2;
       if (ruleManager1.cycles.size() > 1)
       {
 	    	constructNewRuleManager(newRuleManager1, ruleManager1, loop1, i>0);
 	    	constructNewRuleManager(newRuleManager2, ruleManager2, loop2, i>0);
       }
 
-		  if (!checkEquivalenceSingleLoop(newRuleManager1, newRuleManager2, doAlign, maxAttempts, to, freqs, aggp, 
-		  	dat, mut, doElim, doArithm, doDisj, doProp, mbpEqs, dAllMbp, dAddProp, dAddDat, dStrenMbp, dFwd, dRec, 
-		  	dGenerous, dSee, debug, i <= 0)) 
+		  if (!checkEquivalenceSingleLoop(newRuleManager1, newRuleManager2, doAlign, maxAttempts, to, freqs, aggp,
+		  	dat, mut, doElim, doArithm, doDisj, doProp, mbpEqs, dAllMbp, dAddProp, dAddDat, dStrenMbp, dFwd, dRec,
+		  	dGenerous, dSee, debug, i <= 0))
 			  return false;
 	  }
     return true;
@@ -1003,7 +1003,7 @@ namespace ufo
 
 
 	// check equivalence of programs
-	inline void checkEquivalenceOfPrograms(const char *chcfileSrc, const char *chcfileDst, bool doAlign, 
+	inline void checkEquivalenceOfPrograms(const char *chcfileSrc, const char *chcfileDst, bool doAlign,
 			unsigned maxAttempts, unsigned to, bool freqs, bool aggp, int dat, int mut, bool doElim, bool doArithm,
 			bool doDisj, int doProp, int mbpEqs, bool dAllMbp, bool dAddProp, bool dAddDat,
 			bool dStrenMbp, int dFwd, bool dRec, bool dGenerous, bool dSee, int debug)
@@ -1017,10 +1017,10 @@ namespace ufo
 		if (!ruleManagerSrc.parse(string(chcfileSrc), doElim, doArithm)) return;
 		if (!ruleManagerDst.parse(string(chcfileDst), doElim, doArithm)) return;
 
-		if (checkEquivalence(ruleManagerSrc, ruleManagerDst, doAlign, maxAttempts, to, freqs, aggp, dat, mut, doElim, 
+		if (checkEquivalence(ruleManagerSrc, ruleManagerDst, doAlign, maxAttempts, to, freqs, aggp, dat, mut, doElim,
 			doArithm, doDisj, doProp, mbpEqs, dAllMbp, dAddProp, dAddDat, dStrenMbp, dFwd, dRec, dGenerous, dSee, debug))
-      outs() << "\nprograms are equivalent\n"; 
-    else 
+      outs() << "\nprograms are equivalent\n";
+    else
       outs() << "\nprograms are not equivalent\n";
   };
 }
