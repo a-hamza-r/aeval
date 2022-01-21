@@ -233,164 +233,88 @@ namespace ufo
 			return NULL;
 		}
 
-		/*void fixLoopGuard(ExprVector lastIterVars)
-		{
-			// works in the case of vectorization, verify for generic alignment
-			int cycleNum = 0;
-			vector<int> &cycle = cycles[cycleNum];
-			HornRuleExt &rule = chcs[cycle[0]];
-
-			HornRuleExt *query = getQuery();
-			Expr limitEq, dummyExp;
-			ExprVector varsNotInc, varsNotInc1;
-			ExprSet conjs;
-
-			Expr remainingIters = query->body;
-
-			// because query might also have variables with same names
-			Expr loopIter = eliminateQuantifiers(rule.body, rule.locVars);
-
-			for (int i = 0; i < rule.dstVars.size(); i++)
-			{
-				Expr var = rule.dstVars[i];
-				Expr newVar = mkTerm<string>("loc"+lexical_cast<string>(var), m_efac);
-				newVar = cloneVar(var, newVar);
-				loopIter = replaceAll(loopIter, var, newVar);
-				remainingIters = replaceAll(remainingIters, query->srcVars[i], newVar);
-				// for case where only one iter was added to query
-				// in that case, when srcVars of query were replaced by renamed vars to conjoin one iter of loop and
-				// whole query to be used as the assumption, the lastIterVars still contained srcVars. But whole formula
-				// does not contain variables in lastIterVars. hence, they need to be updated too.
-				// find a better way to handle this
-				if (lastIterVars[i] == query->srcVars[i]) lastIterVars[i] = newVar;
-			}
-			Expr allIters = mk<AND>(loopIter, remainingIters);
-
-			findFinalValue(iter, rule.srcRelation, rule.body, dummyExp, limitEq, dummyExp, iterGrows);
-			Expr goal = replaceAll(limitEq, rule.srcVars, lastIterVars);
-			filter(limitEq, bind::IsConst(), inserter(varsNotInc, varsNotInc.begin()));
-			filter(goal, bind::IsConst(), inserter(varsNotInc1, varsNotInc1.begin()));
-			for (auto &var : varsNotInc)
-				varsNotInc1.push_back(var);
-			allIters = keepQuantifiers(allIters, varsNotInc1);
-			getConj(allIters, conjs);
-			Expr assump = mk<TRUE>(m_efac);
-			for (auto &conj : conjs)
-			{
-				if (isOpX<EQ>(conj))
-					assump = mk<AND>(assump, conj);
-			}
-
-			Expr newGuard = myAbduce(goal, assump, varsNotInc);
-
-			rule.body = mk<AND>(rule.body, newGuard);
-		}*/
-
-		void removePreAndPostLoop()
+		void removePreLoop()
 		{
 			vector<int> cycle = cycles[0];
 			HornRuleExt &loop = chcs[cycle[0]];
 
-			vector<HornRuleExt>::iterator fact, preLoop, query, postLoop;
-			bool preLoopFound = false, postLoopFound = false;
+			HornRuleExt &f = *getFact();
+
 			for (auto it = chcs.begin(); it != chcs.end(); it++)
 			{
-				if (it->isFact)
-					fact = it;
-
-				if (it->isQuery)
-					query = it;
-
 				if (!it->isFact && !it->isInductive && !it->isQuery)
 				{
 					if (it->dstRelation == loop.srcRelation)
 					{
-						preLoopFound = true;
-						preLoop = it;
+						HornRuleExt &pl = *it;
+						
+						Expr body = replaceAll(f.body, f.dstVars, pl.srcVars);
+						pl.body = mk<AND>(pl.body, body);
+						if (emptyIntersect(pl.body, pl.srcVars)) srcFactVars = pl.dstVars;
+						else srcFactVars = pl.srcVars;
+						pl.srcVars.clear();
+						removeDecl(pl.srcRelation);
+						pl.srcRelation = f.srcRelation;
+						pl.isFact = true;
+						// hack, remove as soon as get a chance
+						f.dstRelation = mk<TRUE>(m_efac);
+
+						for (auto it2 = chcs.begin(); it2 != chcs.end(); it2++)
+						{
+							// only for recognizing certain rule
+							if (it2->dstRelation == mk<TRUE>(m_efac)) 
+							{
+								chcs.erase(it2);
+								return;
+							}
+						}
 					}
+				}
+			}
+			srcFactVars = f.dstVars;
+		}
+
+		void removePostLoop()
+		{
+			vector<int> cycle = cycles[0];
+			HornRuleExt &loop = chcs[cycle[0]];
+
+			HornRuleExt &q = *getQuery();
+
+			for (auto it = chcs.begin(); it != chcs.end(); it++)
+			{
+				if (!it->isFact && !it->isInductive && !it->isQuery)
+				{
 					if (it->srcRelation == loop.srcRelation)
 					{
-						postLoopFound = true;
-						postLoop = it;
+						HornRuleExt &pl = *it;
+
+			      Expr body = replaceAll(q.body, q.srcVars, pl.dstVars);
+			      pl.body = mk<AND>(pl.body, body);
+						postLoopBody = pl.body;
+			      postLoopSrcVars = pl.srcVars;
+						if (emptyIntersect(pl.body, pl.dstVars)) postLoopDstVars = pl.srcVars;
+			      else postLoopDstVars = pl.dstVars;
+			      pl.dstVars.clear();
+						removeDecl(pl.dstRelation);
+						pl.dstRelation = q.dstRelation;
+						pl.isQuery = true;
+						// hack, remove as soon as get a chance
+						q.srcRelation = mk<FALSE>(m_efac);
+
+						for (auto it2 = chcs.begin(); it2 != chcs.end(); it2++)
+						{
+							// only for recognizing certain rule
+							if (it2->srcRelation == mk<FALSE>(m_efac)) 
+							{
+								chcs.erase(it2);
+								return;
+							}
+						}
 					}
 				}
 			}
-
-			if (!preLoopFound && !postLoopFound) return;
-
-			HornRuleExt &f = *fact, &pl1 = *preLoop, &q = *query, &pl2 = *postLoop;
-
-			if (postLoopFound)
-			{
-	      postLoopBody = pl2.body;
-	      postLoopSrcVars = pl2.srcVars;
-	      postLoopDstVars = pl2.dstVars;
-	      Expr body = replaceAll(q.body, q.srcVars, pl2.dstVars);
-	      pl2.body = mk<AND>(pl2.body, body);
-	      pl2.dstVars.clear();
-				removeDecl(pl2.dstRelation);
-				pl2.dstRelation = q.dstRelation;
-				pl2.isQuery = true;
-
-				chcs.erase(query);
-			}
-
-			if (preLoopFound)
-			{
-				Expr body = replaceAll(f.body, f.dstVars, pl1.srcVars);
-				pl1.body = mk<AND>(pl1.body, body);
-				bool foundSrcVars = false;
-				for (auto &v : pl1.srcVars)
-				{
-					if (contains(pl1.body, v))
-					{
-						foundSrcVars = true;
-						srcFactVars = pl1.srcVars;
-						break;
-					}
-				}
-				if (!foundSrcVars) srcFactVars = pl1.dstVars;
-				pl1.srcVars.clear();
-				removeDecl(pl1.srcRelation);
-				pl1.srcRelation = f.srcRelation;
-				pl1.isFact = true;
-
-				chcs.erase(fact);
-			}
 		}
-
-	    // renaming rels in decls and chcs; if to be added, invVars need to be renamed too
-		/* void renameRels()
-		{
-			ExprSet newDcls;
-			for (auto it = decls.begin(); it != decls.end(); )
-			{
-				Expr newDcl = renameFdecl(*it);
-				newDcls.insert(newDcl);
-				it = decls.erase(it);
-			}
-			decls.insert(newDcls.begin(), newDcls.end());
-
-			failDecl = mkTerm<string>(varname+lexical_cast<string>(failDecl), m_efac);
-
-			for (auto &chc : chcs)
-			{
-				if (!chc.isQuery)
-				{
-					chc.head = renameFdecl(chc.head);
-					chc.dstRelation = chc.head->arg(0);
-				}
-				else
-				{
-					chc.head = failDecl;
-					chc.dstRelation = failDecl;
-				}
-				if (!isOpX<TRUE>(chc.srcRelation))
-					chc.srcRelation = mkTerm<string>(varname+lexical_cast<string>(chc.srcRelation), m_efac);
-			}
-		}
-*/
-
 
     // to convert CHCs into a forall formula to be taken input directly by freqhorn
     // possibly, add exists formula too
@@ -509,46 +433,61 @@ namespace ufo
           rulesOfP.push_back(&*it);
     }
 
-		void mergeIterationsFact(HornRuleExt &fact, int num, ExprVector &ssa, BndExpl &bnd, bool actualAlign)
+		void mergeIterationsFact(HornRuleExt &fact, int num, ExprVector &ssa, BndExpl &bnd, 
+			Expr &prefixBody, ExprVector &locVars, bool actualAlign)
 		{
-			// GF: `num` can be zero since even if we unroll zero times, we still need to have the prefix
-		  // if (num <= 0) return;
+		  if (num <= 0) return;
 
-			// case when we do not already have processed a preloop; we need to save variables in srcFactVars
-			// in the other case we already have srcFactVars info, the ssa has already done proper unrolling
-			// should only work when we are actually aligning and not just checking, as we do not want to
-			// modify srcFactVars if we are not aligning; if not modifying srcFactVars, ssa already has handled
-			ExprVector tempVars;
-			// if (actualAlign)
+			// ExprVector tempVars;
+			// for (int i = 0; i < bnd.bindVars.size(); i++)
+			// {
+			// 	for (auto &v : bnd.bindVars[i])
+			// 	{
+			// 		Expr newVar = mkTerm<string>(varname+lexical_cast<string>(v), m_efac);
+			// 		newVar = cloneVar(v, newVar);
+			// 		conjoinedSSA = replaceAll(conjoinedSSA, v, newVar);
+			// 		if (i==0) tempVars.push_back(newVar);
+			// 	}
+			// }
+
+			// ssa[0] = replaceAll(ssa[0], bnd.bindVars[0], tempVars);
+			// ssa[1] = replaceAll(ssa[1], bnd.bindVars[0], tempVars);
+      filter(conjoin(ssa, m_efac), IsConst(), inserter(locVars, locVars.begin()));
+
+			ssa[num] = replaceAll(ssa[num], bnd.bindVars[num], fact.dstVars);
+			
+			prefixBody = conjoin(ssa, m_efac);
+
+			if (actualAlign)
 			{
-				// for (int i = 0; i < bnd.bindVars[0].size(); i++)
-				// {
-				// 	Expr newVar = mkTerm<string>(varname+"fact_var_"+lexical_cast<string>(i), m_efac);
-				// 	newVar = cloneVar(bnd.bindVars[0][i], newVar);
+				// fact.body = replaceAll(fact.body, fact.dstVars, bnd.bindVars[0]);
+				// fact.body = prefixBody;
+				// fact.locVars.insert(fact.locVars.end(), locVars.begin(), locVars.end());
 
-				// 	tempVars.push_back(newVar);
-				// }
-
-				// ssa[0] = replaceAll(ssa[0], bnd.bindVars[0], tempVars);
-				// ssa[1] = replaceAll(ssa[1], bnd.bindVars[0], tempVars);
-
-				ssa[num] = replaceAll(ssa[num], bnd.bindVars[num], fact.dstVars);
-				if (actualAlign)
-					fact.body = replaceAll(fact.body, fact.dstVars, bnd.bindVars[0]);
+				// in case srcFactVars are empty, we needed the srcFactVars as bnd.bindVars[0]
+				// in case srcFactVars are not empty, we just replaced the whole fact with some formula, 
+				// initial variables are then bnd.bindVars[0]
+				srcFactVars = bnd.bindVars[0];
 			}
-			if (srcFactVars.empty()) srcFactVars = bnd.bindVars[0];
 		}
 
 		void mergeIterationsLoop(HornRuleExt &loop, int num, ExprVector &ssa, BndExpl &bnd)
 		{
 			if (num <= 0) return;
+
+			ExprSet locVars;
+      filter(conjoin(ssa, m_efac), IsConst(), inserter(locVars, locVars.begin()));
+
 			loop.body = replaceAll(loop.body, loop.dstVars, bnd.bindVars[0]);
 			ssa[num-1] = replaceAll(ssa[num-1], bnd.bindVars[num], loop.dstVars);
+
+			loop.body = mk<AND>(loop.body, conjoin(ssa, m_efac));
+			loop.locVars.insert(loop.locVars.end(), locVars.begin(), locVars.end());
 		}
 
 
-    void createAlignment(int unrollTrans, int unrollFact, int unrollQuery, Expr& prefRuleBody,
-			ExprVector& prefRuleLocVars, /*ExprVector& lastIterVars, */BndExpl &bnd, bool actualAlign=true)
+    void createAlignment(int unrollTrans, int unrollFact, int unrollQuery, BndExpl &bnd, 
+    	Expr &prefixBody, ExprVector &prefixLocVars, bool actualAlign=true)
 		{
 			if (actualAlign)
 			{
@@ -561,122 +500,53 @@ namespace ufo
 			HornRuleExt& rule = chcs[cycle[0]];
 			auto & prefix = prefixes[0];
 			HornRuleExt &prefixRule = chcs[prefix[0]];
-			Expr rel = rule.srcRelation;
+			
+			vector<int> traceFactUnroll = {prefix[0]}, traceQueryUnroll = {prefix[0]}, traceLoopUnroll = {prefix[0]};
+      ExprVector ssa, ssa1, ssa2;
 
-			HornRuleExt *query;
-			for (auto &it : outgs[rel])
-				if (chcs[it].isQuery)
-					query = &chcs[it];
-
-			rel = getDecl(rel);
-
-			prefRuleBody = prefixRule.body;
+      // ************* FACT UNROLLING ***************
 
 			// merge iterations to the fact, given the unrollFact value
-			vector<int> trace;
-
-			trace.push_back(prefix[0]);
-
 			for (int j = 0; j < unrollFact; j++)
         for (int m = 0; m < cycle.size(); m++)
-          trace.push_back(cycle[m]);
+          traceFactUnroll.push_back(cycle[m]);
 
-      ExprVector ssa;
-      bnd.getSSA(trace, ssa);
+      bnd.getSSA(traceFactUnroll, ssa, varname);
 
-      ExprSet factBndVars;
-      filter(conjoin(ssa, m_efac), IsConst(), inserter(factBndVars, factBndVars.begin()));
+      // actually merge fact
+      mergeIterationsFact(prefixRule, unrollFact, ssa, bnd, prefixBody, prefixLocVars, actualAlign);
 
-      mergeIterationsFact(prefixRule, unrollFact, ssa, bnd, actualAlign);
-			trace.clear();
 
-			// merge iterations to the query, given the unrollquery value
-			trace.push_back(prefix[0]);
+      // ************* QUERY UNROLLING ***************
 
+      // merge iterations to the query, given the unrollquery value
 			for (int j = 0; j < unrollQuery; j++)
         for (int m = 0; m < cycle.size(); m++)
-          trace.push_back(cycle[m]);
+          traceQueryUnroll.push_back(cycle[m]);
 
-      ExprVector ssa1;
-      bnd.getSSA(trace, ssa1);
+      bnd.getSSA(traceQueryUnroll, ssa1, varname);
+      ssa1.erase(ssa1.begin());
 
+      // actually merge query
       if (unrollQuery > 0)
       {
         postLoopSrcVars = bnd.bindVars[0];
         postLoopDstVars = bnd.bindVars[bnd.bindVars.size()-1];
+        postLoopBody = conjoin(ssa1, m_efac);
       }
 
-      ssa1.erase(ssa1.begin());
 
-			ExprSet queryBndVars;
-	    filter(conjoin(ssa1, m_efac), IsConst(), inserter(queryBndVars, queryBndVars.begin()));
+      // ************* LOOP UNROLLING ***************
 
-	    trace.clear();
-
-	    // unroll the inductive rule unrollTrans times
-			trace.push_back(prefix[0]);
-
+      // unroll the inductive rule unrollTrans times
 			for (int j = 0; j < unrollTrans-1; j++)
         for (int m = 0; m < cycle.size(); m++)
-          trace.push_back(cycle[m]);
+          traceLoopUnroll.push_back(cycle[m]);
 
-      ExprVector ssa2;
-      bnd.getSSA(trace, ssa2);
-
+      bnd.getSSA(traceLoopUnroll, ssa2, varname);
       ssa2.erase(ssa2.begin());
 
-			ExprSet ruleBndVars;
-      filter(conjoin(ssa2, m_efac), IsConst(), inserter(ruleBndVars, ruleBndVars.begin()));
-
       mergeIterationsLoop(rule, unrollTrans-1, ssa2, bnd);
-
-      // make required changes to the CHC system
-      if (unrollFact > 0)
-      {
-      	prefRuleBody = conjoin(ssa, m_efac);
-    //     for (auto &var : factBndVars)
-				// {
-				// 	Expr new_name = mkTerm<string>(varname+lexical_cast<string>(var), m_efac);
-    //   		Expr var1 = cloneVar(var, new_name);
-    //   		prefRuleBody = replaceAll(prefRuleBody, var, var1);
-    //   		prefRuleLocVars.push_back(var1);
-				// }
-      }
-			if (unrollTrans > 1)
-			{
-				Expr addToRule = conjoin(ssa2, m_efac);
-        for (auto &var : ruleBndVars)
-				{
-					Expr new_name = mkTerm<string>(varname+lexical_cast<string>(var), m_efac);
-      		Expr var1 = cloneVar(var, new_name);
-      		addToRule = replaceAll(addToRule, var, var1);
-      		rule.body = replaceAll(rule.body, var, var1);
-      		rule.locVars.push_back(var1);
-				}
-				rule.body = mk<AND>(rule.body, addToRule);
-			}
-			if (unrollQuery > 0)
-			{
-				Expr addToQuery = conjoin(ssa1, m_efac);
-
-				for (auto &var : queryBndVars)
-				{
-					Expr new_name = mkTerm<string>(varname+lexical_cast<string>(var), m_efac);
-      		Expr var1 = cloneVar(var, new_name);
-      		addToQuery = replaceAll(addToQuery, var, var1);
-				}
-			  for (int i = 0; i < postLoopSrcVars.size(); i++)
-				{
-          Expr new_name = mkTerm<string>(varname+lexical_cast<string>(postLoopSrcVars[i]), m_efac);
-          postLoopSrcVars[i] = cloneVar(postLoopSrcVars[i], new_name);
-				}
-				for (int i = 0; i < postLoopDstVars.size(); i++)
-				{
-          Expr new_name = mkTerm<string>(varname+lexical_cast<string>(postLoopDstVars[i]), m_efac);
-          postLoopDstVars[i] = cloneVar(postLoopDstVars[i], new_name);
-        }
-        postLoopBody = addToQuery;
-      }
 		}
 
 	    bool findTransitionValue(int i, Expr rel, Expr body, Expr& transitionVal)
@@ -800,6 +670,7 @@ namespace ufo
 	    {
 	      vector<int>& cycle = cycles[0];
 	      HornRuleExt& rule = chcs[cycle[0]];
+
 	      Expr pref = bnd.compactPrefix(0);
 
 	      Expr rel = rule.srcRelation;
@@ -820,7 +691,6 @@ namespace ufo
 	          Expr initVal, transitionVal, limitVal;
 	          Expr add, limitEq;
 
-	          // AH: handle the case where it is iterator but any of values are not available
 	          bool hasInitVal = findInitialValue(i, pref, rel, initVal);
 
 	          bool hasTransitionVal = findTransitionValue(i, rel, rule.body, transitionVal);
@@ -851,7 +721,18 @@ namespace ufo
 
 	    void preprocessing()
 	    {
-  			removePreAndPostLoop();
+  			removePreLoop();
+  			
+  			prefixes.clear();
+				cycles.clear();
+				outgs.clear();
+
+				for (int i = 0; i < chcs.size(); i++)
+		        outgs[chcs[i].srcRelation].push_back(i);
+
+        hasCycles();
+
+  			removePostLoop();
 				renameLocVars();
 
 				// we do it because we have already populated these containers with information with initial chcs,
@@ -864,7 +745,7 @@ namespace ufo
 				for (int i = 0; i < chcs.size(); i++)
 		        outgs[chcs[i].srcRelation].push_back(i);
 
-        hasCycles();      // GF: you don't need any of these...
+        hasCycles();
 	    }
 	};
 }

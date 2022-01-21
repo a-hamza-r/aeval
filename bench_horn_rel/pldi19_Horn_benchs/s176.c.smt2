@@ -19,7 +19,7 @@
     (inv1 a b c 0 i count)
 ))
 
-(rule (=> (and (inv1 a b c j i count) (< j count)) (inv2 a b c j 0 count)))
+(rule (=> (and (inv1 a b c j i count) (< j (* count 4))) (inv2 a b c j 0 count)))
 
 (rule (=> (and (inv2 a b c j i count)
  (< i (* count 4))
@@ -30,6 +30,6 @@
 (rule (=> (and (inv2 a b c j i count)
  (not (< i (* count 4))) (= j1 (+ j 1))) (inv1 a b c j1 i count)))
 
-(rule (=> (and (inv1 a b c j i count) (not (< j count))) fail))
+(rule (=> (and (inv1 a b c j i count) (not (< j (* count 4)))) fail))
 
 (query fail)

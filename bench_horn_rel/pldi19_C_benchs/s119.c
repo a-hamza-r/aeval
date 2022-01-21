@@ -4,7 +4,7 @@
 //	no dependence - vectorizable
 
 TYPE s119(int count) {
-	for (int i = 1; i < count; i++) {
+	for (int i = 1; i < count*8; i++) {
 		for (int j = 1; j < count*8; j++) {
 			aa[i][j] = aa[i-1][j-1] + bb[i][j];
 		}

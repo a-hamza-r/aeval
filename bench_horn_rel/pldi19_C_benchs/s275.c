@@ -6,7 +6,7 @@
 TYPE s275(int count) {
 	for (int i = 0; i < count*8; i++) {
 		if (aa[0][i] > (float)0.) {
-			for (int j = 1; j < count; j++) {
+			for (int j = 1; j < count*8; j++) {
 				aa[j][i] = aa[j-1][i] + bb[j][i] * cc[j][i];
 			}
 		}
@@ -14,11 +14,10 @@ TYPE s275(int count) {
   return 0;
 }
 
-
+/*
 // after interchanging loops
-
 TYPE s275(int count) {
-	for (int j = 1; j < count; j++) {
+	for (int j = 1; j < count*8; j++) {
 		for (int i = 0; i < count*8; i++) {
 			if (aa[0][i] > 0) {
 				aa[j][i] = aa[j-1][i] + bb[j][i] * cc[j][i];
@@ -26,7 +25,7 @@ TYPE s275(int count) {
 		}
 	}
   return 0;
-}
+}*/
 
 int nondet();
 

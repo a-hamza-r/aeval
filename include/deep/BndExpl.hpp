@@ -127,7 +127,7 @@ namespace ufo
       return conjoin(ssa, m_efac);
     }
 
-    void getSSA(vector<int>& trace, ExprVector& ssa)
+    void getSSA(vector<int>& trace, ExprVector& ssa, string str="__")
     {
       ExprVector bindVars2;
       bindVars.clear();
@@ -159,7 +159,7 @@ namespace ufo
           }
           if (!kept)
           {
-            Expr new_name = mkTerm<string> ("__bnd_var_" + to_string(bindVar_index++), m_efac);
+            Expr new_name = mkTerm<string> (str+"bnd_var_" + to_string(bindVar_index++), m_efac);
             bindVars2.push_back(cloneVar(hr.dstVars[i],new_name));
           }
 
@@ -168,7 +168,7 @@ namespace ufo
 
         for (int i = 0; i < hr.locVars.size(); i++)
         {
-          Expr new_name = mkTerm<string> ("__loc_var_" + to_string(locVar_index++), m_efac);
+          Expr new_name = mkTerm<string> (str+"loc_var_" + to_string(locVar_index++), m_efac);
           Expr var = cloneVar(hr.locVars[i], new_name);
 
           body = replaceAll(body, hr.locVars[i], var);

@@ -4,8 +4,8 @@
 //	no dependence - vectorizable
 
 TYPE s1119(int count) {
-	for (int i = 1; i < count; i++) {
-		for (int j = 0; j < count; j++) {
+	for (int i = 1; i < count*8; i++) {
+		for (int j = 0; j < count*8; j++) {
 			aa[i][j] = aa[i-1][j] + bb[i][j];
 		}
 	}

@@ -1,0 +1,58 @@
+(declare-rel inv1 ((Array Int Int) (Array Int Int) (Array Int Int) (Array Int Int) (Array Int (Array Int Int)) (Array Int (Array Int Int)) (Array Int (Array Int Int)) Int Int Int))
+(declare-rel inv2 ((Array Int Int) (Array Int Int) (Array Int Int) (Array Int Int) (Array Int (Array Int Int)) (Array Int (Array Int Int)) (Array Int (Array Int Int)) Int Int Int))
+(declare-var aa (Array Int (Array Int Int)))
+(declare-var bb (Array Int (Array Int Int)))
+(declare-var cc (Array Int (Array Int Int)))
+(declare-var aa1 (Array Int (Array Int Int)))
+(declare-var aa2 (Array Int (Array Int Int)))
+(declare-var aa3 (Array Int (Array Int Int)))
+(declare-var aa4 (Array Int (Array Int Int)))
+(declare-var aa5 (Array Int (Array Int Int)))
+(declare-var aa6 (Array Int (Array Int Int)))
+(declare-var aa7 (Array Int (Array Int Int)))
+(declare-var aa8 (Array Int (Array Int Int)))
+(declare-var a (Array Int Int))
+(declare-var a1 (Array Int Int))
+(declare-var b (Array Int Int))
+(declare-var c (Array Int Int))
+(declare-var d (Array Int Int))
+(declare-var count Int)
+(declare-var i Int)
+(declare-var i1 Int)
+(declare-var j Int)
+(declare-var j1 Int)
+
+(declare-rel fail ())
+
+(rule (=> 
+    (and 
+        (> count 0)
+    )
+    (inv1 a b c d aa bb cc 0 i count)
+))
+
+(rule (=> (and (inv1 a b c d aa bb cc j i count) (< j (* count 8))) (inv2 a b c d aa bb cc j 0 count)))
+
+(rule (=> (and (inv2 a b c d aa bb cc j i count)
+ (< i (* count 8))
+ (= aa1 (store aa j (store (select aa j) i (+ (select (select aa j) i) (* (select (select bb j) i) (select (select cc j) i))))))
+ (= aa2 (store aa1 j (store (select aa1 j) (+ i 1) (+ (select (select aa1 j) (+ i 1)) (* (select (select bb j) (+ i 1)) (select (select cc j) (+ i 1)))))))
+ (= aa3 (store aa2 j (store (select aa2 j) (+ i 2) (+ (select (select aa2 j) (+ i 2)) (* (select (select bb j) (+ i 2)) (select (select cc j) (+ i 2)))))))
+ (= aa4 (store aa3 j (store (select aa3 j) (+ i 3) (+ (select (select aa3 j) (+ i 3)) (* (select (select bb j) (+ i 3)) (select (select cc j) (+ i 3)))))))
+ (= aa5 (store aa4 j (store (select aa4 j) (+ i 4) (+ (select (select aa4 j) (+ i 4)) (* (select (select bb j) (+ i 4)) (select (select cc j) (+ i 4)))))))
+ (= aa6 (store aa5 j (store (select aa5 j) (+ i 5) (+ (select (select aa5 j) (+ i 5)) (* (select (select bb j) (+ i 5)) (select (select cc j) (+ i 5)))))))
+ (= aa7 (store aa6 j (store (select aa6 j) (+ i 6) (+ (select (select aa6 j) (+ i 6)) (* (select (select bb j) (+ i 6)) (select (select cc j) (+ i 6)))))))
+ (= aa8 (store aa7 j (store (select aa7 j) (+ i 7) (+ (select (select aa7 j) (+ i 7)) (* (select (select bb j) (+ i 7)) (select (select cc j) (+ i 7)))))))
+ (= i1 (+ i 8)))
+  (inv2 a b c d aa8 bb cc j i1 count)))
+
+(rule (=> (and 
+    (inv2 a b c d aa bb cc j i count)
+    (not (< i (* count 8))) 
+    (= a1 (store a j (+ (select b j) (* (select c j) (select d j)))))
+    (= j1 (+ j 1))) 
+    (inv1 a1 b c d aa bb cc j1 i count)))
+
+(rule (=> (and (inv1 a b c d aa bb cc j i count) (not (< j (* count 8)))) fail))
+
+(query fail)

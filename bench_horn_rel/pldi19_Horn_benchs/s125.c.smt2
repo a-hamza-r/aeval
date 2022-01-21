@@ -20,7 +20,7 @@
     (inv1 array a b c 0 j count)
 ))
 
-(rule (=> (and (inv1 array a b c i j count) (< i count)) (inv2 array a b c i 0 count)))
+(rule (=> (and (inv1 array a b c i j count) (< i (* count 8))) (inv2 array a b c i 0 count)))
 
 (rule (=> (and (inv2 array a b c i j count)
  (< j (* count 8))
@@ -31,6 +31,6 @@
 (rule (=> (and (inv2 array a b c i j count)
  (not (< i (* count 8))) (= i1 (+ i 1))) (inv1 array a b c i1 j count)))
 
-(rule (=> (and (inv1 array a b c i j count) (not (< i count))) fail))
+(rule (=> (and (inv1 array a b c i j count) (not (< i (* count 8)))) fail))
 
 (query fail)
