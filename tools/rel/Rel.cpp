@@ -77,7 +77,7 @@ int main (int argc, char ** argv)
   const char *OPT_INEQUALITY = "--allow-ineq";
 
   int max_attempts = getIntValue(OPT_MAX_ATTEMPTS, 2000000, argc, argv);
-  int to = getIntValue(OPT_TO, 1000, argc, argv);
+  int to = getIntValue(OPT_TO, 10000, argc, argv);
   bool densecode = getBoolValue(OPT_GET_FREQS, false, argc, argv);
   bool aggressivepruning = getBoolValue(OPT_AGG_PRUNING, false, argc, argv);
   bool do_elim = !getBoolValue(OPT_ELIM, false, argc, argv);

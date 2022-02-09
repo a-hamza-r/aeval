@@ -362,10 +362,9 @@ namespace ufo
 		private:
 			ExprFactory &m_efac;
 	    EZ3 &m_z3;
-			Extended_CHCs ruleManager1;
-			Extended_CHCs ruleManager2;
+			Extended_CHCs &ruleManager1;
+			Extended_CHCs &ruleManager2;
 			SMTUtils u;
-			Expr phi;
 			int itersOutLoopR1;
 			int itersOutLoopR2;
 			int itersInLoopR1;
@@ -395,11 +394,11 @@ namespace ufo
 			bool dSee;
 			bool allowEq;
 
-			Equivalence(Extended_CHCs r1, Extended_CHCs r2, ExprFactory &efac, EZ3 &z3,
-				vector<vector<int>> combs, unsigned _maxAttempts, unsigned _to, bool _freqs, bool _aggp, int _dat, int _mut,
+			Equivalence(Extended_CHCs &r1, Extended_CHCs &r2, vector<vector<int>> combs, 
+      unsigned _maxAttempts, unsigned _to, bool _freqs, bool _aggp, int _dat, int _mut,
 				bool _doElim, bool _doArithm, bool _doDisj, int _doProp, int _mbpEqs, bool _dAllMbp, bool _dAddProp, bool _dAddDat,
 				bool _dStrenMbp, int _dFwd, bool _dRec, bool _dGenerous, bool _dSee, bool _allowEq, int _debug) :
-				m_efac(efac), m_z3(z3), u(efac, _to), ruleManager1(r1), ruleManager2(r2), pairings(combs),
+				m_efac(r1.m_efac), m_z3(r1.m_z3), u(r1.m_efac, _to), ruleManager1(r1), ruleManager2(r2), pairings(combs),
 				maxAttempts(_maxAttempts), to(_to), freqs(_freqs), aggp(_aggp), dat(_dat), mut(_mut),
 				doElim(_doElim), doArithm(_doArithm), doDisj(_doDisj), doProp(_doProp), mbpEqs(_mbpEqs), dAllMbp(_dAllMbp),
 				dAddProp(_dAddProp), dAddDat(_dAddDat), dStrenMbp(_dStrenMbp), dFwd(_dFwd), dRec(_dRec),
@@ -475,7 +474,6 @@ namespace ufo
 
   bool getAlignmentVals(ExprSet& pre, Expr rel1, Expr rel2)
   {
-
   	int iter1 = ruleManager1.iter, iter2 = ruleManager2.iter;
 
   	outs() << "\n\nassuming iters: "
@@ -618,11 +616,6 @@ namespace ufo
 
 		int iter1 = ruleManager1.iter, iter2 = ruleManager2.iter;
 
-		Expr iterFVal, iterSVal;
-
-		ruleManager1.findInitialValue(iter1, pref1, rule1.srcRelation, iterFVal);
-		ruleManager2.findInitialValue(iter2, pref2, rule2.srcRelation, iterSVal);
-
 		ExprSet preForEqualityCheck, preForQuantifiedFla;
 
 		// checks if initial values of iterators depend on any variables; also constant values are also added to pre
@@ -738,6 +731,7 @@ namespace ufo
 			}
 		}
 
+    Expr phi;
     if (!postDst1.empty() && !postDst2.empty())
     {
 	    ExprSet post;
@@ -819,26 +813,130 @@ namespace ufo
 	}
 
 
+  void constructNewRuleManager(Extended_CHCs &newRM, Extended_CHCs &oldRM, Expr loop, bool addTransition = false, bool hasMultipleLoops = false, bool deleteOldRules = false)
+	{
+    newRM.decls = oldRM.decls;
+    newRM.failDecl = oldRM.failDecl;
+    newRM.invVars = oldRM.invVars;
+    newRM.invVarsPrime = oldRM.invVarsPrime;
+    //newRM.hasArrays = oldRM.hasArrays;
+    //newRM.hasAnyArrays = oldRM.hasAnyArrays;
+    newRM.iter = oldRM.iter;
+    newRM.numOfIters = oldRM.numOfIters;
+    newRM.iterGrows = oldRM.iterGrows;
+    newRM.varsInt = oldRM.varsInt;
+    newRM.varsBool = oldRM.varsBool;
+    newRM.varsArray = oldRM.varsArray;
+    newRM.postLoopBody = oldRM.postLoopBody;
+    newRM.postLoopSrcVars = oldRM.postLoopSrcVars;
+    newRM.postLoopDstVars = oldRM.postLoopDstVars;
+    newRM.srcFactVars = oldRM.srcFactVars;
+  
+    Expr newName1, newName2;
+    if (hasMultipleLoops)
+    {
+      newName1 = mkTerm<string>("newInv1", oldRM.m_efac);
+      newName2 = mkTerm<string>("newInv2", oldRM.m_efac);
+      ExprVector types;
+      for (auto &v : oldRM.invVars[loop])
+        types.push_back(v->last()->last());
+      types.push_back(mk<BOOL_TY>(oldRM.m_efac));
+      Expr f1 = fdecl(newName1, types);
+      Expr f2 = fdecl(newName2, types);
+      Expr fAppl1 = fapp(f1, oldRM.invVars[loop]);
+      Expr fAppl2 = fapp(f2, oldRM.invVarsPrime[loop]);
+
+      newRM.addDecl(f1);
+      newRM.addDecl(f2);
+    }
+
+    for (auto it = oldRM.wtoCHCs.begin(); it != oldRM.wtoCHCs.end(); )
+    {
+      auto chc = *(*it);
+      if (hasMultipleLoops && (loop == chc.srcRelation || loop == chc.dstRelation))
+      {
+        if (chc.srcRelation != loop)
+        {
+          chc.srcRelation = newName1;
+          chc.srcVars = oldRM.invVars[loop];
+          chc.isFact = false;
+
+          newRM.chcs.push_back(HornRuleExt());
+          HornRuleExt &hr = newRM.chcs.back();
+          hr.dstVars = newRM.invVarsPrime[newName1];
+          hr.srcRelation = mk<TRUE>(oldRM.m_efac);
+          hr.dstRelation = newName1;
+          hr.isFact = true;
+          hr.isQuery = false;
+          hr.body = mk<TRUE>(oldRM.m_efac);
+        }
+
+        else if (chc.dstRelation != loop)
+        {
+          chc.dstRelation = newName2;
+          chc.dstVars = oldRM.invVarsPrime[loop];
+          chc.isQuery = false;
+
+          newRM.chcs.push_back(HornRuleExt());
+          HornRuleExt &hr = newRM.chcs.back();
+          hr.srcVars = newRM.invVars[newName2];
+          hr.srcRelation = newName2;
+          hr.dstRelation = newRM.failDecl;
+          hr.isFact = false;
+          hr.isQuery = true;
+          hr.body = mk<TRUE>(oldRM.m_efac);
+        }
+        newRM.chcs.push_back(chc);
+        if (deleteOldRules) it = oldRM.wtoCHCs.erase(it);
+        else it++;
+      }
+      else if (!hasMultipleLoops)
+      {
+        newRM.chcs.push_back(chc);
+        if (deleteOldRules) it = oldRM.wtoCHCs.erase(it);
+        else it++;
+      }
+      else it++;
+    }
+
+    if (addTransition)
+    {
+      newRM.chcs.push_back(HornRuleExt());
+      HornRuleExt &hr = newRM.chcs.back();
+      hr.srcVars = newRM.invVars[loop];
+      hr.dstVars = newRM.invVarsPrime[loop];
+      hr.srcRelation = loop;
+      hr.dstRelation = loop;
+      hr.isFact = false;
+      hr.isQuery = false;
+      hr.isInductive = true;
+      hr.body = mk<TRUE>(oldRM.m_efac);
+    }
+
+    for (int i = 0; i < newRM.chcs.size(); i++)
+      newRM.outgs[newRM.chcs[i].srcRelation].push_back(i);
+
+    newRM.wtoSort();
+	}
+
+
   bool checkEquivalenceSingleLoop(Extended_CHCs &ruleManager1, Extended_CHCs &ruleManager2, bool doAlign,
 			unsigned maxAttempts, unsigned to, bool freqs, bool aggp, int dat, int mut, bool doElim,
       bool doArithm, bool doDisj, int doProp, int mbpEqs, bool dAllMbp, bool dAddProp,
       bool dAddDat, bool dStrenMbp, int dFwd, bool dRec, bool dGenerous, bool dSee, bool allowEq, int debug, bool innerLoop)
   {
-		ruleManager1.preprocessing();
+    ruleManager1.preprocessing();
 		ruleManager2.preprocessing();
-
-		BndExpl bndSrc(ruleManager1, debug);
-		BndExpl bndDst(ruleManager2, debug);
-
+    
 		// if no iterator was found, the tool exits stating non-equivalence. Support more
-    bool iterFound = ruleManager1.findIterators(bndSrc);
+    bool iterFound = ruleManager1.findIterators();
     if (innerLoop && !iterFound)
     {
       outs() << "no iterator was found for program 1. program equivalence is unknown\n";
       return false;
     }
 
-    iterFound = ruleManager2.findIterators(bndDst);
+    iterFound = ruleManager2.findIterators();
     if (innerLoop && !iterFound)
     {
       outs() << "no iterator was found for program 2. program equivalence is unknown\n";
@@ -851,7 +949,15 @@ namespace ufo
 		// check for all combinations of variables, such that we match same type of variables
 		for (auto &pairings : nonIterCombs)
 		{
-      Equivalence eq(ruleManager1, ruleManager2, ruleManager1.m_efac, ruleManager1.m_z3, pairings, maxAttempts, to, freqs,
+      Extended_CHCs newRuleManager1(ruleManager1.m_efac, ruleManager1.m_z3, "_v1_", debug-2);
+      Extended_CHCs newRuleManager2(ruleManager1.m_efac, ruleManager1.m_z3, "_v2_", debug-2);
+      newRuleManager1.loopRel = ruleManager1.loopRel;
+      newRuleManager2.loopRel = ruleManager2.loopRel;
+
+      constructNewRuleManager(newRuleManager1, ruleManager1, ruleManager1.loopRel);
+      constructNewRuleManager(newRuleManager2, ruleManager2, ruleManager2.loopRel);
+
+      Equivalence eq(newRuleManager1, newRuleManager2, pairings, maxAttempts, to, freqs,
 					aggp, dat, mut, doElim, doArithm, doDisj, doProp, mbpEqs, dAllMbp, dAddProp, dAddDat,
 					dStrenMbp, dFwd, dRec, dGenerous, dSee, allowEq, debug);
 
@@ -867,95 +973,6 @@ namespace ufo
 		return false;
   }
 
-
-  void constructNewRuleManager(Extended_CHCs &newRM, Extended_CHCs &oldRM, Expr loop, bool addTransition)
-	{
-    newRM.chcs.clear();
-
-    Expr newName1 = mkTerm<string>("newInv1", oldRM.m_efac);
-  	Expr newName2 = mkTerm<string>("newInv2", oldRM.m_efac);
-  	ExprVector types;
-  	for (auto &v : oldRM.invVars[loop])
-  		types.push_back(v->last()->last());
-  	types.push_back(mk<BOOL_TY>(oldRM.m_efac));
-  	Expr f1 = fdecl(newName1, types);
-  	Expr f2 = fdecl(newName2, types);
-  	Expr fAppl1 = fapp(f1, oldRM.invVars[loop]);
-  	Expr fAppl2 = fapp(f2, oldRM.invVarsPrime[loop]);
-
-  	newRM.addDecl(f1);
-  	newRM.addDecl(f2);
-
-  	for (auto it = oldRM.wtoCHCs.begin(); it != oldRM.wtoCHCs.end(); )
-    {
-      auto chc = *(*it);
-      if (loop == chc.srcRelation || loop == chc.dstRelation)
-      {
-        if (chc.srcRelation != loop)
-        {
-          chc.srcRelation = newName1;
-          chc.srcVars = oldRM.invVars[loop];
-          chc.isFact = false;
-
-		    	newRM.chcs.push_back(HornRuleExt());
-          HornRuleExt &hr = newRM.chcs.back();
-		      hr.dstVars = newRM.invVarsPrime[newName1];
-		      hr.srcRelation = mk<TRUE>(oldRM.m_efac);
-		      hr.dstRelation = newName1;
-		      hr.isFact = true;
-		      hr.isQuery = false;
-		      hr.isInductive = false;
-		      hr.body = mk<TRUE>(oldRM.m_efac);
-        }
-
-        if (chc.dstRelation != loop)
-        {
-          chc.dstRelation = newName2;
-          chc.dstVars = oldRM.invVarsPrime[loop];
-          chc.isQuery = false;
-
-		    	newRM.chcs.push_back(HornRuleExt());
-          HornRuleExt &hr = newRM.chcs.back();
-		      hr.srcVars = newRM.invVars[newName2];
-		      hr.srcRelation = newName2;
-		      hr.dstRelation = newRM.failDecl;
-		      hr.isFact = false;
-		      hr.isQuery = true;
-		      hr.isInductive = false;
-		      hr.body = mk<TRUE>(oldRM.m_efac);
-        }
-
-        newRM.chcs.push_back(chc);
-        oldRM.wtoCHCs.erase(it);
-  	  }
-      else it++;
-    }
-
-    if (addTransition)
-    {
-    	newRM.chcs.push_back(HornRuleExt());
-      HornRuleExt &hr = newRM.chcs.back();
-      hr.srcVars = newRM.invVars[loop];
-      hr.dstVars = newRM.invVarsPrime[loop];
-      hr.srcRelation = loop;
-      hr.dstRelation = loop;
-      hr.isFact = false;
-      hr.isQuery = false;
-      hr.isInductive = true;
-      hr.body = mk<TRUE>(oldRM.m_efac);
-    }
-
-    newRM.cycles.clear();
-    newRM.prefixes.clear();
-    newRM.outgs.clear();
-
-    for (int i = 0; i < newRM.chcs.size(); i++)
-      newRM.outgs[newRM.chcs[i].srcRelation].push_back(i);
-
-    newRM.hasCycles();
-	}
-
-
   bool checkEquivalence(Extended_CHCs &ruleManager1, Extended_CHCs &ruleManager2, bool doAlign,
 			unsigned maxAttempts, unsigned to, bool freqs, bool aggp, int dat, int mut, bool doElim,
       bool doArithm, bool doDisj, int doProp, int mbpEqs, bool dAllMbp, bool dAddProp,
@@ -969,12 +986,14 @@ namespace ufo
       Expr loop2 = ruleManager2.chcs[ruleManager2.cycles[i][0]].srcRelation;
     	outs() << "currently processing: " << loop1 << " and " << loop2 << "\n";
 
-      Extended_CHCs newRuleManager1 = ruleManager1, newRuleManager2 = ruleManager2;
-      if (ruleManager1.cycles.size() > 1)
-      {
-	    	constructNewRuleManager(newRuleManager1, ruleManager1, loop1, i>0);
-	    	constructNewRuleManager(newRuleManager2, ruleManager2, loop2, i>0);
-      }
+      Extended_CHCs newRuleManager1(ruleManager1.m_efac, ruleManager1.m_z3, "_v1_", debug-2);
+      Extended_CHCs newRuleManager2(ruleManager1.m_efac, ruleManager1.m_z3, "_v2_", debug-2);
+      newRuleManager1.loopRel = loop1; 
+      newRuleManager2.loopRel = loop2; 
+	    
+      bool hasMultipleLoops = ruleManager1.cycles.size()>1;
+      constructNewRuleManager(newRuleManager1, ruleManager1, loop1, i>0, hasMultipleLoops, true);
+	    constructNewRuleManager(newRuleManager2, ruleManager2, loop2, i>0, hasMultipleLoops, true);
 
 		  if (!checkEquivalenceSingleLoop(newRuleManager1, newRuleManager2, doAlign, maxAttempts, to, freqs, aggp,
 		  	dat, mut, doElim, doArithm, doDisj, doProp, mbpEqs, dAllMbp, dAddProp, dAddDat, dStrenMbp, dFwd, dRec,
