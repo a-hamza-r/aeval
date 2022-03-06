@@ -276,17 +276,6 @@ namespace ufo
 				ExprSet eqs;
 				chc.assignVarsAndRewrite(srcVars, invVars[chc.srcRelation], dstVars, invVarsPrime[chc.dstRelation], eqs);
 				chc.body = mk<AND>(chc.body, conjoin(eqs, m_efac));
-
-				// for srcFactVars, we might add unnecessary relations to the body,
-				// also the locVars might contain duplicate variables. Fix later
-				if (chc.isFact)
-				{
-					ExprVector prodVars = invVars[chc.dstRelation];
-					for (int i = 0; i < srcFactVars.size(); i++)
-						chc.body = mk<AND>(chc.body, mk<EQ>(srcFactVars[i], prodVars[i]));
-					chc.locVars.insert(chc.locVars.end(), srcFactVars.begin(), srcFactVars.end());
-					srcFactVars = prodVars;
-				}
 			}
 		}
 
@@ -298,9 +287,6 @@ namespace ufo
 		{
 			vector<HornRuleExt> worklist;
 			HornRuleExt C_a;
-
-			concatenateVectors(srcFactVars, subRule1->srcFactVars, subRule2->srcFactVars);
-
 			HornRuleExt queryPr;
 
 			// generate product queries
@@ -472,12 +458,15 @@ namespace ufo
   }
 
 
-  bool getAlignmentVals(ExprSet& pre, Expr rel1, Expr rel2)
+  bool getAlignmentVals(ExprSet& pre)
   {
+    /*
   	int iter1 = ruleManager1.iter, iter2 = ruleManager2.iter;
+    Expr rel1 = ruleManager1.loopRel, rel2 = ruleManager2.loopRel;
 
   	outs() << "\n\nassuming iters: "
   		<< ruleManager1.invVars[rel1][iter1] << " and " << ruleManager2.invVars[rel2][iter2] << "\n";
+    */
 
     Expr numIters1 = ruleManager1.numOfIters;
     Expr numIters2 = ruleManager2.numOfIters;
@@ -522,6 +511,8 @@ namespace ufo
 
     quantifiedFla = createQuantifiedFormulaRestr(fla, varsIters);
     quantifiedFla = mk<AND>(consts, mk<AND>(coefs, quantifiedFla));
+
+    //outs() << "Quantified formula: " << quantifiedFla << "\n";
 
 		ExprMap c1, c2, c12, m1, m2, m12;
 		for (auto &c : {const1, const2}) c12[c] = mkMPZ(0, m_efac);
@@ -634,13 +625,13 @@ namespace ufo
 				// we do not want to add arrays to any of the pre version
 				if (!isOpX<ARRAY_TY>(bind::typeOf(var1Src)))
 				{
-						preForEqualityCheck.insert(mk<EQ>(var1Dst, var2Dst));
-						preForQuantifiedFla.insert(mk<EQ>(var1Src, var2Src));
+          preForEqualityCheck.insert(mk<EQ>(var1Dst, var2Dst));
+          preForQuantifiedFla.insert(mk<EQ>(var1Src, var2Src));
 				}
 			}
 		}
 
-		if (!getAlignmentVals(preForQuantifiedFla, rule1.srcRelation, rule2.srcRelation)) return false;
+		if (!getAlignmentVals(preForQuantifiedFla)) return false;
 
 		// Currently, it does all combinations to check the number of iterations to be added to fact and query
 		vector<int> v1, v2;
@@ -660,12 +651,11 @@ namespace ufo
 		{
 			ExprSet equalityChecks = preForEqualityCheck;
 			Expr prefixBody1 = prefixRule1.body, prefixBody2 = prefixRule2.body;
-			ExprVector dummy;
 
  			// check if adding certain iterations to query will make the initial values of iterators equal
 			// it is not greedy approach currently
-			ruleManager1.createAlignment(0, possibleAlign[0], 0, bnd1, prefixBody1, dummy, false);
-			ruleManager2.createAlignment(0, possibleAlign[1], 0, bnd2, prefixBody2, dummy, false);
+			ruleManager1.createAlignment(0, possibleAlign[0], 0, bnd1, prefixBody1, false);
+			ruleManager2.createAlignment(0, possibleAlign[1], 0, bnd2, prefixBody2, false);
 
 			equalityChecks.insert(prefixBody1);
 			equalityChecks.insert(prefixBody2);
@@ -676,92 +666,84 @@ namespace ufo
 			if (impliesEq)
 			{
 				Expr prefixBody1 = prefixRule1.body, prefixBody2 = prefixRule2.body;
-				ExprVector prefRuleLocVars1, prefRuleLocVars2;
 				// actual alignment created here
-				ruleManager1.createAlignment(itersInLoopR1, possibleAlign[0], itersOutLoopR1-possibleAlign[0], bnd1, prefixBody1,
-					prefRuleLocVars1);
+				ruleManager1.createAlignment(itersInLoopR1, possibleAlign[0], itersOutLoopR1-possibleAlign[0], bnd1, prefixBody1);
 				prefixRule1.body = prefixBody1;
-				prefixRule1.locVars.insert(prefixRule1.locVars.end(), prefRuleLocVars1.begin(), prefRuleLocVars1.end());
 
-				ruleManager2.createAlignment(itersInLoopR2, possibleAlign[1], itersOutLoopR2-possibleAlign[1], bnd2, prefixBody2,
-					prefRuleLocVars2);
+				ruleManager2.createAlignment(itersInLoopR2, possibleAlign[1], itersOutLoopR2-possibleAlign[1], bnd2, prefixBody2);
 				prefixRule2.body = prefixBody2;
-				prefixRule2.locVars.insert(prefixRule2.locVars.end(), prefRuleLocVars2.begin(), prefRuleLocVars2.end());
 
-				// break out of the loop if for any alignment, we have iterators initially equal;
-				// consequently, all remaining iterations are added to query;
-				// support checking other combinations
-				break;
+        for (auto &chc : ruleManager1.chcs)
+        {
+          chc.body = eliminateQuantifiers(chc.body, chc.locVars, true, false);
+          chc.locVars.clear();
+        }
+        
+        for (auto &chc : ruleManager2.chcs)
+        {
+          chc.body = eliminateQuantifiers(chc.body, chc.locVars, true, false);
+          chc.locVars.clear();
+        }
+
+        return true;
 			}
 		}
-    return impliesEq;
+    return false;
 	}
 
 
 	bool checkEquivalence(bool innerLoop)
 	{
-		// create the product CHC system
-		Product_CHCs ruleManagerProduct(ruleManager1, ruleManager2, "_pr_", debug-2);
-
-	    // product of two CHC systems
-		ruleManagerProduct.createProduct();
-
-    assert(ruleManagerProduct.chcs.size() == 3);
-
     HornRuleExt *q1 = ruleManager1.getQuery(), *q2 = ruleManager2.getQuery();
     HornRuleExt *f1 = ruleManager1.getFact(), *f2 = ruleManager2.getFact();
 
-    ExprVector &postSrc1 = ruleManager1.postLoopSrcVars;
-    ExprVector &postDst1 = ruleManager1.postLoopDstVars;
-    ExprVector &postSrc2 = ruleManager2.postLoopSrcVars;
-    ExprVector &postDst2 = ruleManager2.postLoopDstVars;
-    Expr postBody1 = ruleManager1.postLoopBody;
-    Expr postBody2 = ruleManager2.postLoopBody;
+    f1->srcVars = ruleManager1.factSrcVars; 
+    f2->srcVars = ruleManager2.factSrcVars;
+    q1->dstVars = ruleManager1.queryDstVars;
+    q2->dstVars = ruleManager2.queryDstVars;
+	
+    // create the product
+		Product_CHCs ruleManagerProduct(ruleManager1, ruleManager2, "_pr_", debug-2);
+		ruleManagerProduct.createProduct();
+    assert(ruleManagerProduct.chcs.size() == 3);
+		
+    HornRuleExt *fact, *query, *ind;
+		for (auto &chc : ruleManagerProduct.chcs)
+		{
+			if (chc.isFact) fact = &chc;
+			if (chc.isQuery) query = &chc;
+			if (chc.isInductive) ind = &chc;
+		}
 
     // create pre and post conditions
-		ExprSet pre;
-		ExprSet post;
-		if (ruleManager1.iter >= 0) post.insert(mk<EQ>(q1->srcVars[ruleManager1.iter], q2->srcVars[ruleManager2.iter]));
+		ExprSet pre, post;
+		//if (ruleManager1.iter >= 0) post.insert(mk<EQ>(q1->srcVars[ruleManager1.iter], q2->srcVars[ruleManager2.iter]));
 		if (pairings[0][0] != -1)
 		{
 			for (auto &pair : pairings)
 			{
-				pre.insert(mk<EQ>(ruleManager1.srcFactVars[pair[0]], ruleManager2.srcFactVars[pair[1]]));
-				post.insert(mk<EQ>(q1->srcVars[pair[0]], q2->srcVars[pair[1]]));
+				pre.insert(mk<EQ>(f1->srcVars[pair[0]], f2->srcVars[pair[1]]));
+				post.insert(mk<EQ>(q1->dstVars[pair[0]], q2->dstVars[pair[1]]));
 			}
 		}
 
-    Expr phi;
-    if (!postDst1.empty() && !postDst2.empty())
-    {
-	    ExprSet post;
-	    for (int i = 0; i < postDst1.size(); i++)
-	    	post.insert(mk<EQ>(postDst1[i], postDst2[i]));
+		fact->body = simplifyBool(mk<AND>(fact->body, conjoin(pre, m_efac)));
+    
+    ExprVector postSrc, dummy;
+    concatenateVectors(postSrc, q1->srcVars, q2->srcVars);
+    Expr phi = myAbduce(conjoin(post, m_efac), query->body, postSrc);
 
-	    ExprVector postSrc;
-	    concatenateVectors(postSrc, postSrc1, postSrc2);
-	    phi = myAbduce(conjoin(post, m_efac), mk<AND>(postBody1, postBody2), postSrc);
-	    phi = replaceAll(phi, postSrc1, q1->srcVars);
-	    phi = replaceAll(phi, postSrc2, q2->srcVars);
-    }
-    else phi = conjoin(post, m_efac);
-
-		HornRuleExt *fact, *query, *ind;
-		for (auto &it : ruleManagerProduct.chcs)
-		{
-			if (it.isFact) fact = &it;
-			if (it.isQuery) query = &it;
-			if (it.isInductive) ind = &it;
-		}
-		fact->body = mk<AND>(fact->body, conjoin(pre, m_efac));
-
-    ExprVector q, qprime;
     ExprSet lin;
-    concatenateVectors(q, q1->srcVars, q2->srcVars);
     query->srcVars.clear();
-    query->assignVarsAndRewrite(q, ruleManagerProduct.invVars[query->srcRelation],
-      qprime, ruleManagerProduct.invVarsPrime[query->dstRelation], lin);
+    query->assignVarsAndRewrite(postSrc, ruleManagerProduct.invVars[query->srcRelation],
+      dummy, dummy, lin);
     query->body = simplifyBool(mk<AND>(simplifyBool(mkNeg(phi)), conjoin(lin, m_efac)));
+
+    for (auto &chc : ruleManagerProduct.chcs)
+    {
+      chc.body = eliminateQuantifiers(chc.body, chc.locVars, true, false);
+      chc.locVars.clear();
+    }
 
     ExprSet currentMatching;
 		int sz = ind->srcVars.size()/2;
@@ -770,6 +752,7 @@ namespace ufo
 			if (bind::typeOf(ind->srcVars[i]) == bind::typeOf(ind->srcVars[sz + i]))
 				currentMatching.insert(mk<EQ>(ind->srcVars[i], (ind->srcVars[sz + i])));
 
+    // replace the body of the loop with the loop summary
 		if (!innerLoop)
 		{
 			Expr srcEq = conjoin(currentMatching, m_efac);
@@ -806,7 +789,6 @@ namespace ufo
 
 		joinVars(combsArray, combsInt, combs1);
 		joinVars(combs1, combsBool, nonIterCombs);
-
 		// fix later
 		vector<vector<int>> v{{-1, -1}};
 		if (nonIterCombs.empty()) nonIterCombs.push_back(v);
@@ -819,18 +801,15 @@ namespace ufo
     newRM.failDecl = oldRM.failDecl;
     newRM.invVars = oldRM.invVars;
     newRM.invVarsPrime = oldRM.invVarsPrime;
-    //newRM.hasArrays = oldRM.hasArrays;
-    //newRM.hasAnyArrays = oldRM.hasAnyArrays;
     newRM.iter = oldRM.iter;
     newRM.numOfIters = oldRM.numOfIters;
     newRM.iterGrows = oldRM.iterGrows;
+    newRM.loopRel = loop;
     newRM.varsInt = oldRM.varsInt;
     newRM.varsBool = oldRM.varsBool;
     newRM.varsArray = oldRM.varsArray;
-    newRM.postLoopBody = oldRM.postLoopBody;
-    newRM.postLoopSrcVars = oldRM.postLoopSrcVars;
-    newRM.postLoopDstVars = oldRM.postLoopDstVars;
-    newRM.srcFactVars = oldRM.srcFactVars;
+    newRM.queryDstVars = oldRM.queryDstVars;
+    newRM.factSrcVars = oldRM.factSrcVars;
   
     Expr newName1, newName2;
     if (hasMultipleLoops)
@@ -951,8 +930,6 @@ namespace ufo
 		{
       Extended_CHCs newRuleManager1(ruleManager1.m_efac, ruleManager1.m_z3, "_v1_", debug-2);
       Extended_CHCs newRuleManager2(ruleManager1.m_efac, ruleManager1.m_z3, "_v2_", debug-2);
-      newRuleManager1.loopRel = ruleManager1.loopRel;
-      newRuleManager2.loopRel = ruleManager2.loopRel;
 
       constructNewRuleManager(newRuleManager1, ruleManager1, ruleManager1.loopRel);
       constructNewRuleManager(newRuleManager2, ruleManager2, ruleManager2.loopRel);
@@ -988,8 +965,6 @@ namespace ufo
 
       Extended_CHCs newRuleManager1(ruleManager1.m_efac, ruleManager1.m_z3, "_v1_", debug-2);
       Extended_CHCs newRuleManager2(ruleManager1.m_efac, ruleManager1.m_z3, "_v2_", debug-2);
-      newRuleManager1.loopRel = loop1; 
-      newRuleManager2.loopRel = loop2; 
 	    
       bool hasMultipleLoops = ruleManager1.cycles.size()>1;
       constructNewRuleManager(newRuleManager1, ruleManager1, loop1, i>0, hasMultipleLoops, true);

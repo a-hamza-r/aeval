@@ -142,7 +142,7 @@ namespace ufo
 	class Extended_CHCs : public CHCs
 	{
 		public:
-	    ExprVector srcFactVars;
+	    ExprVector factSrcVars;
 
 	    int iter;
 	    Expr loopRel;
@@ -151,9 +151,8 @@ namespace ufo
 	    vector<int> varsInt;
 	    vector<int> varsBool;
 	    vector<int> varsArray;
-      Expr postLoopBody;
       ExprVector postLoopSrcVars;
-      ExprVector postLoopDstVars;
+      ExprVector queryDstVars;
 
 	    Extended_CHCs(ExprFactory &efac, EZ3 &z3, string n, int d = false) : CHCs(efac, z3, n, d), iter(-1) {};
       
@@ -249,8 +248,8 @@ namespace ufo
           
           Expr body = replaceAll(f->body, f->dstVars, pl.srcVars);
           pl.body = mk<AND>(pl.body, body);
-          if (emptyIntersect(pl.body, pl.srcVars)) srcFactVars = pl.dstVars;
-          else srcFactVars = pl.srcVars;
+          if (emptyIntersect(pl.body, pl.srcVars)) factSrcVars = pl.dstVars;
+          else factSrcVars = pl.srcVars;
           pl.srcVars.clear();
           removeDecl(pl.srcRelation);
           pl.srcRelation = f->srcRelation;
@@ -259,7 +258,7 @@ namespace ufo
           return factLoc;
         }
 			}
-			srcFactVars = f->dstVars;
+			factSrcVars = f->dstVars;
       return -1;
 		}
 
@@ -282,12 +281,10 @@ namespace ufo
         {
           HornRuleExt &pl = *chc;
 
-          Expr body = replaceAll(q->body, q->srcVars, pl.dstVars);
-          pl.body = mk<AND>(pl.body, body);
-          postLoopBody = pl.body;
-          postLoopSrcVars = pl.srcVars;
-          if (emptyIntersect(pl.body, pl.dstVars)) postLoopDstVars = pl.srcVars;
-          else postLoopDstVars = pl.dstVars;
+          //Expr body = replaceAll(q->body, q->srcVars, pl.dstVars);
+          //pl.body = mk<AND>(pl.body, body);
+          if (emptyIntersect(pl.body, pl.dstVars)) queryDstVars = pl.srcVars;
+          else queryDstVars = pl.dstVars;
           pl.dstVars.clear();
           removeDecl(pl.dstRelation);
           pl.dstRelation = q->dstRelation;
@@ -296,6 +293,7 @@ namespace ufo
           return queryLoc;
         }
 			}
+      queryDstVars = q->srcVars;
       return -1;
 		}
 
@@ -314,7 +312,7 @@ namespace ufo
 				Expr newVar = cloneVar(it, mkTerm<string>('|'+lexical_cast<string>(it)+'|', m_efac));
 				v.push_back(newVar);
 			}
-			concatenateVectors(vars, srcFactVars, v);
+			//concatenateVectors(vars, factSrcVars, v);
 
 			outs() << "(declare-fun " << e << " (";
 
@@ -417,42 +415,26 @@ namespace ufo
     }
 
 		void mergeIterationsFact(HornRuleExt &fact, int num, ExprVector &ssa, BndExpl &bnd, 
-			Expr &prefixBody, ExprVector &locVars, bool actualAlign)
+			Expr &prefixBody, bool actualAlign)
 		{
 		  if (num <= 0) return;
 
-			// ExprVector tempVars;
-			// for (int i = 0; i < bnd.bindVars.size(); i++)
-			// {
-			// 	for (auto &v : bnd.bindVars[i])
-			// 	{
-			// 		Expr newVar = mkTerm<string>(varname+lexical_cast<string>(v), m_efac);
-			// 		newVar = cloneVar(v, newVar);
-			// 		conjoinedSSA = replaceAll(conjoinedSSA, v, newVar);
-			// 		if (i==0) tempVars.push_back(newVar);
-			// 	}
-			// }
-
-			// ssa[0] = replaceAll(ssa[0], bnd.bindVars[0], tempVars);
-			// ssa[1] = replaceAll(ssa[1], bnd.bindVars[0], tempVars);
-      filter(conjoin(ssa, m_efac), IsConst(), inserter(locVars, locVars.begin()));
-
-			ssa[num] = replaceAll(ssa[num], bnd.bindVars[num], fact.dstVars);
-			
+			ssa[num] = replaceAll(ssa[num], bnd.bindVars[num], fact.dstVars);	
 			prefixBody = conjoin(ssa, m_efac);
 
+      // in case factSrcVars are empty, we needed the factSrcVars as bnd.bindVars[0]
+      // in case factSrcVars are not empty, we just replaced the whole fact with some formula, 
+      // initial variables are then bnd.bindVars[0]
 			if (actualAlign)
-			{
-				// fact.body = replaceAll(fact.body, fact.dstVars, bnd.bindVars[0]);
-				// fact.body = prefixBody;
-				// fact.locVars.insert(fact.locVars.end(), locVars.begin(), locVars.end());
-
-				// in case srcFactVars are empty, we needed the srcFactVars as bnd.bindVars[0]
-				// in case srcFactVars are not empty, we just replaced the whole fact with some formula, 
-				// initial variables are then bnd.bindVars[0]
-				srcFactVars = bnd.bindVars[0];
-			}
-		}
+      {
+        for (auto i = 1; i < bnd.bindVars.size()-1; i++)
+        {
+          fact.locVars.reserve(fact.locVars.size()+bnd.bindVars[i].size());
+          fact.locVars.insert(fact.locVars.end(), bnd.bindVars[i].begin(), bnd.bindVars[i].end());
+        }
+        factSrcVars = bnd.bindVars[0];
+		  }
+    }
 
 		void mergeIterationsLoop(HornRuleExt &loop, int num, ExprVector &ssa, BndExpl &bnd)
 		{
@@ -468,9 +450,26 @@ namespace ufo
 			loop.locVars.insert(loop.locVars.end(), locVars.begin(), locVars.end());
 		}
 
+    void mergeIterationsQuery(int num, ExprVector &ssa, BndExpl &bnd)
+    {
+      if (num <= 0) return;
+
+      auto query = getQuery();
+     
+      //query->body = replaceAll(query->body, query->srcVars, bnd.bindVars[bnd.bindVars.size()-1]);
+      queryDstVars = bnd.bindVars[bnd.bindVars.size()-1];
+      ssa[0] = replaceAll(ssa[0], bnd.bindVars[0], query->srcVars);
+      //query->body = mk<AND>(query->body, conjoin(ssa, m_efac));
+      query->body = conjoin(ssa, m_efac);
+      for (auto i = 1; i < bnd.bindVars.size()-2; i++)
+      {
+        query->locVars.reserve(query->locVars.size()+bnd.bindVars[i].size());
+        query->locVars.insert(query->locVars.end(), bnd.bindVars[i].begin(), bnd.bindVars[i].end());
+      }
+    }
 
     void createAlignment(int unrollTrans, int unrollFact, int unrollQuery, BndExpl &bnd, 
-    	Expr &prefixBody, ExprVector &prefixLocVars, bool actualAlign=true)
+    	Expr &prefixBody, bool actualAlign=true)
 		{
 			if (actualAlign)
 			{
@@ -487,6 +486,7 @@ namespace ufo
 			vector<int> traceFactUnroll = {prefix[0]}, traceQueryUnroll = {prefix[0]}, traceLoopUnroll = {prefix[0]};
       ExprVector ssa, ssa1, ssa2;
 
+
       // ************* FACT UNROLLING ***************
 
 			// merge iterations to the fact, given the unrollFact value
@@ -496,8 +496,7 @@ namespace ufo
 
       bnd.getSSA(traceFactUnroll, ssa, varname);
 
-      // actually merge fact
-      mergeIterationsFact(prefixRule, unrollFact, ssa, bnd, prefixBody, prefixLocVars, actualAlign);
+      mergeIterationsFact(prefixRule, unrollFact, ssa, bnd, prefixBody, actualAlign);
 
 
       // ************* QUERY UNROLLING ***************
@@ -510,14 +509,8 @@ namespace ufo
       bnd.getSSA(traceQueryUnroll, ssa1, varname);
       ssa1.erase(ssa1.begin());
 
-      // actually merge query
-      if (unrollQuery > 0)
-      {
-        postLoopSrcVars = bnd.bindVars[0];
-        postLoopDstVars = bnd.bindVars[bnd.bindVars.size()-1];
-        postLoopBody = conjoin(ssa1, m_efac);
-      }
-
+      mergeIterationsQuery(unrollQuery, ssa1, bnd);
+ 
 
       // ************* LOOP UNROLLING ***************
 
@@ -685,7 +678,6 @@ namespace ufo
     {
       int factRemove = removePreLoop();
       int queryRemove = removePostLoop();
-      //renameLocVars();
 
       for (auto it = chcs.begin(); it != chcs.end(); )
       {
