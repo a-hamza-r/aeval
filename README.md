@@ -1,7 +1,7 @@
-FreqHorn
-========
+ALIEN
+=====
 
-Satisfiability solver for constrained Horn clauses (CHC) based on <a href="https://github.com/Z3Prover/z3">Z3</a> SMT solver. It combines syntax-guided methods to inductive invariant synthesis with data learning and quantified reasoning over arrays. Find more details at <a href="http://www.cs.fsu.edu/~grigory/freqhorn-arrays.pdf">CAV'19</a> and <a href="http://www.cs.fsu.edu/~grigory/multi-freqhorn.pdf">FMCAD'18</a> papers.
+A tool for checking equivalence between two programs. The tool takes two programs as CHCs (Constrained Horn Clauses) and outputs either the two programs are equivalent, non-equivalent or equivalence is unknown. The tool builds on top of FREQHORN, whose implementation is given in the `rnd` branch of this repository. The tool is presented in our FMCAD'22 paper, `Lockstep Composition of Unbalanced Loops`, which is still under review. The tool is able to prove equivalence for programs which contain unbalanced loops, i.e., the number of iterations are not necessarily the same.
 
 Installation
 ============
@@ -11,17 +11,12 @@ Compiles with gcc-7 (on Linux) and clang-1001 (on Mac). Assumes preinstalled <a 
 * `cd aeval ; mkdir build ; cd build`
 * `cmake ../`
 * `make` to build dependencies (Z3)
-* `make` (again) to build FreqHorn
+* `make` (again) to build ALIEN
 
-The binary of FreqHorn can be found at `build/tools/deep/`.
-Run `freqhorn --help` for the usage info.
-
-FreqHorn does not automatically find counterexamples (unless the CHC system can be trivially simplified), but its supplementary tool `expl` tool does. We recommend running `freqhorn` and `expl` concurrently.
-
-The tools print `Success ...` if the system is satisfiable.
+The binary of ALIEN can be found at `build/tools/rel/`.
 
 Benchmarks
 ==========
 
-Collection of the SMT-LIB2 translations of the satisfiable CHC system can be found at `bench_horn` and `bench_horn_multiple`. FreqHorn is expected to eventually discover solutions for the systems. On the other hand, there are several unsatisfiable CHC systems at `bench_horn_cex`, for which `freqhorn` is expected to diverge (but `expl` should find counterexamples).
+The tool has been evaluated on benchmarks from Test Suite of Vectorizing Compilers (TSVC). The directory `bench_horn_rel` contains the benchmarks for the ALIEN under the sub-directory `ALIEN_benchs`. The CHC benchmarks are to be given input to the tool, while their C versions are also given for reference. Other sub-directories in `bench_horn_rel` contain C benchmarks that are to be input to other tools evaluated against ALIEN, including `COUNTER`, `pldi19 tool` and `LLREVE`. Their comparisons are being presented in the evaluation section of the paper `Lockstep Composition of Unbalanced Loops`. 
 
