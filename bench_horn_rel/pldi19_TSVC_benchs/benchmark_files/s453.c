@@ -1,0 +1,33 @@
+#include "declarations.h"
+
+//	induction varibale recognition 
+
+TYPE 
+__attribute__((noinline))
+s453(TYPE* a, TYPE* b, int count) {
+  for (int i = 0; i < count*8; i++) {
+    a[i] = 2*(i+1) * b[i];
+  }
+  return 0;
+}
+
+TYPE 
+__attribute__((noinline))
+s453_vec(TYPE* a, TYPE* b, int count) {
+  for (int i = 0; i < count*8; i+=8) {
+    a[i] = 2*(i+1) * b[i];
+    a[i+1] = 2*(i+1+1) * b[i+1];
+    a[i+2] = 2*(i+2+1) * b[i+2];
+    a[i+3] = 2*(i+3+1) * b[i+3];
+    a[i+4] = 2*(i+4+1) * b[i+4];
+    a[i+5] = 2*(i+5+1) * b[i+5];
+    a[i+6] = 2*(i+6+1) * b[i+6];
+    a[i+7] = 2*(i+7+1) * b[i+7];
+  }
+  return 0;
+}
+
+
+int main() {
+	return 0;
+}

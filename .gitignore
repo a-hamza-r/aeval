@@ -9,7 +9,6 @@
 /static/
 /dsa-seahorn/
 /crab-llvm/
-
 *.pyc
 *.pyo
 /llvm-seahorn/
@@ -32,3 +31,12 @@ tools/deep_bench/**/playbook.retry
 tools/deep_bench/windows/clusterjobs.log
 tools/deep_bench/windows/out-*.tar.gz
 tags
+bench_horn_rel/extra_benchs/
+bench_horn_rel/COUNTER_TSVC_benchs/scripts/
+bench_horn_rel/COUNTER_TSVC_benchs/benchmark_files/different_unroll_config/
+bench_horn_rel/COUNTER_TSVC_benchs/benchmark_files/results.txt
+bench_horn_rel/pldi19_TSVC_benchs/scripts/
+*.sh
+bench_horn_rel/COUNTER_TSVC_benchs/benchmark_files/TSVC/run1/
+bench_horn_rel/COUNTER_TSVC_benchs/benchmark_files/TSVC/run2/
+
