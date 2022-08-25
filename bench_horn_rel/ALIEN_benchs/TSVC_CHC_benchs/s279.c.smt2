@@ -29,7 +29,7 @@
 (rule (=> 
 	(and 
 		(loop a_array b_array c_array d_array e_array i count)
-		(< i (* count 6))
+		(< i (* count 8))
 		(= a_i (select a_array i))
 		(= b_i (select b_array i))
 		(= c_i (select c_array i))
@@ -47,7 +47,7 @@
 (rule (=> 
 	(and 
 		(loop a_array b_array c_array d_array e_array i count)
-		(not (< i (* count 6)))
+		(not (< i (* count 8)))
 	)
 	exit
 ))
