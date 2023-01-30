@@ -21,6 +21,7 @@ Benchmarks
 The tool has been evaluated on two benchmark suites:
 1. Test Suite of Vectorization Compilers (TSVC) [1]
 2. A subset of 24 multi-phase benchmarks in which the phases can be extracted from the loops
+
 The directory `bench_horn_rel` contains the benchmarks for the ALIEN under the sub-directory `ALIEN_benchs`. The CHC benchmarks are to be given as input to the tool, while their C versions are also given for reference. For TSVC benchmarks, the equivalence has to be checked between `#c.smt2` and `#c_vec.smt2` programs. For split benchmarks, the equivalence has to be checked between `#.smt2` and `#_seq.smt2` programs. # represents the program name. Other sub-directories in `bench_horn_rel` contain C benchmarks that are to be input to other tools evaluated against ALIEN, including `COUNTER`, `pldi19 tool` and `LLREVE`.  
 
 References
