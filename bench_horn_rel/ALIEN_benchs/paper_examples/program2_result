@@ -1,0 +1,5 @@
+Success after 105 iterations (+ rnd)
+(define-fun inv_0 ((_FH_0 Int)(_FH_1 Int)(_FH_2 Int)(_FH_3 Int)) Bool
+  (and (>= _FH_3 0) (>= (+ (* 2 _FH_2) (* (- 1) _FH_1)) (- 1)) (>= (+ _FH_1 (* (- 2) _FH_2)) 1) (>= (+ _FH_0 _FH_1 (* (- 2) _FH_2)) 2) (>= (mod _FH_0 2) 1) (< (+ _FH_0 (* (- 2) _FH_2)) 3)))
+(define-fun inv_1 ((_FH_0 Int)(_FH_1 Int)(_FH_2 Int)(_FH_3 Int)) Bool
+  (and (>= (+ _FH_1 (* (- 2) _FH_2)) 1) (>= (+ _FH_0 (* 2 _FH_2) (* (- 1) _FH_1)) 0) (>= (+ _FH_1 (* (- 1) _FH_0)) 0) (>= (+ _FH_0 (* (- 1) _FH_1)) 0) (<= (+ _FH_0 (* (- 2) _FH_2) (* (- 1) _FH_3)) 1)))
