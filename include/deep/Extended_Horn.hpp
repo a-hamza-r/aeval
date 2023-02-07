@@ -12,697 +12,700 @@ using namespace boost;
 namespace ufo
 {
 
-	template <typename T>
-	void concatenateVectors(vector<T> &result, vector<T> vec1, vector<T> vec2)
-	{
-		result.reserve(result.size()+vec1.size()+vec2.size());
-		result.insert(result.end(), vec1.begin(), vec1.end());
-		result.insert(result.end(), vec2.begin(), vec2.end());
-	}
-
-	template <typename T>
-	void setUnion(set<T> &result, set<T> set1, set<T> set2)
-	{
-		result = set1;
-		result.insert(set2.begin(), set2.end());
-	}
-
-	template <typename T, typename T1>
-	void concatenateMaps(map<T, T1> &result, map<T, T1> map1, map<T, T1> map2)
-	{
-		result = map1;
-		result.insert(map2.begin(), map2.end());
-	}
-
-	template <typename T>
-    void findExpr(Expr toFind, Expr conj, Expr &result, bool skipArray=false)
-    {
-      Expr res;
-      if (isOpX<AND>(conj))
-      {
-        for (auto it = conj->args_begin(); it != conj->args_end(); it++)
+    template <typename T>
+        void concatenateVectors(vector<T> &result, vector<T> vec1, vector<T> vec2)
         {
-          findExpr<T>(toFind, *it, res, skipArray);
-          if (res)
-          {
-            if (result)
-              result = mk<AND>(result, res);
-            else
-              result = res;
-            res = NULL;
-          }
+            result.reserve(result.size()+vec1.size()+vec2.size());
+            result.insert(result.end(), vec1.begin(), vec1.end());
+            result.insert(result.end(), vec2.begin(), vec2.end());
         }
-      }
-      else if (isOpX<OR>(conj))
-      {
-        for (auto it = conj->args_begin(); it != conj->args_end(); it++)
+
+    template <typename T>
+        void setUnion(set<T> &result, set<T> set1, set<T> set2)
         {
-          findExpr<T>(toFind, *it, res, skipArray);
-          if (res)
-          {
-            if (result)
-              result = mk<OR>(result, res);
-            else
-              result = res;
-            res = NULL;
-          }
+            result = set1;
+            result.insert(set2.begin(), set2.end());
         }
-      }
-      else if (isOpX<T>(conj))
-      {
-        if (skipArray && containsOp<ARRAY_TY>(conj)) return;
-        if (contains(conj, toFind)) result = conj;
-      }
-    }
 
-	void combinations(vector<int> &vars1, vector<int> &vars2, vector<vector<int>> c,
-		vector<int> vars2Used, vector<vector<vector<int>>> &combs, int pos)
-	{
-		if (c.size() >= vars1.size())
-		{
-			combs.push_back(c);
-			return;
-		}
-		for (int i = 0; i < vars2.size(); i++)
-		{
-			if (find(vars2Used.begin(), vars2Used.end(), i) == vars2Used.end())
-			{
-				vars2Used.push_back(i);
-				c.push_back(vector<int>{vars1[pos], vars2[i]});
-				combinations(vars1, vars2, c, vars2Used, combs, pos+1);
-				c.pop_back();
-				vars2Used.pop_back();
-			}
-		}
-	}
-
-
-	void combinationsOfVars(vector<int> &vars1, vector<int> &vars2, vector<vector<vector<int>>> &combs)
-	{
-		for (int i = 0; i < vars2.size(); i++)
-		{
-			vector<int> vars2Used{i};
-			vector<int> v{vars1[0], vars2[i]};
-			vector<vector<int>> c{v};
-			combinations(vars1, vars2, c, vars2Used, combs, 1);
-		}
-	}
-
-	void joinVars(vector<vector<vector<int>>> &vec1, vector<vector<vector<int>>> &vec2,
-	  vector<vector<vector<int>>> &combs)
-	{
-		if (vec1.empty() || vec2.empty())
-		{
-			concatenateVectors(combs, vec1, vec2);
-		}
-		else
-		{
-			for (auto &it : vec1)
-			{
-				for (auto &it2 : vec2)
-				{
-					vector<vector<int>> v;
-					concatenateVectors(v, it, it2);
-					combs.push_back(v);
-				}
-			}
-		}
-	}
-
-
-	Expr myAbduce(Expr goal, Expr assmp, ExprVector varsNotInc=ExprVector())
-	{
-		Expr quantified = keepQuantifiers(mkNeg(mk<IMPL>(assmp, goal)), varsNotInc);
-		Expr tmp = mkNeg(quantified);
-
-		return tmp;
-	}
-
-
-	class Extended_CHCs : public CHCs
-	{
-		public:
-	    ExprVector factSrcVars;
-
-	    int iter;
-	    Expr loopRel;
-	    bool iterGrows;
-	    Expr numOfIters;
-	    vector<int> varsInt;
-	    vector<int> varsBool;
-	    vector<int> varsArray;
-      ExprVector postLoopSrcVars;
-      ExprVector queryDstVars;
-
-	    Extended_CHCs(ExprFactory &efac, EZ3 &z3, string n, int d = false) : CHCs(efac, z3, n, d), iter(-1) {};
-      
-
-      Expr getDecl(Expr relation)
-			{
-				if (!isOpX<TRUE>(relation))
-				{
-					for (auto it = decls.begin(); it != decls.end(); it++)
-					{
-						if ((*it)->arg(0) == relation) return *it;
-					}
-				}
-				return NULL;
-			}
-
-			void removeDecl(Expr relation)
-			{
-				Expr decl;
-				if (!isOpX<TRUE>(relation))
-				{
-					for (auto it = decls.begin(); it != decls.end(); it++)
-					{
-						if ((*it)->arg(0) == relation)
-						{
-							decls.erase(it);
-							return;
-						}
-					}
-				}
-			}
-
-
-	    Expr renameFdecl(Expr e)
-	    {
-				Expr newName = mkTerm<string>(varname+lexical_cast<string>(e->arg(0)), m_efac);
-				ExprVector types(e->args_begin()+1, e->args_end());
-				return bind::fdecl(newName, types);
-	    }
-
-
-	    void renameLocVars()
-	    {
-	    	for (auto &chc : chcs)
-	    	{
-	    		for (int i = 0; i < chc.locVars.size(); i++)
-	    		{
-			        Expr var = chc.locVars[i]->arg(0);
-	    			var = renameFdecl(var);
-	    			chc.body = replaceAll(chc.body, chc.locVars[i], bind::fapp(var));
-	    			chc.locVars[i] = bind::fapp(var);
-	    		}
-	    	}
-	    }
-
-
-		HornRuleExt *getQuery()
-		{
-			for (auto &chc : chcs)
-			{
-				if (chc.isQuery) return &chc;
-			}
-			return NULL;
-		}
-
-		HornRuleExt *getFact()
-		{
-			for (auto &chc : chcs)
-			{
-				if (chc.isFact) return &chc;
-			}
-			return NULL;
-		}
-
-		int removePreLoop()
-		{
-			HornRuleExt *f;
-      int factLoc;
-      for (auto chc = chcs.begin(); chc != chcs.end(); chc++)
-      {
-        if (chc->isFact) 
+    template <typename T, typename T1>
+        void concatenateMaps(map<T, T1> &result, map<T, T1> map1, map<T, T1> map2)
         {
-          f = &(*chc);
-          factLoc = chc-chcs.begin();
+            result = map1;
+            result.insert(map2.begin(), map2.end());
         }
-      }
 
-			for (auto chc = chcs.begin(); chc != chcs.end(); chc++)
-			{
-				if (!chc->isFact && !chc->isInductive && !chc->isQuery && chc->dstRelation == loopRel)
+    template <typename T>
+        void findExpr(Expr toFind, Expr conj, Expr &result, bool skipArray=false)
         {
-          HornRuleExt &pl = *chc;
-          
-          Expr body = replaceAll(f->body, f->dstVars, pl.srcVars);
-          pl.body = mk<AND>(pl.body, body);
-          if (emptyIntersect(pl.body, pl.srcVars)) factSrcVars = pl.dstVars;
-          else factSrcVars = pl.srcVars;
-          pl.srcVars.clear();
-          removeDecl(pl.srcRelation);
-          pl.srcRelation = f->srcRelation;
-          pl.isFact = true;
-
-          return factLoc;
-        }
-			}
-			factSrcVars = f->dstVars;
-      return -1;
-		}
-
-		int removePostLoop()
-		{
-			HornRuleExt *q;
-      int queryLoc;
-      for (auto chc = chcs.begin(); chc != chcs.end(); chc++)
-      {
-        if (chc->isQuery) 
-        {
-          q = &(*chc);
-          queryLoc = chc-chcs.begin();
-        }
-      }
-
-			for (auto chc = chcs.begin(); chc != chcs.end(); chc++)
-			{
-				if (!chc->isFact && !chc->isInductive && !chc->isQuery && chc->srcRelation == loopRel)
-        {
-          HornRuleExt &pl = *chc;
-
-          //Expr body = replaceAll(q->body, q->srcVars, pl.dstVars);
-          //pl.body = mk<AND>(pl.body, body);
-          if (emptyIntersect(pl.body, pl.dstVars)) queryDstVars = pl.srcVars;
-          else queryDstVars = pl.dstVars;
-          pl.dstVars.clear();
-          removeDecl(pl.dstRelation);
-          pl.dstRelation = q->dstRelation;
-          pl.isQuery = true;
-          
-          return queryLoc;
-        }
-			}
-      queryDstVars = q->srcVars;
-      return -1;
-		}
-
-    // to convert CHCs into a forall formula to be taken input directly by freqhorn
-    // possibly, add exists formula too
-		void serializeFormulas()
-		{
-			ExprVector v;
-			ExprVector vars;
-
-			// assuming only one loop, makes things easier
-			Expr e = (*decls.begin())->arg(0);
-
-			for (auto &it : invVarsPrime[e])
-			{
-				Expr newVar = cloneVar(it, mkTerm<string>('|'+lexical_cast<string>(it)+'|', m_efac));
-				v.push_back(newVar);
-			}
-			//concatenateVectors(vars, factSrcVars, v);
-
-			outs() << "(declare-fun " << e << " (";
-
-			for (int i = 0; i < v.size(); i++)
-      {
-        outs () << u.varType(v[i]);
-        if (i != v.size() - 1) outs () << " ";
-      }
-      outs () << ") Bool)\n";
-
-			for (auto& chc : chcs)
-			{
-				// outs() << (chc.isFact ? "Fact" : (chc.isQuery ? "Query" : "Inductive")) << ": \n";
-				Expr body = chc.body;
-
-				for (auto v : chc.locVars)
-				{
-					ExprSet s{v};
-					body = eliminateQuantifiers(body, s);
-				}
-
-				if (!isOpX<TRUE>(chc.srcRelation))
-					body = mk<AND>(body, fapp(getDecl(chc.srcRelation), invVars[chc.srcRelation]));
-
-				if (chc.dstRelation != failDecl)
-					body = mk<IMPL>(body, fapp(getDecl(chc.dstRelation), v));
-				else
-					body = mk<IMPL>(body, mk<FALSE>(m_efac));
-
-				body = createQuantifiedFormulaRestr(body, vars);
-				u.serialize_formula(body);
-			}
-		}
-
-    Expr numIterations(Expr init, Expr transition, Expr final, Expr add)
-    {
-      if (!(init && transition && final)) return mkMPZ(-1, m_efac);
-      Expr numer = mk<MINUS>(final, init);
-
-      if (add) numer = mk<PLUS>(numer, add);
-      Expr divisible = mk<EQ>(mk<MOD>(numer, transition), mkMPZ(0, m_efac));
-
-      Expr numIters = mk<PLUS>(mk<IDIV>(numer, transition), mk<ITE>(divisible, mkMPZ(0, m_efac), mkMPZ(1, m_efac)));
-      return simplifyArithm(numIters);
-    }
-
-		Expr findInitialValue(int i, Expr init)
-    {
-      Expr initVal;
-      Expr iter = invVars[loopRel][i];
-
-      findExpr<EQ>(iter, init, initVal, true);
-      if (initVal)
-      {
-        Expr newInit;
-        if (isOpX<AND>(initVal))
-        {
-          ExprSet s;
-          getConj(initVal, s);
-          for (auto &it : s)
-          {
-            Expr normalized = ineqSimplifier(iter, simplifyArithm(it));
-            if (isOpX<EQ>(normalized) && normalized->left() == iter)
+            Expr res;
+            if (isOpX<AND>(conj))
             {
-              // if multiple equalities are found, just return; support more
-              if (newInit) return NULL;
-              else newInit = normalized;
+                for (auto it = conj->args_begin(); it != conj->args_end(); it++)
+                {
+                    findExpr<T>(toFind, *it, res, skipArray);
+                    if (res)
+                    {
+                        if (result)
+                            result = mk<AND>(result, res);
+                        else
+                            result = res;
+                        res = NULL;
+                    }
+                }
             }
-          }
-          initVal = newInit;
+            else if (isOpX<OR>(conj))
+            {
+                for (auto it = conj->args_begin(); it != conj->args_end(); it++)
+                {
+                    findExpr<T>(toFind, *it, res, skipArray);
+                    if (res)
+                    {
+                        if (result)
+                            result = mk<OR>(result, res);
+                        else
+                            result = res;
+                        res = NULL;
+                    }
+                }
+            }
+            else if (isOpX<T>(conj))
+            {
+                if (skipArray && containsOp<ARRAY_TY>(conj)) return;
+                if (contains(conj, toFind)) result = conj;
+            }
         }
-        if (initVal)
-        {
-          Expr normalized = ineqSimplifier(iter, simplifyArithm(initVal));
-          initVal = normalized->right();
-          // assigns non-primed variables
-          initVal = replaceAll(initVal, invVarsPrime[loopRel], invVars[loopRel]);
-          return initVal;
-        }
-      }
-      return NULL;
-    }
 
-		void getConjAndDisj(Expr e, ExprSet& allExprs)
-		{
-			if (isOpX<AND>(e) || isOpX<OR>(e))
-			{
-			  for (auto it = e->args_begin(); it != e->args_end(); it++)
-			    getConjAndDisj(*it, allExprs);
-			}
-			else
-			  allExprs.insert(e);
-		}
-
-    void rulesOfPredicate(Expr decl, vector<HornRuleExt*> &rulesOfP)
+    void combinations(vector<int> &vars1, vector<int> &vars2, vector<vector<int>> c,
+            vector<int> vars2Used, vector<vector<vector<int>>> &combs, int pos)
     {
-      for (auto it = chcs.begin(); it != chcs.end(); it++)
-        if (decl == it->dstRelation)
-          rulesOfP.push_back(&*it);
-    }
-
-		void mergeIterationsFact(HornRuleExt &fact, int num, ExprVector &ssa, BndExpl &bnd, 
-			Expr &prefixBody, bool actualAlign)
-		{
-		  if (num <= 0) return;
-
-			ssa[num] = replaceAll(ssa[num], bnd.bindVars[num], fact.dstVars);	
-			prefixBody = conjoin(ssa, m_efac);
-
-      // in case factSrcVars are empty, we needed the factSrcVars as bnd.bindVars[0]
-      // in case factSrcVars are not empty, we just replaced the whole fact with some formula, 
-      // initial variables are then bnd.bindVars[0]
-			if (actualAlign)
-      {
-        for (auto i = 1; i < bnd.bindVars.size()-1; i++)
+        if (c.size() >= vars1.size())
         {
-          fact.locVars.reserve(fact.locVars.size()+bnd.bindVars[i].size());
-          fact.locVars.insert(fact.locVars.end(), bnd.bindVars[i].begin(), bnd.bindVars[i].end());
+            combs.push_back(c);
+            return;
         }
-        factSrcVars = bnd.bindVars[0];
-		  }
+        for (int i = 0; i < vars2.size(); i++)
+        {
+            if (find(vars2Used.begin(), vars2Used.end(), i) == vars2Used.end())
+            {
+                vars2Used.push_back(i);
+                c.push_back(vector<int>{vars1[pos], vars2[i]});
+                combinations(vars1, vars2, c, vars2Used, combs, pos+1);
+                c.pop_back();
+                vars2Used.pop_back();
+            }
+        }
     }
 
-		void mergeIterationsLoop(HornRuleExt &loop, int num, ExprVector &ssa, BndExpl &bnd)
-		{
-			if (num <= 0) return;
 
-			ExprSet locVars;
-      filter(conjoin(ssa, m_efac), IsConst(), inserter(locVars, locVars.begin()));
-
-			loop.body = replaceAll(loop.body, loop.dstVars, bnd.bindVars[0]);
-			ssa[num-1] = replaceAll(ssa[num-1], bnd.bindVars[num], loop.dstVars);
-
-			loop.body = mk<AND>(loop.body, conjoin(ssa, m_efac));
-			loop.locVars.insert(loop.locVars.end(), locVars.begin(), locVars.end());
-		}
-
-    void mergeIterationsQuery(int num, ExprVector &ssa, BndExpl &bnd)
+    void combinationsOfVars(vector<int> &vars1, vector<int> &vars2, vector<vector<vector<int>>> &combs)
     {
-      if (num <= 0) return;
-
-      auto query = getQuery();
-     
-      //query->body = replaceAll(query->body, query->srcVars, bnd.bindVars[bnd.bindVars.size()-1]);
-      queryDstVars = bnd.bindVars[bnd.bindVars.size()-1];
-      ssa[0] = replaceAll(ssa[0], bnd.bindVars[0], query->srcVars);
-      //query->body = mk<AND>(query->body, conjoin(ssa, m_efac));
-      query->body = conjoin(ssa, m_efac);
-      for (auto i = 1; i < bnd.bindVars.size()-2; i++)
-      {
-        query->locVars.reserve(query->locVars.size()+bnd.bindVars[i].size());
-        query->locVars.insert(query->locVars.end(), bnd.bindVars[i].begin(), bnd.bindVars[i].end());
-      }
+        for (int i = 0; i < vars2.size(); i++)
+        {
+            vector<int> vars2Used{i};
+            vector<int> v{vars1[0], vars2[i]};
+            vector<vector<int>> c{v};
+            combinations(vars1, vars2, c, vars2Used, combs, 1);
+        }
     }
 
-    void createAlignment(int unrollTrans, int unrollFact, int unrollQuery, BndExpl &bnd, 
-    	Expr &prefixBody, bool actualAlign=true)
-		{
-			if (actualAlign)
-			{
-				cout << "Iterations in the loop: " << unrollTrans << "\n";
-				cout << "Iterations added to fact: " << unrollFact << "\n";
-				cout << "Iterations added to query: " << unrollQuery << "\n";
-			}
-
-			vector<int>& cycle = cycles[0];
-			HornRuleExt& rule = chcs[cycle[0]];
-			auto & prefix = prefixes[0];
-			HornRuleExt &prefixRule = chcs[prefix[0]];
-			
-			vector<int> traceFactUnroll = {prefix[0]}, traceQueryUnroll = {prefix[0]}, traceLoopUnroll = {prefix[0]};
-      ExprVector ssa, ssa1, ssa2;
-
-
-      // ************* FACT UNROLLING ***************
-
-			// merge iterations to the fact, given the unrollFact value
-			for (int j = 0; j < unrollFact; j++)
-        for (int m = 0; m < cycle.size(); m++)
-          traceFactUnroll.push_back(cycle[m]);
-
-      bnd.getSSA(traceFactUnroll, ssa, varname);
-
-      mergeIterationsFact(prefixRule, unrollFact, ssa, bnd, prefixBody, actualAlign);
-
-
-      // ************* QUERY UNROLLING ***************
-
-      // merge iterations to the query, given the unrollquery value
-			for (int j = 0; j < unrollQuery; j++)
-        for (int m = 0; m < cycle.size(); m++)
-          traceQueryUnroll.push_back(cycle[m]);
-
-      bnd.getSSA(traceQueryUnroll, ssa1, varname);
-      ssa1.erase(ssa1.begin());
-
-      mergeIterationsQuery(unrollQuery, ssa1, bnd);
- 
-
-      // ************* LOOP UNROLLING ***************
-
-      // unroll the inductive rule unrollTrans times
-			for (int j = 0; j < unrollTrans-1; j++)
-        for (int m = 0; m < cycle.size(); m++)
-          traceLoopUnroll.push_back(cycle[m]);
-
-      bnd.getSSA(traceLoopUnroll, ssa2, varname);
-      ssa2.erase(ssa2.begin());
-
-      mergeIterationsLoop(rule, unrollTrans-1, ssa2, bnd);
-		}
-
-    Expr findTransitionValue(int i, Expr body)
+    void joinVars(vector<vector<vector<int>>> &vec1, vector<vector<vector<int>>> &vec2,
+            vector<vector<vector<int>>> &combs)
     {
-      ExprSet allExprs;
-      Expr transitionVal, allExprsConj, e;
-      bool multipleTransVal = false;
-
-      Expr a = invVars[loopRel][i];
-      Expr b = invVarsPrime[loopRel][i];
-
-      findExpr<EQ>(b, body, e, true);
-      if (!e) return e;
-      e = ineqSimplifier(b, e);
-
-      getConjAndDisj(e, allExprs);
-      for (auto &it : allExprs)
-      {
-        Expr normalized = ineqSimplifier(b, simplifyArithm(it));
-        if (contains(it, a) && isOpX<EQ>(normalized) && normalized->left() == b)
+        if (vec1.empty() || vec2.empty())
         {
-          if (allExprsConj) multipleTransVal = true;
-          else allExprsConj = it;
+            concatenateVectors(combs, vec1, vec2);
         }
-      }
-
-      // Cases when transition can't be found: multiple transition rels, no transition rel, contains an ITE
-      if (multipleTransVal || !allExprsConj || allExprsConj->right()->arity() <= 1 || containsOp<ITE>(allExprsConj))
-        return NULL;
-
-      Expr right = allExprsConj->right();
-
-      // assuming no local vars
-      if (right->arg(0) == a)
-        transitionVal = right->arg(1);
-      else
-        transitionVal = right->arg(0);
-
-      // check if delta value is constant; Eq. 10, section 4 in paper
-      Expr replacedTrans = replaceAll(transitionVal, invVars[loopRel], invVarsPrime[loopRel]);
-      return u.implies(body, mk<EQ>(transitionVal, replacedTrans)) ? transitionVal : NULL;
+        else
+        {
+            for (auto &it : vec1)
+            {
+                for (auto &it2 : vec2)
+                {
+                    vector<vector<int>> v;
+                    concatenateVectors(v, it, it2);
+                    combs.push_back(v);
+                }
+            }
+        }
     }
 
-    Expr findFinalValue(int i, Expr body, Expr& add, bool iterIncreases)
+
+    Expr myAbduce(Expr goal, Expr assmp, ExprVector varsNotInc=ExprVector())
     {
-      Expr limitVal = NULL, limitEq;
-      Expr a = invVars[loopRel][i];
-      Expr b = invVarsPrime[loopRel][i];
+        Expr quantified = keepQuantifiers(mkNeg(mk<IMPL>(assmp, goal)), varsNotInc);
+        Expr tmp = mkNeg(quantified);
 
-      Expr gt, ge, lt, le;
-      if (iterIncreases)
-      {
-        findExpr<LT>(a, body, lt, true);
-        findExpr<LEQ>(a, body, le, true);
-
-        // make sure there is no case where both lt and le are not null
-        // cannot think of any but could be
-        // in case lt and le are either conjunction or disjunction, handle better
-        if (lt)
-        {
-          lt = ineqSimplifier(a, lt);
-          if (!(isOpX<AND>(lt) || isOpX<OR>(lt))) limitEq = lt;
-        }
-        if (le)
-        {
-          add = mkMPZ(1, a->getFactory());
-          le = ineqSimplifier(a, le);
-          if (!(isOpX<AND>(le) || isOpX<OR>(le))) limitEq = le;
-        }
-      }
-      else
-      {
-        findExpr<GT>(a, body, gt);
-        findExpr<GEQ>(a, body, ge);
-
-        // make sure there is no case where both gt and ge are not null
-        // cannot think of any but could be
-        if (gt)
-        {
-          gt = ineqSimplifier(a, gt);
-          if (!(isOpX<AND>(gt) || isOpX<OR>(gt))) limitEq = gt;
-        }
-        if (ge)
-        {
-          add = mkMPZ(-1, a->getFactory());
-          ge = ineqSimplifier(a, ge);
-          if (!(isOpX<AND>(ge) || isOpX<OR>(ge))) limitEq = ge;
-        }
-      }
-
-      if (limitEq)
-      {
-        limitVal = limitEq->arg(1);
-
-        // check if limit value is constant; Eq. 8, section 4
-        Expr replacedLimit = replaceAll(limitVal, invVars[loopRel], invVarsPrime[loopRel]);
-        bool constLimitValCheck = bool(u.implies(body, mk<EQ>(limitVal, replacedLimit)));
-
-        // check the case that iter does not exceed limit value during transition; Eq. 7, section 4
-        bool loopEndCheck = limitEq && !u.isSat(mk<AND>(mkNeg(limitEq), body));
-
-        if (!constLimitValCheck || !loopEndCheck) return NULL;
-      }
-      return limitVal;
+        return tmp;
     }
 
-    bool findIterators()
+
+    class Extended_CHCs : public CHCs
     {
-      BndExpl bnd(*this, debug);
-      HornRuleExt& rule = chcs[cycles[0][0]];
+        public:
+            ExprVector factSrcVars;
 
-      Expr pref = bnd.compactPrefix(0);
+            int iter;
+            Expr loopRel;
+            Expr loopGuard;
+            bool iterGrows;
+            Expr numOfIters;
+            vector<int> varsInt;
+            vector<int> varsBool;
+            vector<int> varsArray;
+            ExprVector postLoopSrcVars;
+            ExprVector queryDstVars;
 
-      for (int i = 0; i < invVars[loopRel].size(); i++)
-      {
-        Expr a = invVars[loopRel][i];
-        Expr b = invVarsPrime[loopRel][i];
+            Extended_CHCs(ExprFactory &efac, EZ3 &z3, string n, int d = false) : CHCs(efac, z3, n, d), iter(-1) {};
 
-        bool isAnIter = false;
 
-        bool iterDecreases = bind::isIntConst(a) && bool(u.implies(rule.body, mk<GT>(a, b)));
-        bool iterIncreases = bind::isIntConst(a) && bool(u.implies(rule.body, mk<LT>(a, b)));
+            Expr getDecl(Expr relation)
+            {
+                if (!isOpX<TRUE>(relation))
+                {
+                    for (auto it = decls.begin(); it != decls.end(); it++)
+                    {
+                        if ((*it)->arg(0) == relation) return *it;
+                    }
+                }
+                return NULL;
+            }
 
-        if (iterIncreases || iterDecreases)
-        {
-          Expr add;
+            void removeDecl(Expr relation)
+            {
+                Expr decl;
+                if (!isOpX<TRUE>(relation))
+                {
+                    for (auto it = decls.begin(); it != decls.end(); it++)
+                    {
+                        if ((*it)->arg(0) == relation)
+                        {
+                            decls.erase(it);
+                            return;
+                        }
+                    }
+                }
+            }
 
-          Expr initVal = findInitialValue(i, pref);
-          Expr transitionVal = findTransitionValue(i, rule.body);
-          Expr limitVal = findFinalValue(i, rule.body, add, iterIncreases);
 
-          isAnIter = (initVal != NULL) && (transitionVal != NULL) && (limitVal != NULL);
-          if (isAnIter)
-          {
-            iter = i;
-            iterGrows = iterIncreases;
-            numOfIters = numIterations(initVal, transitionVal, limitVal, add);
-          }
-        }
+            Expr renameFdecl(Expr e)
+            {
+                Expr newName = mkTerm<string>(varname+lexical_cast<string>(e->arg(0)), m_efac);
+                ExprVector types(e->args_begin()+1, e->args_end());
+                return bind::fdecl(newName, types);
+            }
 
-        // if not an iter, collect info about the type of variables
-        if (!isAnIter)
-        {
-          if (bind::isIntConst(a)) varsInt.push_back(i);
-          else if (bind::isBoolConst(a)) varsBool.push_back(i);
-          else if (isOpX<ARRAY_TY>(bind::typeOf(a))) varsArray.push_back(i);
-        }
-      }
-      return (iter >= 0);
-    }
 
-    void preprocessing()
-    {
-      int factRemove = removePreLoop();
-      int queryRemove = removePostLoop();
+            void renameLocVars()
+            {
+                for (auto &chc : chcs)
+                {
+                    for (int i = 0; i < chc.locVars.size(); i++)
+                    {
+                        Expr var = chc.locVars[i]->arg(0);
+                        var = renameFdecl(var);
+                        chc.body = replaceAll(chc.body, chc.locVars[i], bind::fapp(var));
+                        chc.locVars[i] = bind::fapp(var);
+                    }
+                }
+            }
 
-      for (auto it = chcs.begin(); it != chcs.end(); )
-      {
-        if (factRemove == it-chcs.begin() || queryRemove == it-chcs.begin()) 
-        {
-          it = chcs.erase(it);
-          factRemove--; queryRemove--;
-        }
-        else it++;
-      }
 
-      // we do it because we have already populated these containers with information with initial chcs,
-      // which have now been updated by removing pre and post loop
-      // either do this, or never populate with initial state of the chcs
-      prefixes.clear();
-      cycles.clear();
-      outgs.clear();
-      wtoCHCs.clear();
+            HornRuleExt *getQuery()
+            {
+                for (auto &chc : chcs)
+                {
+                    if (chc.isQuery) return &chc;
+                }
+                return NULL;
+            }
 
-      for (int i = 0; i < chcs.size(); i++)
-          outgs[chcs[i].srcRelation].push_back(i);
+            HornRuleExt *getFact()
+            {
+                for (auto &chc : chcs)
+                {
+                    if (chc.isFact) return &chc;
+                }
+                return NULL;
+            }
 
-      wtoSort();
-    }
-	};
+            int removePreLoop()
+            {
+                HornRuleExt *f;
+                int factLoc;
+                for (auto chc = chcs.begin(); chc != chcs.end(); chc++)
+                {
+                    if (chc->isFact) 
+                    {
+                        f = &(*chc);
+                        factLoc = chc-chcs.begin();
+                    }
+                }
+
+                for (auto chc = chcs.begin(); chc != chcs.end(); chc++)
+                {
+                    if (!chc->isFact && !chc->isInductive && !chc->isQuery && chc->dstRelation == loopRel)
+                    {
+                        HornRuleExt &pl = *chc;
+
+                        Expr body = replaceAll(f->body, f->dstVars, pl.srcVars);
+                        pl.body = mk<AND>(pl.body, body);
+                        if (emptyIntersect(pl.body, pl.srcVars)) factSrcVars = pl.dstVars;
+                        else factSrcVars = pl.srcVars;
+                        pl.srcVars.clear();
+                        removeDecl(pl.srcRelation);
+                        pl.srcRelation = f->srcRelation;
+                        pl.isFact = true;
+
+                        return factLoc;
+                    }
+                }
+                factSrcVars = f->dstVars;
+                return -1;
+            }
+
+            int removePostLoop()
+            {
+                HornRuleExt *q;
+                int queryLoc;
+                for (auto chc = chcs.begin(); chc != chcs.end(); chc++)
+                {
+                    if (chc->isQuery) 
+                    {
+                        q = &(*chc);
+                        queryLoc = chc-chcs.begin();
+                    }
+                }
+
+                for (auto chc = chcs.begin(); chc != chcs.end(); chc++)
+                {
+                    if (!chc->isFact && !chc->isInductive && !chc->isQuery && chc->srcRelation == loopRel)
+                    {
+                        HornRuleExt &pl = *chc;
+
+                        //Expr body = replaceAll(q->body, q->srcVars, pl.dstVars);
+                        //pl.body = mk<AND>(pl.body, body);
+                        if (emptyIntersect(pl.body, pl.dstVars)) queryDstVars = pl.srcVars;
+                        else queryDstVars = pl.dstVars;
+                        pl.dstVars.clear();
+                        removeDecl(pl.dstRelation);
+                        pl.dstRelation = q->dstRelation;
+                        pl.isQuery = true;
+
+                        return queryLoc;
+                    }
+                }
+                queryDstVars = q->srcVars;
+                return -1;
+            }
+
+            // to convert CHCs into a forall formula to be taken input directly by freqhorn
+            // possibly, add exists formula too
+            void serializeFormulas()
+            {
+                ExprVector v;
+                ExprVector vars;
+
+                // assuming only one loop, makes things easier
+                Expr e = (*decls.begin())->arg(0);
+
+                for (auto &it : invVarsPrime[e])
+                {
+                    Expr newVar = cloneVar(it, mkTerm<string>('|'+lexical_cast<string>(it)+'|', m_efac));
+                    v.push_back(newVar);
+                }
+                //concatenateVectors(vars, factSrcVars, v);
+
+                outs() << "(declare-fun " << e << " (";
+
+                for (int i = 0; i < v.size(); i++)
+                {
+                    outs () << u.varType(v[i]);
+                    if (i != v.size() - 1) outs () << " ";
+                }
+                outs () << ") Bool)\n";
+
+                for (auto& chc : chcs)
+                {
+                    // outs() << (chc.isFact ? "Fact" : (chc.isQuery ? "Query" : "Inductive")) << ": \n";
+                    Expr body = chc.body;
+
+                    for (auto v : chc.locVars)
+                    {
+                        ExprSet s{v};
+                        body = eliminateQuantifiers(body, s);
+                    }
+
+                    if (!isOpX<TRUE>(chc.srcRelation))
+                        body = mk<AND>(body, fapp(getDecl(chc.srcRelation), invVars[chc.srcRelation]));
+
+                    if (chc.dstRelation != failDecl)
+                        body = mk<IMPL>(body, fapp(getDecl(chc.dstRelation), v));
+                    else
+                        body = mk<IMPL>(body, mk<FALSE>(m_efac));
+
+                    body = createQuantifiedFormulaRestr(body, vars);
+                    u.serialize_formula(body);
+                }
+            }
+
+            Expr numIterations(Expr init, Expr transition, Expr final, Expr add)
+            {
+                if (!(init && transition && final)) return mkMPZ(-1, m_efac);
+                Expr numer = mk<MINUS>(final, init);
+
+                if (add) numer = mk<PLUS>(numer, add);
+                Expr divisible = mk<EQ>(mk<MOD>(numer, transition), mkMPZ(0, m_efac));
+
+                Expr numIters = mk<PLUS>(mk<IDIV>(numer, transition), mk<ITE>(divisible, mkMPZ(0, m_efac), mkMPZ(1, m_efac)));
+                return simplifyArithm(numIters);
+            }
+
+            Expr findInitialValue(int i, Expr init)
+            {
+                Expr initVal;
+                Expr iter = invVars[loopRel][i];
+
+                findExpr<EQ>(iter, init, initVal, true);
+                if (initVal)
+                {
+                    Expr newInit;
+                    if (isOpX<AND>(initVal))
+                    {
+                        ExprSet s;
+                        getConj(initVal, s);
+                        for (auto &it : s)
+                        {
+                            Expr normalized = ineqSimplifier(iter, simplifyArithm(it));
+                            if (isOpX<EQ>(normalized) && normalized->left() == iter)
+                            {
+                                // if multiple equalities are found, just return; support more
+                                if (newInit) return NULL;
+                                else newInit = normalized;
+                            }
+                        }
+                        initVal = newInit;
+                    }
+                    if (initVal)
+                    {
+                        Expr normalized = ineqSimplifier(iter, simplifyArithm(initVal));
+                        initVal = normalized->right();
+                        // assigns non-primed variables
+                        initVal = replaceAll(initVal, invVarsPrime[loopRel], invVars[loopRel]);
+                        return initVal;
+                    }
+                }
+                return NULL;
+            }
+
+            void getConjAndDisj(Expr e, ExprSet& allExprs)
+            {
+                if (isOpX<AND>(e) || isOpX<OR>(e))
+                {
+                    for (auto it = e->args_begin(); it != e->args_end(); it++)
+                        getConjAndDisj(*it, allExprs);
+                }
+                else
+                    allExprs.insert(e);
+            }
+
+            void rulesOfPredicate(Expr decl, vector<HornRuleExt*> &rulesOfP)
+            {
+                for (auto it = chcs.begin(); it != chcs.end(); it++)
+                    if (decl == it->dstRelation)
+                        rulesOfP.push_back(&*it);
+            }
+
+            void mergeIterationsFact(HornRuleExt &fact, int num, ExprVector &ssa, BndExpl &bnd, 
+                    Expr &prefixBody, bool actualAlign)
+            {
+                if (num <= 0) return;
+
+                ssa[num] = replaceAll(ssa[num], bnd.bindVars[num], fact.dstVars);	
+                prefixBody = conjoin(ssa, m_efac);
+
+                // in case factSrcVars are empty, we needed the factSrcVars as bnd.bindVars[0]
+                // in case factSrcVars are not empty, we just replaced the whole fact with some formula, 
+                // initial variables are then bnd.bindVars[0]
+                if (actualAlign)
+                {
+                    for (auto i = 1; i < bnd.bindVars.size()-1; i++)
+                    {
+                        fact.locVars.reserve(fact.locVars.size()+bnd.bindVars[i].size());
+                        fact.locVars.insert(fact.locVars.end(), bnd.bindVars[i].begin(), bnd.bindVars[i].end());
+                    }
+                    factSrcVars = bnd.bindVars[0];
+                }
+            }
+
+            void mergeIterationsLoop(HornRuleExt &loop, int num, ExprVector &ssa, BndExpl &bnd)
+            {
+                if (num <= 0) return;
+
+                ExprSet locVars;
+                filter(conjoin(ssa, m_efac), IsConst(), inserter(locVars, locVars.begin()));
+
+                loop.body = replaceAll(loop.body, loop.dstVars, bnd.bindVars[0]);
+                ssa[num-1] = replaceAll(ssa[num-1], bnd.bindVars[num], loop.dstVars);
+
+                loop.body = mk<AND>(loop.body, conjoin(ssa, m_efac));
+                loop.locVars.insert(loop.locVars.end(), locVars.begin(), locVars.end());
+            }
+
+            void mergeIterationsQuery(int num, ExprVector &ssa, BndExpl &bnd)
+            {
+                if (num <= 0) return;
+
+                auto query = getQuery();
+
+                //query->body = replaceAll(query->body, query->srcVars, bnd.bindVars[bnd.bindVars.size()-1]);
+                queryDstVars = bnd.bindVars[bnd.bindVars.size()-1];
+                ssa[0] = replaceAll(ssa[0], bnd.bindVars[0], query->srcVars);
+                //query->body = mk<AND>(query->body, conjoin(ssa, m_efac));
+                query->body = conjoin(ssa, m_efac);
+                for (auto i = 1; i < bnd.bindVars.size()-2; i++)
+                {
+                    query->locVars.reserve(query->locVars.size()+bnd.bindVars[i].size());
+                    query->locVars.insert(query->locVars.end(), bnd.bindVars[i].begin(), bnd.bindVars[i].end());
+                }
+            }
+
+            void createAlignment(int unrollTrans, int unrollFact, int unrollQuery, BndExpl &bnd, 
+                    Expr &prefixBody, bool actualAlign=true)
+            {
+                if (actualAlign)
+                {
+                    cout << "Iterations in the loop: " << unrollTrans << "\n";
+                    cout << "Iterations added to fact: " << unrollFact << "\n";
+                    cout << "Iterations added to query: " << unrollQuery << "\n";
+                }
+
+                vector<int>& cycle = cycles[0];
+                HornRuleExt& rule = chcs[cycle[0]];
+                auto & prefix = prefixes[0];
+                HornRuleExt &prefixRule = chcs[prefix[0]];
+
+                vector<int> traceFactUnroll = {prefix[0]}, traceQueryUnroll = {prefix[0]}, traceLoopUnroll = {prefix[0]};
+                ExprVector ssa, ssa1, ssa2;
+
+
+                // ************* FACT UNROLLING ***************
+
+                // merge iterations to the fact, given the unrollFact value
+                for (int j = 0; j < unrollFact; j++)
+                    for (int m = 0; m < cycle.size(); m++)
+                        traceFactUnroll.push_back(cycle[m]);
+
+                bnd.getSSA(traceFactUnroll, ssa, varname);
+
+                mergeIterationsFact(prefixRule, unrollFact, ssa, bnd, prefixBody, actualAlign);
+
+
+                // ************* QUERY UNROLLING ***************
+
+                // merge iterations to the query, given the unrollquery value
+                for (int j = 0; j < unrollQuery; j++)
+                    for (int m = 0; m < cycle.size(); m++)
+                        traceQueryUnroll.push_back(cycle[m]);
+
+                bnd.getSSA(traceQueryUnroll, ssa1, varname);
+                ssa1.erase(ssa1.begin());
+
+                mergeIterationsQuery(unrollQuery, ssa1, bnd);
+
+
+                // ************* LOOP UNROLLING ***************
+
+                // unroll the inductive rule unrollTrans times
+                for (int j = 0; j < unrollTrans-1; j++)
+                    for (int m = 0; m < cycle.size(); m++)
+                        traceLoopUnroll.push_back(cycle[m]);
+
+                bnd.getSSA(traceLoopUnroll, ssa2, varname);
+                ssa2.erase(ssa2.begin());
+
+                mergeIterationsLoop(rule, unrollTrans-1, ssa2, bnd);
+            }
+
+            Expr findTransitionValue(int i, Expr body)
+            {
+                ExprSet allExprs;
+                Expr transitionVal, allExprsConj, e;
+                bool multipleTransVal = false;
+
+                Expr a = invVars[loopRel][i];
+                Expr b = invVarsPrime[loopRel][i];
+
+                findExpr<EQ>(b, body, e, true);
+                if (!e) return e;
+                e = ineqSimplifier(b, e);
+
+                getConjAndDisj(e, allExprs);
+                for (auto &it : allExprs)
+                {
+                    Expr normalized = ineqSimplifier(b, simplifyArithm(it));
+                    if (contains(it, a) && isOpX<EQ>(normalized) && normalized->left() == b)
+                    {
+                        if (allExprsConj) multipleTransVal = true;
+                        else allExprsConj = it;
+                    }
+                }
+
+                // Cases when transition can't be found: multiple transition rels, no transition rel, contains an ITE
+                if (multipleTransVal || !allExprsConj || allExprsConj->right()->arity() <= 1 || containsOp<ITE>(allExprsConj))
+                    return NULL;
+
+                Expr right = allExprsConj->right();
+
+                // assuming no local vars
+                if (right->arg(0) == a)
+                    transitionVal = right->arg(1);
+                else
+                    transitionVal = right->arg(0);
+
+                // check if delta value is constant; Eq. 10, section 4 in paper
+                Expr replacedTrans = replaceAll(transitionVal, invVars[loopRel], invVarsPrime[loopRel]);
+                return u.implies(body, mk<EQ>(transitionVal, replacedTrans)) ? transitionVal : NULL;
+            }
+
+            Expr findFinalValue(int i, Expr body, Expr& add, bool iterIncreases)
+            {
+                Expr limitVal = NULL, limitEq;
+                Expr a = invVars[loopRel][i];
+                Expr b = invVarsPrime[loopRel][i];
+
+                Expr gt, ge, lt, le;
+                if (iterIncreases)
+                {
+                    findExpr<LT>(a, body, lt, true);
+                    findExpr<LEQ>(a, body, le, true);
+
+                    // make sure there is no case where both lt and le are not null
+                    // cannot think of any but could be
+                    // in case lt and le are either conjunction or disjunction, handle better
+                    if (lt)
+                    {
+                        lt = ineqSimplifier(a, lt);
+                        if (!(isOpX<AND>(lt) || isOpX<OR>(lt))) limitEq = lt;
+                    }
+                    if (le)
+                    {
+                        add = mkMPZ(1, a->getFactory());
+                        le = ineqSimplifier(a, le);
+                        if (!(isOpX<AND>(le) || isOpX<OR>(le))) limitEq = le;
+                    }
+                }
+                else
+                {
+                    findExpr<GT>(a, body, gt);
+                    findExpr<GEQ>(a, body, ge);
+
+                    // make sure there is no case where both gt and ge are not null
+                    // cannot think of any but could be
+                    if (gt)
+                    {
+                        gt = ineqSimplifier(a, gt);
+                        if (!(isOpX<AND>(gt) || isOpX<OR>(gt))) limitEq = gt;
+                    }
+                    if (ge)
+                    {
+                        add = mkMPZ(-1, a->getFactory());
+                        ge = ineqSimplifier(a, ge);
+                        if (!(isOpX<AND>(ge) || isOpX<OR>(ge))) limitEq = ge;
+                    }
+                }
+
+                if (limitEq)
+                {
+                    if (!loopGuard) loopGuard = limitEq;
+                    limitVal = limitEq->arg(1);
+
+                    // check if limit value is constant; Eq. 8, section 4
+                    Expr replacedLimit = replaceAll(limitVal, invVars[loopRel], invVarsPrime[loopRel]);
+                    bool constLimitValCheck = bool(u.implies(body, mk<EQ>(limitVal, replacedLimit)));
+
+                    // check the case that iter does not exceed limit value during transition; Eq. 7, section 4
+                    bool loopEndCheck = limitEq && !u.isSat(mk<AND>(mkNeg(limitEq), body));
+
+                    if (!constLimitValCheck || !loopEndCheck) return NULL;
+                }
+                return limitVal;
+            }
+
+            bool findIterators(bool requireIters)
+            {
+                BndExpl bnd(*this, debug);
+                HornRuleExt& rule = chcs[cycles[0][0]];
+
+                Expr pref = bnd.compactPrefix(0);
+
+                for (int i = 0; i < invVars[loopRel].size(); i++)
+                {
+                    Expr a = invVars[loopRel][i];
+                    Expr b = invVarsPrime[loopRel][i];
+
+                    bool isAnIter = false;
+
+                    bool iterDecreases = bind::isIntConst(a) && bool(u.implies(rule.body, mk<GT>(a, b)));
+                    bool iterIncreases = bind::isIntConst(a) && bool(u.implies(rule.body, mk<LT>(a, b)));
+
+                    if (/*requireIters && */(iterIncreases || iterDecreases))
+                    {
+                        Expr add;
+
+                        Expr initVal = findInitialValue(i, pref);
+                        Expr transitionVal = findTransitionValue(i, rule.body);
+                        Expr limitVal = findFinalValue(i, rule.body, add, iterIncreases);
+
+                        isAnIter = (initVal != NULL) && (transitionVal != NULL) && (limitVal != NULL);
+                        if (isAnIter)
+                        {
+                            iter = i;
+                            iterGrows = iterIncreases;
+                            numOfIters = numIterations(initVal, transitionVal, limitVal, add);
+                            //outs() << "number of iterations: " << numOfIters << "\n";
+                        }
+                    }
+
+                    // if not an iter, collect info about the type of variables
+                    if (!isAnIter || !requireIters)
+                    {
+                        if (bind::isIntConst(a)) varsInt.push_back(i);
+                        else if (bind::isBoolConst(a)) varsBool.push_back(i);
+                        else if (isOpX<ARRAY_TY>(bind::typeOf(a))) varsArray.push_back(i);
+                    }
+                }
+                return (iter >= 0);
+            }
+
+            void preprocessing()
+            {
+                int factRemove = removePreLoop();
+                int queryRemove = removePostLoop();
+
+                for (auto it = chcs.begin(); it != chcs.end(); )
+                {
+                    if (factRemove == it-chcs.begin() || queryRemove == it-chcs.begin()) 
+                    {
+                        it = chcs.erase(it);
+                        factRemove--; queryRemove--;
+                    }
+                    else it++;
+                }
+
+                // we do it because we have already populated these containers with information with initial chcs,
+                // which have now been updated by removing pre and post loop
+                // either do this, or never populate with initial state of the chcs
+                prefixes.clear();
+                cycles.clear();
+                outgs.clear();
+                wtoCHCs.clear();
+
+                for (int i = 0; i < chcs.size(); i++)
+                    outgs[chcs[i].srcRelation].push_back(i);
+
+                wtoSort();
+            }
+    };
 }
 
 #endif

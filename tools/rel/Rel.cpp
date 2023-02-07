@@ -82,9 +82,7 @@ int main (int argc, char ** argv)
   bool aggressivepruning = getBoolValue(OPT_AGG_PRUNING, false, argc, argv);
   bool do_elim = !getBoolValue(OPT_ELIM, false, argc, argv);
   bool do_arithm = !getBoolValue(OPT_ARITHM, false, argc, argv);
-  // bool d_se = !getBoolValue(OPT_SEED, false, argc, argv);
-  // by default, turning this option true so that we skip processing of seeds
-  bool d_se = !getBoolValue(OPT_SEED, true, argc, argv); 
+  bool d_se = !getBoolValue(OPT_SEED, false, argc, argv);
   int do_prop = getIntValue(OPT_PROP, 0, argc, argv);
   int do_disj = getBoolValue(OPT_DISJ, false, argc, argv);
   int do_dl = getIntValue(OPT_DATA_LEARNING, 0, argc, argv);
