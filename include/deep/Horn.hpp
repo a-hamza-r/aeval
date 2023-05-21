@@ -125,11 +125,20 @@ namespace ufo
     int glob_ind = 0;
 
     CHCs(ExprFactory &efac, EZ3 &z3, string n, int d = false) : m_efac(efac), m_z3(z3), varname(n), u(efac), hasAnyArrays(false), debug(d) {};
-    CHCs(const CHCs &old_CHCs) : m_efac(old_CHCs.m_efac), m_z3(old_CHCs.m_z3), u(old_CHCs.m_efac), 
-      indeces(old_CHCs.indeces), varname(old_CHCs.varname), failDecl(old_CHCs.failDecl), chcs(old_CHCs.chcs),
-      wtoCHCs(old_CHCs.wtoCHCs), wtoDecls(old_CHCs.wtoDecls), decls(old_CHCs.decls), invVars(old_CHCs.invVars), 
-      invVarsPrime(old_CHCs.invVarsPrime), outgs(old_CHCs.outgs), prefixes(old_CHCs.prefixes), cycles(old_CHCs.cycles),
-      hasAnyArrays(old_CHCs.hasAnyArrays), hasArrays(old_CHCs.hasArrays), debug(old_CHCs.debug) {}
+    CHCs(const CHCs &old_CHCs, bool shallowCopy=false) : m_efac(old_CHCs.m_efac), m_z3(old_CHCs.m_z3), u(old_CHCs.m_efac), 
+      indeces(old_CHCs.indeces), varname(old_CHCs.varname), failDecl(old_CHCs.failDecl),
+      hasAnyArrays(old_CHCs.hasAnyArrays), hasArrays(old_CHCs.hasArrays), debug(old_CHCs.debug),
+      invVars(old_CHCs.invVars), invVarsPrime(old_CHCs.invVarsPrime)
+      {
+          if (shallowCopy) return;
+            chcs = old_CHCs.chcs;
+            wtoCHCs = old_CHCs.wtoCHCs;
+            wtoDecls = old_CHCs.wtoDecls; 
+            decls = old_CHCs.decls;
+            prefixes = old_CHCs.prefixes;
+            cycles = old_CHCs.cycles;
+            outgs = old_CHCs.outgs;
+      }
     CHCs(ExprFactory &efac, EZ3 &z3, int d = false) :
       u(efac), m_efac(efac), m_z3(z3), hasAnyArrays(false), debug(d), varname("FH") {};
 

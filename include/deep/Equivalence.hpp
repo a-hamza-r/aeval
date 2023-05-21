@@ -182,7 +182,7 @@ namespace ufo
 
                 query1 = subRule1->getQuery();
                 query2 = subRule2->getQuery();
-                queryPr.body = mk<AND>(query1->body, query2->body);
+                queryPr.body = simplifyBool(mk<AND>(query1->body, query2->body));
 
                 queryPr.srcRelation = mk<AND>(query1->srcRelation, query2->srcRelation);
                 queryPr.dstRelation = mkTerm<string>(lexical_cast<string>(query1->dstRelation) +
@@ -221,7 +221,6 @@ namespace ufo
             {
                 ExprVector productTypes;
                 Expr rel1 = predicates[0], rel2 = predicates[1];
-
                 Expr decl1 = subRule1->getDecl(rel1), decl2 = subRule2->getDecl(rel2);
 
                 Expr productRel = mkTerm<string>(lexical_cast<string>(rel1) + "*" +
@@ -289,11 +288,16 @@ namespace ufo
                 HornRuleExt C_a;
                 HornRuleExt queryPr;
 
+                HornRuleExt *query1 = subRule1->getQuery(), *query2 = subRule2->getQuery();
+                if (!query1 || !query2)
+                {
+                    errs() << "Creating product system requires that input CHC system have query CHCs\n";
+                    exit(0);
+                }
+
                 // generate product queries
                 createProductQueries(queryPr);
                 worklist.push_back(queryPr);
-
-                HornRuleExt *query1 = subRule1->getQuery(), *query2 = subRule2->getQuery();
 
                 while (!worklist.empty())
                 {
@@ -342,6 +346,251 @@ namespace ufo
             }
     };
 
+
+    class EquivalenceInPaper 
+    {
+        private:
+            ExprFactory &m_efac;
+            EZ3 &m_z3;
+            //Extended_CHCs &source;
+            //Extended_CHCs &target;
+            SMTUtils u;
+
+        public:
+            unsigned maxAttempts;
+            unsigned to;
+            bool freqs;
+            bool aggp;
+            int dat;
+            int mut;
+            bool doElim;
+            bool doArithm;
+            bool doDisj;
+            int doProp;
+            int mbpEqs;
+            bool dAllMbp;
+            bool dAddProp;
+            bool dAddDat;
+            bool dStrenMbp;
+            int dFwd;
+            bool dRec;
+            bool dGenerous;
+            int debug;
+            bool dSee;
+            bool allowEq;
+
+        EquivalenceInPaper(Extended_CHCs &r1, Extended_CHCs &r2,
+                unsigned _maxAttempts, unsigned _to, bool _freqs, bool _aggp, int _dat, int _mut,
+                bool _doElim, bool _doArithm, bool _doDisj, int _doProp, int _mbpEqs, bool _dAllMbp, bool _dAddProp, bool _dAddDat,
+                bool _dStrenMbp, int _dFwd, bool _dRec, bool _dGenerous, bool _dSee, bool _allowEq, int _debug) :
+            m_efac(r1.m_efac), m_z3(r1.m_z3), u(r1.m_efac, _to), 
+            //source(r1), target(r2),
+            maxAttempts(_maxAttempts), to(_to), freqs(_freqs), aggp(_aggp), dat(_dat), mut(_mut),
+            doElim(_doElim), doArithm(_doArithm), doDisj(_doDisj), doProp(_doProp), mbpEqs(_mbpEqs), dAllMbp(_dAllMbp),
+            dAddProp(_dAddProp), dAddDat(_dAddDat), dStrenMbp(_dStrenMbp), dFwd(_dFwd), dRec(_dRec),
+            dGenerous(_dGenerous), dSee(_dSee), allowEq(_allowEq), debug(_debug)
+        {}
+
+        bool learnInvariantsPr(CHCs &ruleManager)
+        {
+
+            if (debug > 4) ruleManager.print(true);
+            BndExpl bnd(ruleManager, to, debug);
+
+            RndLearnerV3 ds(ruleManager.m_efac, ruleManager.m_z3, ruleManager, to, freqs, aggp, mut, dat,
+                    doDisj, mbpEqs, dAllMbp, dAddProp, dAddDat, dStrenMbp, dFwd, dRec, dGenerous, to, debug);
+
+            map<Expr, ExprSet> cands;
+            for (int i = 0; i < ruleManager.cycles.size(); i++)
+            {
+                Expr dcl = ruleManager.chcs[ruleManager.cycles[i][0]].srcRelation;
+                if (ds.initializedDecl(dcl)) continue;
+                ds.initializeDecl(dcl);
+                //cands[dcl] = currentMatching;  // adding the matching explicitly
+
+                // GF: most likely, you won't need any of these,
+                //     so I disabled it to improve performance.
+                //     In case some bench requires a specific invariant,
+                //     try to enable gradually.
+
+                if (allowEq)
+                {
+                    auto & chc = ruleManager.chcs[ruleManager.prefixes[i][0]];
+                    if (chc.dstRelation == dcl)
+                        for (auto & v : chc.dstVars)
+                        {
+                            if (containsOp<ARRAY_TY>(v)) continue;
+                            ExprVector tmp = {v};
+                            getConj(replaceAll(keepQuantifiers(chc.body, tmp),
+                                        chc.dstVars, ruleManager.invVars[dcl]), cands[dcl]);
+                        }
+                }
+
+                if (!dSee) continue;
+                Expr pref = bnd.compactPrefix(i);
+                ExprSet tmp;
+                getConj(pref, tmp);
+                for (auto & t : tmp)
+                    if (hasOnlyVars(t, ruleManager.invVars[dcl]))
+                        cands[dcl].insert(t);
+
+                if (mut > 0) ds.mutateHeuristicEq(cands[dcl], cands[dcl], dcl, true);
+                ds.initializeAux(cands[dcl], bnd, i, pref);
+            }
+
+            if (dat > 0) ds.getDataCandidates(cands);
+
+            for (auto & dcl: ruleManager.wtoDecls)
+            {
+                for (int i = 0; i < doProp; i++)
+                    for (auto & a : cands[dcl]) ds.propagate(dcl, a, true);
+                ds.addCandidates(dcl, cands[dcl]);
+                ds.prepareSeeds(dcl, cands[dcl]);
+            }
+
+            // call bootstrap with option to only consider equalities as candidates for finding invariant
+            // also add equalities for variable matchings
+            bool check = ds.bootstrap();
+            return check;
+                //ds.verifySolution(currentMatching);
+        }
+
+
+        void decomposeSource(Extended_CHCs& source, Extended_CHCs& target, Extended_CHCs& SDecomposed) {
+            auto& efac = source.m_efac;
+            auto& TCycles = target.cycles;
+            auto& TPrefixes = target.prefixes;
+            int TCyclesSize = TCycles.size();
+            auto& SCycle = source.cycles[0].back();
+            auto& SPrefix = source.prefixes[0].back();
+            auto& SCycleCHC = source.chcs[SCycle];
+            Expr SLoopRel = SCycleCHC.srcRelation;
+            Expr SLoopRel_i_minus_1 = mk<TRUE>(efac);
+            ExprVector SLoopVars(SCycleCHC.head->args_begin()+1, SCycleCHC.head->args_end());
+            ExprVector SLoopSrcVars = SCycleCHC.srcVars;
+            Expr negSGuard;
+     
+            for (int cycleNum = 0; cycleNum < TCyclesSize; cycleNum++) {
+                auto& cycleList = TCycles[cycleNum];
+                auto& prefixList = TPrefixes[cycleNum];
+                auto& prefixCHC = target.chcs[prefixList.back()];
+                auto& cycleCHC = target.chcs[cycleList.back()];
+                
+                auto SFact = source.chcs[SPrefix];
+                auto SLoop = source.chcs[SCycle];
+
+                // if-condition is required according to the paper implementation
+                //if (cycleNum < TCyclesSize-1) {
+                // a better way would be to use precondition and eliminateQuantifiers
+                    auto TGuard = target.getPrecondition(&cycleCHC);
+                    auto P_i = replaceAll(TGuard, cycleCHC.srcVars, SLoop.srcVars);
+                    SLoop.body = mk<AND>(SLoop.body, P_i);
+                //}
+
+                Expr SLoopRel_i = mkTerm<string>(lexical_cast<string>(SLoopRel)+
+                        "_"+to_string(cycleNum), efac);
+                Expr SLoopHead_i = bind::fdecl(SLoopRel_i, SLoopVars);
+                SDecomposed.decls.insert(SLoopHead_i);
+                
+                SFact.srcRelation = SLoopRel_i_minus_1;
+                if (!isOpX<TRUE>(SLoopRel_i_minus_1)) {
+                    SFact.srcVars = SLoopSrcVars;
+                    SFact.body = negSGuard;
+                    SFact.isFact = false;
+                }
+                SFact.dstRelation = SLoopRel_i;
+                SLoop.srcRelation = SLoop.dstRelation = SLoopRel_i;
+                SLoop.head = SLoopHead_i;
+                SLoopRel_i_minus_1 = SLoopRel_i;
+                
+                SDecomposed.chcs.push_back(SFact);
+                SDecomposed.chcs.push_back(SLoop);
+
+                auto SGuard = SDecomposed.getPrecondition(&SDecomposed.chcs.back());
+                negSGuard = mkNeg(SGuard);
+            }
+
+            auto SQuery = source.getQuery();
+            SQuery->srcRelation = SLoopRel_i_minus_1;
+            SDecomposed.chcs.push_back(*SQuery);
+
+            // a better way to populate cycles info; 
+            // might not be needed if later we will have to make projections 
+            SDecomposed.prefixes.clear();
+            SDecomposed.cycles.clear();
+            SDecomposed.outgs.clear();
+            SDecomposed.wtoCHCs.clear();
+
+            for (int i = 0; i < SDecomposed.chcs.size(); i++)
+                SDecomposed.outgs[SDecomposed.chcs[i].srcRelation].push_back(i);
+            SDecomposed.wtoSort();
+        }
+
+        void projection(Extended_CHCs& projRm, int i, Extended_CHCs &origRm) {
+            auto &prefix = origRm.chcs[origRm.prefixes[i].back()];
+            if (!prefix.isFact) {
+                prefix.srcRelation = mk<TRUE>(origRm.m_efac);
+                prefix.srcVars.clear();
+                prefix.isFact = true;
+            }
+            projRm.chcs.push_back(prefix);
+            auto &cycle = origRm.chcs[origRm.cycles[i][0]];
+            projRm.chcs.push_back(cycle);
+            Expr rel = cycle.srcRelation;
+            projRm.decls.insert(origRm.getDecl(rel));
+
+            projRm.chcs.push_back(HornRuleExt());
+            HornRuleExt& hr = projRm.chcs.back();
+            hr.srcRelation = cycle.srcRelation;
+            hr.dstRelation = mk<FALSE>(origRm.m_efac);
+            hr.isQuery = true;
+            hr.isFact = false;
+            hr.isInductive = false;
+            hr.srcVars = cycle.srcVars;
+            hr.dstVars = ExprVector();
+            hr.body = mkNeg(origRm.getPrecondition(&cycle));
+
+            for (int i = 0; i < projRm.chcs.size(); i++)
+                projRm.outgs[projRm.chcs[i].srcRelation].push_back(i);
+
+            projRm.wtoSort();
+        }
+        
+        bool factSanityCheck(Product_CHCs &product) {
+            auto fact = product.getFact();
+            return bool(u.isSat(fact->body));
+        }
+
+        bool checkLockstepComposability(Product_CHCs &product, Extended_CHCs &rm1, Extended_CHCs &rm2) {
+            
+            auto query = product.getQuery();
+            auto &originalQuery = query->body;
+            auto loopGuard1 = rm1.getPrecondition(&rm1.chcs[rm1.cycles[0][0]]);
+            auto loopGuard2 = rm2.getPrecondition(&rm2.chcs[rm2.cycles[0][0]]);
+            Expr lockstepCheckPredicate = mk<NEQ>(loopGuard2, loopGuard1);
+            query->body = mk<AND>(lockstepCheckPredicate, originalQuery);
+            // TODO: according to paper, we need to return <inv, cex>
+            bool lockstepCheck = learnInvariantsPr(product);
+            query->body = originalQuery;
+            return lockstepCheck;
+        }
+
+        bool checkEquivalence(Product_CHCs &product) {
+            
+            auto query = product.getQuery();
+            auto &originalQuery = query->body;
+            // TODO: temporarily create a mapping, later need to pass it as a parameter
+            Expr mapping = mk<TRUE>(product.m_efac);
+            for (int i = 0; i < query->srcVars.size()/2; i++) {
+                mapping = mk<AND>(mapping, mk<EQ>(query->srcVars[i], query->srcVars[i+query->srcVars.size()/2]));
+            }
+            Expr post = simplifyBool(mkNeg(mapping));
+            query->body = mk<AND>(post, originalQuery);
+            bool equivalenceCheck = learnInvariantsPr(product);
+            query->body = originalQuery;
+            return equivalenceCheck;
+        }
+    };
 
     class Equivalence
     {
@@ -980,29 +1229,134 @@ namespace ufo
         return false;
     }
 
-    bool checkEquivalence(Extended_CHCs &ruleManager1, Extended_CHCs &ruleManager2, bool doAlign,
+    void decompose(Extended_CHCs& S, Extended_CHCs& T, Extended_CHCs& SDecomposed) {
+        auto& efac = S.m_efac;
+        auto& TCycles = T.cycles;
+        auto& TPrefixes = T.prefixes;
+        int TCyclesSize = TCycles.size();
+        auto& SCycle = S.cycles[0].back();
+        auto& SPrefix = S.prefixes[0].back();
+        auto& SCycleCHC = S.chcs[SCycle];
+        Expr SLoopRel = SCycleCHC.srcRelation;
+        Expr SLoopRel_i_minus_1 = mk<TRUE>(efac);
+        ExprVector SLoopVars(SCycleCHC.head->args_begin()+1, SCycleCHC.head->args_end());
+        ExprVector SLoopSrcVars = SCycleCHC.srcVars;
+        Expr negSGuard;
+ 
+        for (int cycleNum = 0; cycleNum < TCyclesSize; cycleNum++) {
+            auto& cycleList = TCycles[cycleNum];
+            auto& prefixList = TPrefixes[cycleNum];
+            auto& prefixCHC = T.chcs[prefixList.back()];
+            auto& cycleCHC = T.chcs[cycleList.back()];
+            
+            auto SFact = S.chcs[SPrefix];
+            auto SLoop = S.chcs[SCycle];
+
+            // if-condition is required according to the paper implementation
+            //if (cycleNum < TCyclesSize-1) {
+            // a better way would be to use precondition and eliminateQuantifiers
+                auto TGuard = T.getPrecondition(&cycleCHC);
+                auto P_i = replaceAll(TGuard, cycleCHC.srcVars, SLoop.srcVars);
+                SLoop.body = mk<AND>(SLoop.body, P_i);
+            //}
+
+            Expr SLoopRel_i = mkTerm<string>(lexical_cast<string>(SLoopRel)+
+                    "_"+to_string(cycleNum), efac);
+            Expr SLoopHead_i = bind::fdecl(SLoopRel_i, SLoopVars);
+            SDecomposed.decls.insert(SLoopHead_i);
+            
+            SFact.srcRelation = SLoopRel_i_minus_1;
+            if (!isOpX<TRUE>(SLoopRel_i_minus_1)) {
+                SFact.srcVars = SLoopSrcVars;
+                SFact.body = negSGuard;
+                SFact.isFact = false;
+            }
+            SFact.dstRelation = SLoopRel_i;
+            SLoop.srcRelation = SLoop.dstRelation = SLoopRel_i;
+            SLoop.head = SLoopHead_i;
+            SLoopRel_i_minus_1 = SLoopRel_i;
+            
+            SDecomposed.chcs.push_back(SFact);
+            SDecomposed.chcs.push_back(SLoop);
+
+            auto SGuard = SDecomposed.getPrecondition(&SDecomposed.chcs.back());
+            negSGuard = mkNeg(SGuard);
+        }
+
+        auto SQuery = S.getQuery();
+        SQuery->srcRelation = SLoopRel_i_minus_1;
+        SDecomposed.chcs.push_back(*SQuery);
+
+        // a better way to populate cycles info; 
+        // might not be needed if later we will have to make projections 
+        SDecomposed.prefixes.clear();
+        SDecomposed.cycles.clear();
+        SDecomposed.outgs.clear();
+        SDecomposed.wtoCHCs.clear();
+
+        for (int i = 0; i < SDecomposed.chcs.size(); i++)
+            SDecomposed.outgs[SDecomposed.chcs[i].srcRelation].push_back(i);
+        SDecomposed.wtoSort();
+    }
+    
+    void projection(Extended_CHCs& projRm, int i, Extended_CHCs &origRm) {
+        auto &prefix = origRm.chcs[origRm.prefixes[i].back()];
+        if (!prefix.isFact) {
+            prefix.srcRelation = mk<TRUE>(origRm.m_efac);
+            prefix.srcVars.clear();
+            prefix.isFact = true;
+        }
+        projRm.chcs.push_back(prefix);
+        auto &cycle = origRm.chcs[origRm.cycles[i][0]];
+        projRm.chcs.push_back(cycle);
+        Expr rel = cycle.srcRelation;
+        projRm.decls.insert(origRm.getDecl(rel));
+
+        projRm.chcs.push_back(HornRuleExt());
+        HornRuleExt& hr = projRm.chcs.back();
+        hr.srcRelation = cycle.srcRelation;
+        hr.dstRelation = mk<FALSE>(origRm.m_efac);
+        hr.isQuery = true;
+        hr.isFact = false;
+        hr.isInductive = false;
+        hr.srcVars = cycle.srcVars;
+        hr.dstVars = ExprVector();
+        hr.body = mk<TRUE>(origRm.m_efac);
+
+        for (int i = 0; i < projRm.chcs.size(); i++)
+            projRm.outgs[projRm.chcs[i].srcRelation].push_back(i);
+
+        projRm.wtoSort();
+    }
+
+    bool checkEquivalence(Extended_CHCs &source, Extended_CHCs &target, bool doAlign,
             unsigned maxAttempts, unsigned to, bool freqs, bool aggp, int dat, int mut, bool doElim,
             bool doArithm, bool doDisj, int doProp, int mbpEqs, bool dAllMbp, bool dAddProp,
             bool dAddDat, bool dStrenMbp, int dFwd, bool dRec, bool dGenerous, bool dSee, bool allowEq, int debug)
     {
-        //assert(ruleManager1.cycles.size() == ruleManager2.cycles.size());
-        int cycleSize1 = ruleManager1.cycles.size(), cycleSize2 = ruleManager2.cycles.size();
+        int cycleSize1 = source.cycles.size();
+        int cycleSize2 = target.cycles.size();
+        auto& efac = source.m_efac;
+        auto& z3 = source.m_z3;
+
+        assert(cycleSize1 == 1);
+
         if (cycleSize1 == cycleSize2) {
             // current support for single loops or similarly nested loops
             for (int i = 0; i < cycleSize1; i++)
             {
-                Expr loop1 = ruleManager1.chcs[ruleManager1.cycles[i][0]].srcRelation;
-                Expr loop2 = ruleManager2.chcs[ruleManager2.cycles[i][0]].srcRelation;
+                Expr loop1 = source.chcs[source.cycles[i][0]].srcRelation;
+                Expr loop2 = target.chcs[target.cycles[i][0]].srcRelation;
                 outs() << "currently processing: " << loop1 << " and " << loop2 << "\n";
 
-                Extended_CHCs newRuleManager1(ruleManager1.m_efac, ruleManager1.m_z3, "_v1_", debug-2);
-                Extended_CHCs newRuleManager2(ruleManager1.m_efac, ruleManager1.m_z3, "_v2_", debug-2);
+                Extended_CHCs newsource(source.m_efac, source.m_z3, "_v1_", debug-2);
+                Extended_CHCs newtarget(source.m_efac, source.m_z3, "_v2_", debug-2);
 
-                bool hasMultipleLoops = ruleManager1.cycles.size()>1;
-                constructNewRuleManager(newRuleManager1, ruleManager1, loop1, hasMultipleLoops, i>0, true);
-                constructNewRuleManager(newRuleManager2, ruleManager2, loop2, hasMultipleLoops, i>0, true);
+                bool hasMultipleLoops = source.cycles.size()>1;
+                constructNewRuleManager(newsource, source, loop1, hasMultipleLoops, i>0, true);
+                constructNewRuleManager(newtarget, target, loop2, hasMultipleLoops, i>0, true);
 
-                if (!checkEquivalenceSingleLoop(newRuleManager1, newRuleManager2, doAlign, maxAttempts, to, freqs, aggp,
+                if (!checkEquivalenceSingleLoop(newsource, newtarget, doAlign, maxAttempts, to, freqs, aggp,
                             dat, mut, doElim, doArithm, doDisj, doProp, mbpEqs, dAllMbp, dAddProp, dAddDat, dStrenMbp, dFwd, dRec,
                             dGenerous, dSee, allowEq, debug, i <= 0))
                     return false;
@@ -1012,70 +1366,111 @@ namespace ufo
         else {
             // current support for multi-phase loops, where one program has single loop and other contains multiple
             assert(cycleSize1 == 1 && cycleSize2 > 1);
-
-            outs() << "printing original ruleManager1:\n";
-            ruleManager1.print(true);
-            outs() << "printing original ruleManager2:\n";
-            ruleManager2.print(true);
             
-            Expr loopGuard1, loopGuard2;
-            Expr loop1 = ruleManager1.chcs[ruleManager1.cycles[0][0]].srcRelation;
+            EquivalenceInPaper equiv(source, target, maxAttempts, to, freqs,
+                    aggp, dat, mut, doElim, doArithm, doDisj, doProp, mbpEqs, dAllMbp, dAddProp, dAddDat,
+                    dStrenMbp, dFwd, dRec, dGenerous, dSee, allowEq, debug);
+
+            // TODO: whether it is a good idea to keep source, target, decomposed source, projections
+            // and products in the class or not
+            Extended_CHCs decomposedSource(efac, z3, "_v1_", debug-2);
+            equiv.decomposeSource(source, target, decomposedSource);
+            assert(cycleSize2 == decomposedSource.cycles.size());
 
             for (int i = 0; i < cycleSize2; i++) {
-                Expr loop2 = ruleManager2.chcs[ruleManager2.cycles[i][0]].srcRelation;
+                Extended_CHCs projectionSource(decomposedSource, true);
+                equiv.projection(projectionSource, i, decomposedSource);
+                
+                Extended_CHCs projectionTarget(target, true);
+                equiv.projection(projectionTarget, i, target);
 
-                Extended_CHCs newRuleManager1(ruleManager1.m_efac, ruleManager1.m_z3, "_v1_", debug-2);
-                constructNewRuleManager(newRuleManager1, ruleManager1, loop1, false, false, false);
-                Extended_CHCs newRuleManager2(ruleManager2.m_efac, ruleManager2.m_z3, "_v2_", debug-2);
-                constructNewRuleManager(newRuleManager2, ruleManager2, loop2, true, false, true);
+                // cex loop
+                while (true) {
+                    Product_CHCs product(projectionSource, projectionTarget, "_pr_", debug-2);
+                    product.createProduct();
+                    product.print(true);
+                    
+                    bool factSanity = equiv.factSanityCheck(product);
+                    bool lockstepCheck, equivalenceCheck;
+                    if (factSanity) {
+                        lockstepCheck = equiv.checkLockstepComposability(product, projectionSource, projectionTarget);
+                    }
+                    if (!factSanity || !lockstepCheck) {
+                        // align the programs
+                    }
+                    else {
+                        // check equivalence
+                        equivalenceCheck = equiv.checkEquivalence(product);
+                        if (equivalenceCheck) {
+                            outs() << "current projections are equivalent\n";
+                        }
+                        else {
+                            outs() << "current projections are not equivalent\n";
+                        }
+                    }
+                    break;
+                }
+            }
+            return true;
+
+            Expr loopGuard1, loopGuard2;
+            Expr loop1 = source.chcs[source.cycles[0][0]].srcRelation;
+
+            for (int i = 0; i < cycleSize2; i++) {
+                Expr loop2 = target.chcs[target.cycles[i][0]].srcRelation;
+
+                Extended_CHCs newsource(source.m_efac, source.m_z3, "_v1_", debug-2);
+                constructNewRuleManager(newsource, source, loop1, false, false, false);
+                Extended_CHCs newtarget(target.m_efac, target.m_z3, "_v2_", debug-2);
+                constructNewRuleManager(newtarget, target, loop2, true, false, true);
 
                 if (i > 0) {
                     // when considering all cycles, except for the first one, for the 2nd program,
                     // the fact should be true, as we do not want the initial state of the loop to be
                     // represented by initial inputs but some precondition that is added later;
-                    auto chc1 = newRuleManager1.getFact();
-                    chc1->body = mk<TRUE>(newRuleManager1.m_efac);
+                    auto chc1 = newsource.getFact();
+                    chc1->body = mk<TRUE>(newsource.m_efac);
                     
-                    // we also create a new fact for the ruleManager2 because it is removed in the first iteration 
-                    newRuleManager2.chcs.push_back(HornRuleExt());
-                    HornRuleExt &hr = newRuleManager2.chcs.back();
-                    hr.dstVars = newRuleManager2.invVarsPrime[loop2];
-                    hr.srcRelation = mk<TRUE>(newRuleManager2.m_efac);
+                    // we also create a new fact for the target because it is removed in the first iteration 
+                    newtarget.chcs.push_back(HornRuleExt());
+                    HornRuleExt &hr = newtarget.chcs.back();
+                    hr.dstVars = newtarget.invVarsPrime[loop2];
+                    hr.srcRelation = mk<TRUE>(newtarget.m_efac);
                     hr.dstRelation = loop2;
                     hr.isFact = true;
                     hr.isQuery = false;
-                    hr.body = simplifyArithm(mkNeg(replaceAll(loopGuard2, ruleManager2.invVars[loop2], ruleManager2.invVarsPrime[loop2])));
+                    hr.body = simplifyArithm(mkNeg(replaceAll(loopGuard2, target.invVars[loop2], target.invVarsPrime[loop2])));
                     
                     // TODO: remove and devise a better way to deal with cycles not being computed
-                    newRuleManager2.prefixes.clear();
-                    newRuleManager2.cycles.clear();
-                    newRuleManager2.outgs.clear();
-                    newRuleManager2.wtoCHCs.clear();
+                    newtarget.prefixes.clear();
+                    newtarget.cycles.clear();
+                    newtarget.outgs.clear();
+                    newtarget.wtoCHCs.clear();
 
-                    for (int i = 0; i < newRuleManager2.chcs.size(); i++)
-                        newRuleManager2.outgs[newRuleManager2.chcs[i].srcRelation].push_back(i);
-                    newRuleManager2.wtoSort();
+                    for (int i = 0; i < newtarget.chcs.size(); i++)
+                        newtarget.outgs[newtarget.chcs[i].srcRelation].push_back(i);
+                    newtarget.wtoSort();
                 }
 
-                auto& cycle1 = newRuleManager1.chcs[newRuleManager1.cycles[0][0]];
-                auto& cycle2 = newRuleManager2.chcs[newRuleManager2.cycles[0][0]];
-                loopGuard2 = newRuleManager2.getPrecondition(&cycle2);
+                auto& cycle1 = newsource.chcs[newsource.cycles[0][0]];
+                auto& cycle2 = newtarget.chcs[newtarget.cycles[0][0]];
+                loopGuard2 = newtarget.getPrecondition(&cycle2);
                 // TODO: right now, assumes that variables pair at the same index, generalize that
                 Expr restrictIters = replaceAll(loopGuard2, cycle2.srcVars, cycle1.srcVars);
                 cycle1.body = mk<AND>(cycle1.body, restrictIters);
-                loopGuard1 = newRuleManager1.getPrecondition(&cycle1);
+                loopGuard1 = newsource.getPrecondition(&cycle1);
                 
-                newRuleManager1.loopGuard = loopGuard1;
-                newRuleManager2.loopGuard = loopGuard2;
+                newsource.loopGuard = loopGuard1;
+                newtarget.loopGuard = loopGuard2;
 
-                outs() << "printing rule Manager1 after decomposition\n";
-                newRuleManager1.print(true);
-                outs() << "printing rule Manager2 after decomposition\n";
-                newRuleManager2.print(true);
+                //outs() << "printing rule Manager1 after decomposition\n";
+                //newsource.print(true);
+                //outs() << "printing rule Manager2 after decomposition\n";
+                //newtarget.print(true);
 
-                newRuleManager1.loopRel = newRuleManager1.chcs[newRuleManager1.cycles[0][0]].srcRelation;
+                newsource.loopRel = newsource.chcs[newsource.cycles[0][0]].srcRelation;
                 // 3rd option is doAlign, however, this needs better handling
-                if (!checkEquivalenceSingleLoop(newRuleManager1, newRuleManager2, false, maxAttempts, to, freqs, aggp,
+                if (!checkEquivalenceSingleLoop(newsource, newtarget, false, maxAttempts, to, freqs, aggp,
                             dat, mut, doElim, doArithm, doDisj, doProp, mbpEqs, dAllMbp, dAddProp, dAddDat, dStrenMbp, dFwd, dRec,
                             dGenerous, dSee, allowEq, debug, true, false))
                     return false;

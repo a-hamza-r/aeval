@@ -156,6 +156,8 @@ namespace ufo
             ExprVector queryDstVars;
 
             Extended_CHCs(ExprFactory &efac, EZ3 &z3, string n, int d = false) : CHCs(efac, z3, n, d), iter(-1) {};
+            Extended_CHCs(const Extended_CHCs &old_chc, bool shallowCopy=false) 
+                : CHCs(old_chc, shallowCopy), iter(-1) {};
 
 
             Expr getDecl(Expr relation)
