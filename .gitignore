@@ -38,6 +38,8 @@ bench_horn_rel/COUNTER_benchs/benchmark_files/different_unroll_config/
 bench_horn_rel/COUNTER_benchs/benchmark_files/results.txt
 bench_horn_rel/pldi19_TSVC_benchs/scripts/
 *.sh
+*.zip
+*.tar.gz
 bench_horn_rel/COUNTER_benchs/benchmark_files/TSVC/run1/
 bench_horn_rel/COUNTER_benchs/benchmark_files/TSVC/run2/
 bench_horn_rel/COUNTER_benchs/benchmark_files/different_unroll_config/
