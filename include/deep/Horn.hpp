@@ -127,8 +127,7 @@ namespace ufo
     CHCs(ExprFactory &efac, EZ3 &z3, string n, int d = false) : m_efac(efac), m_z3(z3), varname(n), u(efac), hasAnyArrays(false), debug(d) {};
     CHCs(const CHCs &old_CHCs, bool shallowCopy=false) : m_efac(old_CHCs.m_efac), m_z3(old_CHCs.m_z3), u(old_CHCs.m_efac), 
       indeces(old_CHCs.indeces), varname(old_CHCs.varname), failDecl(old_CHCs.failDecl),
-      hasAnyArrays(old_CHCs.hasAnyArrays), hasArrays(old_CHCs.hasArrays), debug(old_CHCs.debug),
-      invVars(old_CHCs.invVars), invVarsPrime(old_CHCs.invVarsPrime)
+      hasAnyArrays(old_CHCs.hasAnyArrays), hasArrays(old_CHCs.hasArrays), debug(old_CHCs.debug)
       {
           if (shallowCopy) return;
             chcs = old_CHCs.chcs;
@@ -138,6 +137,8 @@ namespace ufo
             prefixes = old_CHCs.prefixes;
             cycles = old_CHCs.cycles;
             outgs = old_CHCs.outgs;
+            invVars = old_CHCs.invVars;
+            invVarsPrime = old_CHCs.invVarsPrime;
       }
     CHCs(ExprFactory &efac, EZ3 &z3, int d = false) :
       u(efac), m_efac(efac), m_z3(z3), hasAnyArrays(false), debug(d), varname("FH") {};

@@ -210,7 +210,15 @@ namespace ufo
                     }
                 }
             }
-
+    
+            void categorizeVars() {
+                for (int i = 0; i < invVars[loopRel].size(); i++) {
+                    Expr var = invVars[loopRel][i];
+                    if (bind::isIntConst(var)) varsInt.push_back(i);
+                    else if (bind::isBoolConst(var)) varsBool.push_back(i);
+                    else if (isOpX<ARRAY_TY>(bind::typeOf(var))) varsArray.push_back(i);
+                }
+            }
 
             HornRuleExt *getQuery()
             {
