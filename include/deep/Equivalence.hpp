@@ -352,8 +352,8 @@ namespace ufo
         private:
             ExprFactory &m_efac;
             EZ3 &m_z3;
-            //Extended_CHCs &source;
-            //Extended_CHCs &target;
+            Extended_CHCs &source;
+            Extended_CHCs &target;
             SMTUtils u;
 
         public:
@@ -378,17 +378,18 @@ namespace ufo
             int debug;
             bool dSee;
             bool allowEq;
+            vector<vector<int>> pairings;
 
         EquivalenceInPaper(Extended_CHCs &r1, Extended_CHCs &r2,
                 unsigned _maxAttempts, unsigned _to, bool _freqs, bool _aggp, int _dat, int _mut,
                 bool _doElim, bool _doArithm, bool _doDisj, int _doProp, int _mbpEqs, bool _dAllMbp, bool _dAddProp, bool _dAddDat,
-                bool _dStrenMbp, int _dFwd, bool _dRec, bool _dGenerous, bool _dSee, bool _allowEq, int _debug) :
+                bool _dStrenMbp, int _dFwd, bool _dRec, bool _dGenerous, bool _dSee, bool _allowEq, int _debug, vector<vector<int>> &_pairings) :
             m_efac(r1.m_efac), m_z3(r1.m_z3), u(r1.m_efac, _to), 
-            //source(r1), target(r2),
+            source(r1), target(r2),
             maxAttempts(_maxAttempts), to(_to), freqs(_freqs), aggp(_aggp), dat(_dat), mut(_mut),
             doElim(_doElim), doArithm(_doArithm), doDisj(_doDisj), doProp(_doProp), mbpEqs(_mbpEqs), dAllMbp(_dAllMbp),
             dAddProp(_dAddProp), dAddDat(_dAddDat), dStrenMbp(_dStrenMbp), dFwd(_dFwd), dRec(_dRec),
-            dGenerous(_dGenerous), dSee(_dSee), allowEq(_allowEq), debug(_debug)
+            dGenerous(_dGenerous), dSee(_dSee), allowEq(_allowEq), debug(_debug), pairings(_pairings)
         {}
 
         bool learnInvariantsPr(CHCs &ruleManager)
@@ -455,136 +456,28 @@ namespace ufo
                 //ds.verifySolution(currentMatching);
         }
 
-
-        void decomposeSource(Extended_CHCs& source, Extended_CHCs& target, Extended_CHCs& SDecomposed) {
-            auto& efac = source.m_efac;
-            auto& TCycles = target.cycles;
-            auto& TPrefixes = target.prefixes;
-            int TCyclesSize = TCycles.size();
-            auto& SCycle = source.cycles[0][0];
-            auto& SPrefix = source.prefixes[0].back();
-            auto& SCycleCHC = source.chcs[SCycle];
-            Expr SLoopRel = SCycleCHC.srcRelation;
-            Expr SLoopRel_i_minus_1 = mk<TRUE>(efac);
-            ExprVector SLoopVars(SCycleCHC.head->args_begin()+1, SCycleCHC.head->args_end());
-            ExprVector SLoopSrcVars = SCycleCHC.srcVars;
-            Expr negSGuard;
-            ExprVector invVars = source.invVars[SLoopRel];
-            ExprVector invVarsPrime = source.invVarsPrime[SLoopRel];
-     
-            for (int cycleNum = 0; cycleNum < TCyclesSize; cycleNum++) {
-                auto& cycleList = TCycles[cycleNum];
-                auto& prefixList = TPrefixes[cycleNum];
-                auto& prefixCHC = target.chcs[prefixList.back()];
-                auto& cycleCHC = target.chcs[cycleList.back()];
-                
-                auto SFact = source.chcs[SPrefix];
-                auto SLoop = source.chcs[SCycle];
-
-                // if-condition is required according to the paper implementation
-                //if (cycleNum < TCyclesSize-1) {
-                // a better way would be to use precondition and eliminateQuantifiers
-                    auto TGuard = target.getPrecondition(&cycleCHC);
-                    auto P_i = replaceAll(TGuard, cycleCHC.srcVars, SLoop.srcVars);
-                    SLoop.body = mk<AND>(SLoop.body, P_i);
-                //}
-
-                Expr SLoopRel_i = mkTerm<string>(lexical_cast<string>(SLoopRel)+
-                        "_"+to_string(cycleNum), efac);
-                SDecomposed.invVars[SLoopRel_i] = invVars;
-                SDecomposed.invVarsPrime[SLoopRel_i] = invVarsPrime;
-                Expr SLoopHead_i = bind::fdecl(SLoopRel_i, SLoopVars);
-                SDecomposed.decls.insert(SLoopHead_i);
-                
-                SFact.srcRelation = SLoopRel_i_minus_1;
-                if (!isOpX<TRUE>(SLoopRel_i_minus_1)) {
-                    SFact.srcVars = SLoopSrcVars;
-                    SFact.body = negSGuard;
-                    SFact.isFact = false;
-                }
-                SFact.dstRelation = SLoopRel_i;
-                SLoop.srcRelation = SLoop.dstRelation = SLoopRel_i;
-                SLoop.head = SLoopHead_i;
-                SLoopRel_i_minus_1 = SLoopRel_i;
-                
-                SDecomposed.chcs.push_back(SFact);
-                SDecomposed.chcs.push_back(SLoop);
-
-                auto SGuard = SDecomposed.getPrecondition(&SDecomposed.chcs.back());
-                negSGuard = mkNeg(SGuard);
-            }
-
-            auto SQuery = source.getQuery();
-            SQuery->srcRelation = SLoopRel_i_minus_1;
-            SDecomposed.chcs.push_back(*SQuery);
-
-            // a better way to populate cycles info; 
-            // might not be needed if later we will have to make projections 
-            SDecomposed.prefixes.clear();
-            SDecomposed.cycles.clear();
-            SDecomposed.outgs.clear();
-            SDecomposed.wtoCHCs.clear();
-
-            for (int i = 0; i < SDecomposed.chcs.size(); i++)
-                SDecomposed.outgs[SDecomposed.chcs[i].srcRelation].push_back(i);
-            SDecomposed.wtoSort();
-        }
-
-        void projection(Extended_CHCs& projRm, int i, Extended_CHCs &origRm) {
-            auto &prefix = origRm.chcs[origRm.prefixes[i].back()];
-            if (!prefix.isFact) {
-                prefix.srcRelation = mk<TRUE>(origRm.m_efac);
-                prefix.srcVars.clear();
-                prefix.isFact = true;
-            }
-            projRm.chcs.push_back(prefix);
-            auto &cycle = origRm.chcs[origRm.cycles[i][0]];
-            projRm.chcs.push_back(cycle);
-            Expr rel = cycle.srcRelation;
-            projRm.decls.insert(origRm.getDecl(rel));
-            projRm.invVars[rel] = origRm.invVars[rel];
-            projRm.invVarsPrime[rel] = origRm.invVarsPrime[rel];
-
-            projRm.chcs.push_back(HornRuleExt());
-            HornRuleExt& hr = projRm.chcs.back();
-            hr.srcRelation = cycle.srcRelation;
-            hr.dstRelation = mk<FALSE>(origRm.m_efac);
-            hr.isQuery = true;
-            hr.isFact = false;
-            hr.isInductive = false;
-            hr.srcVars = cycle.srcVars;
-            hr.dstVars = ExprVector();
-            hr.body = mkNeg(origRm.getPrecondition(&cycle));
-
-            for (int i = 0; i < projRm.chcs.size(); i++)
-                projRm.outgs[projRm.chcs[i].srcRelation].push_back(i);
-
-            projRm.wtoSort();
-            projRm.loopRel = cycle.srcRelation;
-        }
-        
         bool factSanityCheck(Expr &factBody) {
             return bool(u.isSat(factBody));
         }
 
-        Expr getPrecondition(Extended_CHCs &source, Extended_CHCs &target, vector<vector<int>> &combs) {
+        Expr getPrecondition() {
 
             Expr sourceCycleRel = source.loopRel;
             Expr targetCycleRel = target.loopRel;
             Expr precondition = mk<TRUE>(m_efac);
-            for (auto &pr : combs) {
+            for (auto &pr : pairings) {
                 precondition = mk<AND>(precondition, mk<EQ>(
                     source.invVarsPrime[sourceCycleRel][pr[0]], target.invVarsPrime[targetCycleRel][pr[1]]));
             }
             return simplifyBool(precondition);
         }
 
-        bool checkLockstepComposability(Product_CHCs &product, Extended_CHCs &rm1, Extended_CHCs &rm2) {
+        bool checkLockstepComposability(Product_CHCs &product) {
             
             auto query = product.getQuery();
             auto &originalQuery = query->body;
-            auto loopGuard1 = rm1.getPrecondition(&rm1.chcs[rm1.cycles[0][0]]);
-            auto loopGuard2 = rm2.getPrecondition(&rm2.chcs[rm2.cycles[0][0]]);
+            auto loopGuard1 = source.getPrecondition(&source.chcs[source.cycles[0][0]]);
+            auto loopGuard2 = target.getPrecondition(&target.chcs[target.cycles[0][0]]);
             Expr lockstepCheckPredicate = mk<NEQ>(loopGuard2, loopGuard1);
             query->body = mk<AND>(lockstepCheckPredicate, originalQuery);
             // TODO: according to paper, we need to return <inv, cex>
@@ -593,15 +486,14 @@ namespace ufo
             return lockstepCheck;
         }
 
-        bool checkEquivalence(Product_CHCs &product, vector<vector<int>>& combs, 
-                Extended_CHCs &source, Extended_CHCs &target) {
+        bool checkEquivalence(Product_CHCs &product) {
             auto &sourceVars = source.invVars[source.loopRel];
             auto &targetVars = target.invVars[target.loopRel];
             auto query = product.getQuery();
             auto &originalQuery = query->body;
             // TODO: temporarily create a mapping, later need to pass it as a parameter
             Expr mapping = mk<TRUE>(product.m_efac);
-            for (auto &pr : combs) {
+            for (auto &pr : pairings) {
                 mapping = mk<AND>(mapping, mk<EQ>(sourceVars[pr[0]], targetVars[pr[1]]));
             }
             Expr post = simplifyBool(mkNeg(mapping));
@@ -1249,6 +1141,113 @@ namespace ufo
         return false;
     }
 
+    void decomposeSource(Extended_CHCs& source, Extended_CHCs& target, Extended_CHCs& SDecomposed) {
+        auto& efac = source.m_efac;
+        auto& TCycles = target.cycles;
+        auto& TPrefixes = target.prefixes;
+        int TCyclesSize = TCycles.size();
+        auto& SCycle = source.cycles[0][0];
+        auto& SPrefix = source.prefixes[0].back();
+        auto& SCycleCHC = source.chcs[SCycle];
+        Expr SLoopRel = SCycleCHC.srcRelation;
+        Expr SLoopRel_i_minus_1 = mk<TRUE>(efac);
+        ExprVector SLoopVars(SCycleCHC.head->args_begin()+1, SCycleCHC.head->args_end());
+        ExprVector SLoopSrcVars = SCycleCHC.srcVars;
+        Expr negSGuard;
+        ExprVector invVars = source.invVars[SLoopRel];
+        ExprVector invVarsPrime = source.invVarsPrime[SLoopRel];
+ 
+        for (int cycleNum = 0; cycleNum < TCyclesSize; cycleNum++) {
+            auto& cycleList = TCycles[cycleNum];
+            auto& prefixList = TPrefixes[cycleNum];
+            auto& prefixCHC = target.chcs[prefixList.back()];
+            auto& cycleCHC = target.chcs[cycleList.back()];
+            
+            auto SFact = source.chcs[SPrefix];
+            auto SLoop = source.chcs[SCycle];
+
+            // if-condition is required according to the paper implementation
+            //if (cycleNum < TCyclesSize-1) {
+            // a better way would be to use precondition and eliminateQuantifiers
+                auto TGuard = target.getPrecondition(&cycleCHC);
+                auto P_i = replaceAll(TGuard, cycleCHC.srcVars, SLoop.srcVars);
+                SLoop.body = mk<AND>(SLoop.body, P_i);
+            //}
+
+            Expr SLoopRel_i = mkTerm<string>(lexical_cast<string>(SLoopRel)+
+                    "_"+to_string(cycleNum), efac);
+            SDecomposed.invVars[SLoopRel_i] = invVars;
+            SDecomposed.invVarsPrime[SLoopRel_i] = invVarsPrime;
+            Expr SLoopHead_i = bind::fdecl(SLoopRel_i, SLoopVars);
+            SDecomposed.decls.insert(SLoopHead_i);
+            
+            SFact.srcRelation = SLoopRel_i_minus_1;
+            if (!isOpX<TRUE>(SLoopRel_i_minus_1)) {
+                SFact.srcVars = SLoopSrcVars;
+                SFact.body = negSGuard;
+                SFact.isFact = false;
+            }
+            SFact.dstRelation = SLoopRel_i;
+            SLoop.srcRelation = SLoop.dstRelation = SLoopRel_i;
+            SLoop.head = SLoopHead_i;
+            SLoopRel_i_minus_1 = SLoopRel_i;
+            
+            SDecomposed.chcs.push_back(SFact);
+            SDecomposed.chcs.push_back(SLoop);
+
+            auto SGuard = SDecomposed.getPrecondition(&SDecomposed.chcs.back());
+            negSGuard = mkNeg(SGuard);
+        }
+
+        auto SQuery = source.getQuery();
+        SQuery->srcRelation = SLoopRel_i_minus_1;
+        SDecomposed.chcs.push_back(*SQuery);
+
+        // a better way to populate cycles info; 
+        // might not be needed if later we will have to make projections 
+        SDecomposed.prefixes.clear();
+        SDecomposed.cycles.clear();
+        SDecomposed.outgs.clear();
+        SDecomposed.wtoCHCs.clear();
+
+        for (int i = 0; i < SDecomposed.chcs.size(); i++)
+            SDecomposed.outgs[SDecomposed.chcs[i].srcRelation].push_back(i);
+        SDecomposed.wtoSort();
+    }
+
+    void projection(Extended_CHCs& projRm, int i, Extended_CHCs &origRm) {
+        auto &prefix = origRm.chcs[origRm.prefixes[i].back()];
+        if (!prefix.isFact) {
+            prefix.srcRelation = mk<TRUE>(origRm.m_efac);
+            prefix.srcVars.clear();
+            prefix.isFact = true;
+        }
+        projRm.chcs.push_back(prefix);
+        auto &cycle = origRm.chcs[origRm.cycles[i][0]];
+        projRm.chcs.push_back(cycle);
+        Expr rel = cycle.srcRelation;
+        projRm.decls.insert(origRm.getDecl(rel));
+        projRm.invVars[rel] = origRm.invVars[rel];
+        projRm.invVarsPrime[rel] = origRm.invVarsPrime[rel];
+
+        projRm.chcs.push_back(HornRuleExt());
+        HornRuleExt& hr = projRm.chcs.back();
+        hr.srcRelation = cycle.srcRelation;
+        hr.dstRelation = mk<FALSE>(origRm.m_efac);
+        hr.isQuery = true;
+        hr.isFact = false;
+        hr.isInductive = false;
+        hr.srcVars = cycle.srcVars;
+        hr.dstVars = ExprVector();
+        hr.body = mkNeg(origRm.getPrecondition(&cycle));
+
+        for (int i = 0; i < projRm.chcs.size(); i++)
+            projRm.outgs[projRm.chcs[i].srcRelation].push_back(i);
+
+        projRm.wtoSort();
+        projRm.loopRel = cycle.srcRelation;
+    }
+        
     bool checkEquivalence(Extended_CHCs &source, Extended_CHCs &target, bool doAlign,
             unsigned maxAttempts, unsigned to, bool freqs, bool aggp, int dat, int mut, bool doElim,
             bool doArithm, bool doDisj, int doProp, int mbpEqs, bool dAllMbp, bool dAddProp,
@@ -1287,22 +1286,18 @@ namespace ufo
             // current support for multi-phase loops, where one program has single loop and other contains multiple
             assert(cycleSize1 == 1 && cycleSize2 > 1);
             
-            EquivalenceInPaper equiv(source, target, maxAttempts, to, freqs,
-                    aggp, dat, mut, doElim, doArithm, doDisj, doProp, mbpEqs, dAllMbp, dAddProp, dAddDat,
-                    dStrenMbp, dFwd, dRec, dGenerous, dSee, allowEq, debug);
-
             // TODO: whether it is a good idea to keep source, target, decomposed source, projections
             // and products in the class or not
             Extended_CHCs decomposedSource(source, true);
-            equiv.decomposeSource(source, target, decomposedSource);
+            decomposeSource(source, target, decomposedSource);
             assert(cycleSize2 == decomposedSource.cycles.size());
 
             for (int i = 0; i < cycleSize2; i++) {
                 Extended_CHCs projectionSource(decomposedSource, true);
-                equiv.projection(projectionSource, i, decomposedSource);
+                projection(projectionSource, i, decomposedSource);
                 
                 Extended_CHCs projectionTarget(target, true);
-                equiv.projection(projectionTarget, i, target);
+                projection(projectionTarget, i, target);
 
                 projectionSource.categorizeVars();
                 projectionTarget.categorizeVars();
@@ -1313,25 +1308,29 @@ namespace ufo
                 bool equivalenceCheck;
                 for (auto &comb : nonIterCombs) {
                     // cex loop
+
+                    EquivalenceInPaper equiv(projectionSource, projectionTarget, maxAttempts, to, freqs,
+                            aggp, dat, mut, doElim, doArithm, doDisj, doProp, mbpEqs, dAllMbp, dAddProp, dAddDat,
+                            dStrenMbp, dFwd, dRec, dGenerous, dSee, allowEq, debug, comb);
+
                     while (true) {
                         Product_CHCs product(projectionSource, projectionTarget, "_pr_", debug-2);
                         product.createProduct();
 
-                        Expr precondition = equiv.getPrecondition(projectionSource, projectionTarget, comb);
                         auto fact = product.getFact();
-                        fact->body = mk<AND>(fact->body, precondition);
+                        fact->body = mk<AND>(fact->body, equiv.getPrecondition());
 
                         bool factSanity = equiv.factSanityCheck(fact->body);
                         bool lockstepCheck;
                         if (factSanity) {
-                            lockstepCheck = equiv.checkLockstepComposability(product, projectionSource, projectionTarget);
+                            lockstepCheck = equiv.checkLockstepComposability(product);
                         }
                         if (!factSanity || !lockstepCheck) {
                             // align the programs
                         }
                         else {
                             // check equivalence
-                            equivalenceCheck = equiv.checkEquivalence(product, comb, projectionSource, projectionTarget);
+                            equivalenceCheck = equiv.checkEquivalence(product);
                             if (equivalenceCheck) {
                                 outs() << "current projections are equivalent\n";
                             }
