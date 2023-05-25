@@ -98,7 +98,7 @@ int main (int argc, char ** argv)
   bool base = getBoolValue(OPT_BASE, false, argc, argv);
   bool aligned = getBoolValue(OPT_ALIGNED, false, argc, argv);
   int debug = getIntValue(OPT_DEBUG, 0, argc, argv);
-  bool eq = getBoolValue(OPT_INEQUALITY, false, argc, argv);
+  bool eq = !getBoolValue(OPT_INEQUALITY, false, argc, argv);
 
   if (d_m || d_p || d_d || d_s) do_disj = true;
   if (do_disj)

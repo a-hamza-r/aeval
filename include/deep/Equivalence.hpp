@@ -11,10 +11,11 @@ namespace ufo
 
     class Product_CHCs : public Extended_CHCs
     {
-        public:
+        private:
             Extended_CHCs* subRule1;
             Extended_CHCs* subRule2;
 
+        public:
             Product_CHCs(Extended_CHCs &rules1, Extended_CHCs &rules2, string n, int d = false) :
                 Extended_CHCs(rules1.m_efac, rules1.m_z3, n, d), subRule1(&rules1), subRule2(&rules2) {};
 
@@ -379,6 +380,7 @@ namespace ufo
             bool dSee;
             bool allowEq;
             vector<vector<int>> pairings;
+            ExprSet mapping;
 
         EquivalenceInPaper(Extended_CHCs &r1, Extended_CHCs &r2,
                 unsigned _maxAttempts, unsigned _to, bool _freqs, bool _aggp, int _dat, int _mut,
@@ -390,9 +392,13 @@ namespace ufo
             doElim(_doElim), doArithm(_doArithm), doDisj(_doDisj), doProp(_doProp), mbpEqs(_mbpEqs), dAllMbp(_dAllMbp),
             dAddProp(_dAddProp), dAddDat(_dAddDat), dStrenMbp(_dStrenMbp), dFwd(_dFwd), dRec(_dRec),
             dGenerous(_dGenerous), dSee(_dSee), allowEq(_allowEq), debug(_debug), pairings(_pairings)
-        {}
+        {
+            for (auto &pr : pairings) {
+                mapping.insert(mk<EQ>(source.invVars[source.loopRel][pr[0]], target.invVars[target.loopRel][pr[1]]));
+            }
+        }
 
-        bool learnInvariantsPr(CHCs &ruleManager)
+        bool learnInvariantsPr(Product_CHCs &ruleManager)
         {
 
             if (debug > 4) ruleManager.print(true);
@@ -407,7 +413,14 @@ namespace ufo
                 Expr dcl = ruleManager.chcs[ruleManager.cycles[i][0]].srcRelation;
                 if (ds.initializedDecl(dcl)) continue;
                 ds.initializeDecl(dcl);
-                //cands[dcl] = currentMatching;  // adding the matching explicitly
+
+                // adding the matching explicitly
+                // renaming variables from individual systems to product system
+                ExprVector combinedVars;
+                concatenateVectors(combinedVars, source.invVars[source.loopRel], target.invVars[target.loopRel]);
+                for (auto &e : mapping) {
+                    cands[dcl].insert(replaceAll(e, combinedVars, ruleManager.invVars[dcl]));
+                }
 
                 // GF: most likely, you won't need any of these,
                 //     so I disabled it to improve performance.
@@ -462,14 +475,7 @@ namespace ufo
 
         Expr getPrecondition() {
 
-            Expr sourceCycleRel = source.loopRel;
-            Expr targetCycleRel = target.loopRel;
-            Expr precondition = mk<TRUE>(m_efac);
-            for (auto &pr : pairings) {
-                precondition = mk<AND>(precondition, mk<EQ>(
-                    source.invVarsPrime[sourceCycleRel][pr[0]], target.invVarsPrime[targetCycleRel][pr[1]]));
-            }
-            return simplifyBool(precondition);
+            return conjoin(mapping, m_efac);
         }
 
         bool checkLockstepComposability(Product_CHCs &product) {
@@ -487,16 +493,9 @@ namespace ufo
         }
 
         bool checkEquivalence(Product_CHCs &product) {
-            auto &sourceVars = source.invVars[source.loopRel];
-            auto &targetVars = target.invVars[target.loopRel];
             auto query = product.getQuery();
             auto &originalQuery = query->body;
-            // TODO: temporarily create a mapping, later need to pass it as a parameter
-            Expr mapping = mk<TRUE>(product.m_efac);
-            for (auto &pr : pairings) {
-                mapping = mk<AND>(mapping, mk<EQ>(sourceVars[pr[0]], targetVars[pr[1]]));
-            }
-            Expr post = simplifyBool(mkNeg(mapping));
+            Expr post = simplifyBool(mkNeg(conjoin(mapping, m_efac)));
             query->body = mk<AND>(post, originalQuery);
             bool equivalenceCheck = learnInvariantsPr(product);
             query->body = originalQuery;
@@ -1196,7 +1195,7 @@ namespace ufo
             SDecomposed.chcs.push_back(SLoop);
 
             auto SGuard = SDecomposed.getPrecondition(&SDecomposed.chcs.back());
-            negSGuard = mkNeg(SGuard);
+            negSGuard = mkNeg(replaceAll(SGuard, invVars, invVarsPrime));
         }
 
         auto SQuery = source.getQuery();
@@ -1327,6 +1326,7 @@ namespace ufo
                         }
                         if (!factSanity || !lockstepCheck) {
                             // align the programs
+                            return false;
                         }
                         else {
                             // check equivalence
@@ -1336,6 +1336,7 @@ namespace ufo
                             }
                             else {
                                 outs() << "current projections are not equivalent\n";
+                                return false;
                             }
                         }
                         break;
