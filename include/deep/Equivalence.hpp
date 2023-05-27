@@ -474,8 +474,9 @@ namespace ufo
         }
 
         Expr getPrecondition() {
-
-            return conjoin(mapping, m_efac);
+            Expr pre = conjoin(mapping, m_efac);
+            pre = replaceAll(pre, source.invVars[source.loopRel], source.invVarsPrime[source.loopRel]);
+            return replaceAll(pre, target.invVars[target.loopRel], target.invVarsPrime[target.loopRel]);
         }
 
         bool checkLockstepComposability(Product_CHCs &product) {
