@@ -378,20 +378,19 @@ namespace ufo
             bool dGenerous;
             int debug;
             bool dSee;
-            bool allowEq;
             vector<vector<int>> pairings;
             ExprSet mapping;
 
         EquivalenceInPaper(Extended_CHCs &r1, Extended_CHCs &r2,
                 unsigned _maxAttempts, unsigned _to, bool _freqs, bool _aggp, int _dat, int _mut,
                 bool _doElim, bool _doArithm, bool _doDisj, int _doProp, int _mbpEqs, bool _dAllMbp, bool _dAddProp, bool _dAddDat,
-                bool _dStrenMbp, int _dFwd, bool _dRec, bool _dGenerous, bool _dSee, bool _allowEq, int _debug, vector<vector<int>> &_pairings) :
+                bool _dStrenMbp, int _dFwd, bool _dRec, bool _dGenerous, bool _dSee, int _debug, vector<vector<int>> &_pairings) :
             m_efac(r1.m_efac), m_z3(r1.m_z3), u(r1.m_efac, _to), 
             source(r1), target(r2),
             maxAttempts(_maxAttempts), to(_to), freqs(_freqs), aggp(_aggp), dat(_dat), mut(_mut),
             doElim(_doElim), doArithm(_doArithm), doDisj(_doDisj), doProp(_doProp), mbpEqs(_mbpEqs), dAllMbp(_dAllMbp),
             dAddProp(_dAddProp), dAddDat(_dAddDat), dStrenMbp(_dStrenMbp), dFwd(_dFwd), dRec(_dRec),
-            dGenerous(_dGenerous), dSee(_dSee), allowEq(_allowEq), debug(_debug), pairings(_pairings)
+            dGenerous(_dGenerous), dSee(_dSee), debug(_debug), pairings(_pairings)
         {
             for (auto &pr : pairings) {
                 mapping.insert(mk<EQ>(source.invVars[source.loopRel][pr[0]], target.invVars[target.loopRel][pr[1]]));
@@ -426,19 +425,6 @@ namespace ufo
                 //     so I disabled it to improve performance.
                 //     In case some bench requires a specific invariant,
                 //     try to enable gradually.
-
-                if (allowEq)
-                {
-                    auto & chc = ruleManager.chcs[ruleManager.prefixes[i][0]];
-                    if (chc.dstRelation == dcl)
-                        for (auto & v : chc.dstVars)
-                        {
-                            if (containsOp<ARRAY_TY>(v)) continue;
-                            ExprVector tmp = {v};
-                            getConj(replaceAll(keepQuantifiers(chc.body, tmp),
-                                        chc.dstVars, ruleManager.invVars[dcl]), cands[dcl]);
-                        }
-                }
 
                 if (!dSee) continue;
                 Expr pref = bnd.compactPrefix(i);
@@ -539,17 +525,16 @@ namespace ufo
             bool dGenerous;
             int debug;
             bool dSee;
-            bool allowEq;
 
             Equivalence(Extended_CHCs &r1, Extended_CHCs &r2, vector<vector<int>> combs, 
                     unsigned _maxAttempts, unsigned _to, bool _freqs, bool _aggp, int _dat, int _mut,
                     bool _doElim, bool _doArithm, bool _doDisj, int _doProp, int _mbpEqs, bool _dAllMbp, bool _dAddProp, bool _dAddDat,
-                    bool _dStrenMbp, int _dFwd, bool _dRec, bool _dGenerous, bool _dSee, bool _allowEq, int _debug) :
+                    bool _dStrenMbp, int _dFwd, bool _dRec, bool _dGenerous, bool _dSee, int _debug) :
                 m_efac(r1.m_efac), m_z3(r1.m_z3), u(r1.m_efac, _to), ruleManager1(r1), ruleManager2(r2), pairings(combs),
                 maxAttempts(_maxAttempts), to(_to), freqs(_freqs), aggp(_aggp), dat(_dat), mut(_mut),
                 doElim(_doElim), doArithm(_doArithm), doDisj(_doDisj), doProp(_doProp), mbpEqs(_mbpEqs), dAllMbp(_dAllMbp),
                 dAddProp(_dAddProp), dAddDat(_dAddDat), dStrenMbp(_dStrenMbp), dFwd(_dFwd), dRec(_dRec),
-                dGenerous(_dGenerous), dSee(_dSee), allowEq(_allowEq), debug(_debug)
+                dGenerous(_dGenerous), dSee(_dSee), debug(_debug)
         {}
 
             bool learnInvariantsPr(CHCs &ruleManager, ExprSet& currentMatching, bool lockStepCheck=false)
@@ -573,19 +558,6 @@ namespace ufo
                     //     so I disabled it to improve performance.
                     //     In case some bench requires a specific invariant,
                     //     try to enable gradually.
-
-                    if (allowEq)
-                    {
-                        auto & chc = ruleManager.chcs[ruleManager.prefixes[i][0]];
-                        if (chc.dstRelation == dcl)
-                            for (auto & v : chc.dstVars)
-                            {
-                                if (containsOp<ARRAY_TY>(v)) continue;
-                                ExprVector tmp = {v};
-                                getConj(replaceAll(keepQuantifiers(chc.body, tmp),
-                                            chc.dstVars, ruleManager.invVars[dcl]), cands[dcl]);
-                            }
-                    }
 
                     if (!lockStepCheck && !dSee) continue;
                     Expr pref = bnd.compactPrefix(i);
@@ -1078,7 +1050,7 @@ namespace ufo
     bool checkEquivalenceSingleLoop(Extended_CHCs &ruleManager1, Extended_CHCs &ruleManager2, bool doAlign,
             unsigned maxAttempts, unsigned to, bool freqs, bool aggp, int dat, int mut, bool doElim,
             bool doArithm, bool doDisj, int doProp, int mbpEqs, bool dAllMbp, bool dAddProp,
-            bool dAddDat, bool dStrenMbp, int dFwd, bool dRec, bool dGenerous, bool dSee, bool allowEq, int debug,
+            bool dAddDat, bool dStrenMbp, int dFwd, bool dRec, bool dGenerous, bool dSee, int debug,
             bool innerLoop, bool requireIters = true)
     {
         //if (doAlign) 
@@ -1127,7 +1099,7 @@ namespace ufo
 
             Equivalence eq(newRuleManager1, newRuleManager2, pairings, maxAttempts, to, freqs,
                     aggp, dat, mut, doElim, doArithm, doDisj, doProp, mbpEqs, dAllMbp, dAddProp, dAddDat,
-                    dStrenMbp, dFwd, dRec, dGenerous, dSee, allowEq, debug);
+                    dStrenMbp, dFwd, dRec, dGenerous, dSee, debug);
 
             if (innerLoop && !eq.initialSanityChecks()) return false;
             if (innerLoop && doAlign && !eq.alignPrograms()) return false;
@@ -1251,7 +1223,7 @@ namespace ufo
     bool checkEquivalence(Extended_CHCs &source, Extended_CHCs &target, bool doAlign,
             unsigned maxAttempts, unsigned to, bool freqs, bool aggp, int dat, int mut, bool doElim,
             bool doArithm, bool doDisj, int doProp, int mbpEqs, bool dAllMbp, bool dAddProp,
-            bool dAddDat, bool dStrenMbp, int dFwd, bool dRec, bool dGenerous, bool dSee, bool allowEq, int debug)
+            bool dAddDat, bool dStrenMbp, int dFwd, bool dRec, bool dGenerous, bool dSee, int debug)
     {
         int cycleSize1 = source.cycles.size();
         int cycleSize2 = target.cycles.size();
@@ -1277,7 +1249,7 @@ namespace ufo
 
                 if (!checkEquivalenceSingleLoop(newsource, newtarget, doAlign, maxAttempts, to, freqs, aggp,
                             dat, mut, doElim, doArithm, doDisj, doProp, mbpEqs, dAllMbp, dAddProp, dAddDat, dStrenMbp, dFwd, dRec,
-                            dGenerous, dSee, allowEq, debug, i <= 0))
+                            dGenerous, dSee, debug, i <= 0))
                     return false;
             }
             return true;
@@ -1311,7 +1283,7 @@ namespace ufo
 
                     EquivalenceInPaper equiv(projectionSource, projectionTarget, maxAttempts, to, freqs,
                             aggp, dat, mut, doElim, doArithm, doDisj, doProp, mbpEqs, dAllMbp, dAddProp, dAddDat,
-                            dStrenMbp, dFwd, dRec, dGenerous, dSee, allowEq, debug, comb);
+                            dStrenMbp, dFwd, dRec, dGenerous, dSee, debug, comb);
 
                     while (true) {
                         Product_CHCs product(projectionSource, projectionTarget, "_pr_", debug-2);
@@ -1406,7 +1378,7 @@ namespace ufo
                 // 3rd option is doAlign, however, this needs better handling
                 if (!checkEquivalenceSingleLoop(newsource, newtarget, false, maxAttempts, to, freqs, aggp,
                             dat, mut, doElim, doArithm, doDisj, doProp, mbpEqs, dAllMbp, dAddProp, dAddDat, dStrenMbp, dFwd, dRec,
-                            dGenerous, dSee, allowEq, debug, true, false))
+                            dGenerous, dSee, debug, true, false))
                     return false;
             }
             return true;
@@ -1420,7 +1392,7 @@ namespace ufo
     inline void checkEquivalenceOfPrograms(const char *chcfileSrc, const char *chcfileDst, bool doAlign,
             unsigned maxAttempts, unsigned to, bool freqs, bool aggp, int dat, int mut, bool doElim, bool doArithm,
             bool doDisj, int doProp, int mbpEqs, bool dAllMbp, bool dAddProp, bool dAddDat,
-            bool dStrenMbp, int dFwd, bool dRec, bool dGenerous, bool dSee, bool allowEq, int debug)
+            bool dStrenMbp, int dFwd, bool dRec, bool dGenerous, bool dSee, int debug)
     {
         ExprFactory m_efac;
         EZ3 z3(m_efac);
@@ -1432,7 +1404,7 @@ namespace ufo
         if (!ruleManagerDst.parse(string(chcfileDst), doElim, doArithm)) return;
 
         if (checkEquivalence(ruleManagerSrc, ruleManagerDst, doAlign, maxAttempts, to, freqs, aggp, dat, mut, doElim,
-                    doArithm, doDisj, doProp, mbpEqs, dAllMbp, dAddProp, dAddDat, dStrenMbp, dFwd, dRec, dGenerous, dSee, allowEq, debug))
+                    doArithm, doDisj, doProp, mbpEqs, dAllMbp, dAddProp, dAddDat, dStrenMbp, dFwd, dRec, dGenerous, dSee, debug))
             outs() << "\nprograms are equivalent\n";
         else
             outs() << "\nprogram equivalence is unknown\n";

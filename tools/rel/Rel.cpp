@@ -74,7 +74,6 @@ int main (int argc, char ** argv)
   const char *OPT_DEBUG = "--debug";
   const char *OPT_BASE = "--base";
   const char *OPT_ALIGNED = "--aligned";
-  const char *OPT_INEQUALITY = "--allow-ineq";
 
   int max_attempts = getIntValue(OPT_MAX_ATTEMPTS, 2000000, argc, argv);
   int to = getIntValue(OPT_TO, 10000, argc, argv);
@@ -98,7 +97,6 @@ int main (int argc, char ** argv)
   bool base = getBoolValue(OPT_BASE, false, argc, argv);
   bool aligned = getBoolValue(OPT_ALIGNED, false, argc, argv);
   int debug = getIntValue(OPT_DEBUG, 0, argc, argv);
-  bool eq = !getBoolValue(OPT_INEQUALITY, false, argc, argv);
 
   if (d_m || d_p || d_d || d_s) do_disj = true;
   if (do_disj)
@@ -129,7 +127,7 @@ int main (int argc, char ** argv)
 
   checkEquivalenceOfPrograms(argv[argc-2], argv[argc-1], aligned, max_attempts, to, densecode, aggressivepruning,
                      do_dl, do_mu, do_elim, do_arithm, do_disj, do_prop, mbp_eqs,
-                     d_m, d_p, d_d, d_s, d_f, d_r, d_g, d_se, eq, debug);
+                     d_m, d_p, d_d, d_s, d_f, d_r, d_g, d_se, debug);
 
 	return 0;
 }
