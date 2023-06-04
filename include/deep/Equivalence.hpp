@@ -391,9 +391,15 @@ namespace ufo
             doElim(_doElim), doArithm(_doArithm), doDisj(_doDisj), doProp(_doProp), mbpEqs(_mbpEqs), dAllMbp(_dAllMbp),
             dAddProp(_dAddProp), dAddDat(_dAddDat), dStrenMbp(_dStrenMbp), dFwd(_dFwd), dRec(_dRec),
             dGenerous(_dGenerous), dSee(_dSee), debug(_debug), pairings(_pairings)
-        {
+        {}
+
+        void createVariableMapping(Product_CHCs &product) {
+            ExprVector combinedVars;
+            Expr dcl = product.chcs[product.cycles[0][0]].srcRelation;
+            concatenateVectors(combinedVars, source.invVars[source.loopRel], target.invVars[target.loopRel]);
             for (auto &pr : pairings) {
-                mapping.insert(mk<EQ>(source.invVars[source.loopRel][pr[0]], target.invVars[target.loopRel][pr[1]]));
+                Expr e = mk<EQ>(source.invVars[source.loopRel][pr[0]], target.invVars[target.loopRel][pr[1]]);
+                mapping.insert(replaceAll(e, combinedVars, product.invVars[dcl]));
             }
         }
 
@@ -407,52 +413,38 @@ namespace ufo
                     doDisj, mbpEqs, dAllMbp, dAddProp, dAddDat, dStrenMbp, dFwd, dRec, dGenerous, to, debug);
 
             map<Expr, ExprSet> cands;
-            for (int i = 0; i < ruleManager.cycles.size(); i++)
-            {
-                Expr dcl = ruleManager.chcs[ruleManager.cycles[i][0]].srcRelation;
-                if (ds.initializedDecl(dcl)) continue;
+            Expr dcl = ruleManager.chcs[ruleManager.cycles[0][0]].srcRelation;
+            if (!ds.initializedDecl(dcl)) {
                 ds.initializeDecl(dcl);
 
                 // adding the matching explicitly
-                // renaming variables from individual systems to product system
-                ExprVector combinedVars;
-                concatenateVectors(combinedVars, source.invVars[source.loopRel], target.invVars[target.loopRel]);
-                for (auto &e : mapping) {
-                    cands[dcl].insert(replaceAll(e, combinedVars, ruleManager.invVars[dcl]));
+                cands[dcl].insert(mapping.begin(), mapping.end());
+
+                if (dSee) {
+                    Expr pref = bnd.compactPrefix(0);
+                    ExprSet tmp;
+                    getConj(pref, tmp);
+                    for (auto & t : tmp)
+                        if (hasOnlyVars(t, ruleManager.invVars[dcl]))
+                            cands[dcl].insert(t);
+
+                    if (mut > 0) ds.mutateHeuristicEq(cands[dcl], cands[dcl], dcl, true);
+                    ds.initializeAux(cands[dcl], bnd, 0, pref);
                 }
-
-                // GF: most likely, you won't need any of these,
-                //     so I disabled it to improve performance.
-                //     In case some bench requires a specific invariant,
-                //     try to enable gradually.
-
-                if (!dSee) continue;
-                Expr pref = bnd.compactPrefix(i);
-                ExprSet tmp;
-                getConj(pref, tmp);
-                for (auto & t : tmp)
-                    if (hasOnlyVars(t, ruleManager.invVars[dcl]))
-                        cands[dcl].insert(t);
-
-                if (mut > 0) ds.mutateHeuristicEq(cands[dcl], cands[dcl], dcl, true);
-                ds.initializeAux(cands[dcl], bnd, i, pref);
             }
 
             if (dat > 0) ds.getDataCandidates(cands);
 
-            for (auto & dcl: ruleManager.wtoDecls)
-            {
-                for (int i = 0; i < doProp; i++)
-                    for (auto & a : cands[dcl]) ds.propagate(dcl, a, true);
-                ds.addCandidates(dcl, cands[dcl]);
-                ds.prepareSeeds(dcl, cands[dcl]);
-            }
+            for (int i = 0; i < doProp; i++)
+                for (auto & a : cands[dcl]) ds.propagate(dcl, a, true);
+            ds.addCandidates(dcl, cands[dcl]);
+            ds.prepareSeeds(dcl, cands[dcl]);
 
             // call bootstrap with option to only consider equalities as candidates for finding invariant
             // also add equalities for variable matchings
             bool check = ds.bootstrap();
             return check;
-                //ds.verifySolution(currentMatching);
+            //return (check && ds.verifySolution(mapping));
         }
 
         bool factSanityCheck(Expr &factBody) {
@@ -1258,8 +1250,6 @@ namespace ufo
             // current support for multi-phase loops, where one program has single loop and other contains multiple
             assert(cycleSize1 == 1 && cycleSize2 > 1);
             
-            // TODO: whether it is a good idea to keep source, target, decomposed source, projections
-            // and products in the class or not
             Extended_CHCs decomposedSource(source, true);
             decomposeSource(source, target, decomposedSource);
             assert(cycleSize2 == decomposedSource.cycles.size());
@@ -1291,6 +1281,8 @@ namespace ufo
 
                         auto fact = product.getFact();
                         fact->body = mk<AND>(fact->body, equiv.getPrecondition());
+
+                        equiv.createVariableMapping(product);
 
                         bool factSanity = equiv.factSanityCheck(fact->body);
                         bool lockstepCheck;
