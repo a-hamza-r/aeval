@@ -342,6 +342,7 @@ namespace ufo
 
                 // sort rules
                 wtoSort();
+                loopRel = chcs[cycles[0][0]].srcRelation;
 
                 outs() << "\n--------------------------CALCULATING PRODUCT DONE-----------------------------\n\n";
             }
@@ -451,10 +452,9 @@ namespace ufo
             return bool(u.isSat(factBody));
         }
 
-        Expr getPrecondition() {
+        Expr getPrecondition(Product_CHCs &product) {
             Expr pre = conjoin(mapping, m_efac);
-            pre = replaceAll(pre, source.invVars[source.loopRel], source.invVarsPrime[source.loopRel]);
-            return replaceAll(pre, target.invVars[target.loopRel], target.invVarsPrime[target.loopRel]);
+            return replaceAll(pre, product.invVars[product.loopRel], product.invVarsPrime[product.loopRel]);
         }
 
         bool checkLockstepComposability(Product_CHCs &product) {
@@ -472,10 +472,14 @@ namespace ufo
         }
 
         bool checkEquivalence(Product_CHCs &product) {
+            auto loopGuardS = source.getPrecondition(&source.chcs[source.cycles[0][0]]);
             auto query = product.getQuery();
             auto &originalQuery = query->body;
+            Expr negationLoopGuardS = mkNeg(loopGuardS);
             Expr post = simplifyBool(mkNeg(conjoin(mapping, m_efac)));
-            query->body = mk<AND>(post, originalQuery);
+            // we only add negation of loop guard of source because we have verified, 
+            // using lockstep check, that loop guards of source and target are always equal
+            query->body = mk<AND>(originalQuery, mk<AND>(negationLoopGuardS, post));
             bool equivalenceCheck = learnInvariantsPr(product);
             query->body = originalQuery;
             return equivalenceCheck;
@@ -1203,7 +1207,7 @@ namespace ufo
         hr.isInductive = false;
         hr.srcVars = cycle.srcVars;
         hr.dstVars = ExprVector();
-        hr.body = mkNeg(origRm.getPrecondition(&cycle));
+        hr.body = mk<TRUE>(origRm.m_efac);
 
         for (int i = 0; i < projRm.chcs.size(); i++)
             projRm.outgs[projRm.chcs[i].srcRelation].push_back(i);
@@ -1260,7 +1264,7 @@ namespace ufo
                 
                 Extended_CHCs projectionTarget(target, true);
                 projection(projectionTarget, i, target);
-
+                
                 projectionSource.categorizeVars();
                 projectionTarget.categorizeVars();
                 // TODO: change the name from nonitercombs to just combs
@@ -1279,10 +1283,9 @@ namespace ufo
                         Product_CHCs product(projectionSource, projectionTarget, "_pr_", debug-2);
                         product.createProduct();
 
-                        auto fact = product.getFact();
-                        fact->body = mk<AND>(fact->body, equiv.getPrecondition());
-
                         equiv.createVariableMapping(product);
+                        auto fact = product.getFact();
+                        fact->body = mk<AND>(fact->body, equiv.getPrecondition(product));
 
                         bool factSanity = equiv.factSanityCheck(fact->body);
                         bool lockstepCheck;
