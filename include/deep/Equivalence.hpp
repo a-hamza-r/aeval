@@ -404,7 +404,7 @@ namespace ufo
             }
         }
 
-        bool learnInvariantsPr(Product_CHCs &ruleManager)
+        bool learnInvariantsPr(Product_CHCs &ruleManager, bool lockstepCheck = false)
         {
 
             if (debug > 4) ruleManager.print(true);
@@ -421,7 +421,7 @@ namespace ufo
                 // adding the matching explicitly
                 cands[dcl].insert(mapping.begin(), mapping.end());
 
-                if (dSee) {
+                if (dSee || lockstepCheck) {
                     Expr pref = bnd.compactPrefix(0);
                     ExprSet tmp;
                     getConj(pref, tmp);
@@ -466,7 +466,7 @@ namespace ufo
             Expr lockstepCheckPredicate = mk<NEQ>(loopGuard2, loopGuard1);
             query->body = mk<AND>(lockstepCheckPredicate, originalQuery);
             // TODO: according to paper, we need to return <inv, cex>
-            bool lockstepCheck = learnInvariantsPr(product);
+            bool lockstepCheck = learnInvariantsPr(product, true);
             query->body = originalQuery;
             return lockstepCheck;
         }
