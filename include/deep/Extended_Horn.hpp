@@ -644,7 +644,7 @@ namespace ufo
             bool findIterators(bool requireIters)
             {
                 BndExpl bnd(*this, debug);
-                HornRuleExt& rule = chcs[cycles[0][0]];
+                const HornRuleExt& rule = chcs[cycles[0][0]];
 
                 Expr pref = bnd.compactPrefix(0);
 
@@ -654,30 +654,28 @@ namespace ufo
                     Expr b = invVarsPrime[loopRel][i];
 
                     bool isAnIter = false;
-
                     bool iterDecreases = bind::isIntConst(a) && bool(u.implies(rule.body, mk<GT>(a, b)));
                     bool iterIncreases = bind::isIntConst(a) && bool(u.implies(rule.body, mk<LT>(a, b)));
 
-                    if (/*requireIters && */(iterIncreases || iterDecreases))
+                    if (iterIncreases || iterDecreases)
                     {
                         Expr add;
-
                         Expr initVal = findInitialValue(i, pref);
                         Expr transitionVal = findTransitionValue(i, rule.body);
                         Expr limitVal = findFinalValue(i, rule.body, add, iterIncreases);
 
-                        isAnIter = (initVal != NULL) && (transitionVal != NULL) && (limitVal != NULL);
+                        isAnIter = initVal && transitionVal && limitVal;
                         if (isAnIter)
                         {
+                            // TODO: allow multiple iters
                             iter = i;
                             iterGrows = iterIncreases;
                             numOfIters = numIterations(initVal, transitionVal, limitVal, add);
-                            //outs() << "number of iterations: " << numOfIters << "\n";
                         }
                     }
 
                     // if not an iter, collect info about the type of variables
-                    if (!isAnIter || !requireIters)
+                    if (!isAnIter)
                     {
                         if (bind::isIntConst(a)) varsInt.push_back(i);
                         else if (bind::isBoolConst(a)) varsBool.push_back(i);
