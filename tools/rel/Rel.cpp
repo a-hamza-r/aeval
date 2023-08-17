@@ -52,7 +52,6 @@ void getStrValues(const char * opt, vector<string> & values, int argc, char ** a
 
 int main (int argc, char ** argv)
 {
-  const char *OPT_MAX_ATTEMPTS = "--attempts";
   const char *OPT_TO = "--to";
   const char *OPT_ELIM = "--skip-elim";
   const char *OPT_ARITHM = "--skip-arithm";
@@ -72,10 +71,7 @@ int main (int argc, char ** argv)
   const char *OPT_REC = "--re";
   const char *OPT_MBP = "--eqs-mbp";
   const char *OPT_DEBUG = "--debug";
-  const char *OPT_BASE = "--base";
-  const char *OPT_ALIGNED = "--aligned";
 
-  int max_attempts = getIntValue(OPT_MAX_ATTEMPTS, 2000000, argc, argv);
   int to = getIntValue(OPT_TO, 10000, argc, argv);
   bool densecode = getBoolValue(OPT_GET_FREQS, false, argc, argv);
   bool aggressivepruning = getBoolValue(OPT_AGG_PRUNING, false, argc, argv);
@@ -94,8 +90,6 @@ int main (int argc, char ** argv)
   int d_f = getIntValue(OPT_D5, 1, argc, argv);
   bool d_g = !getBoolValue(OPT_D6, false, argc, argv);
   bool d_r = getBoolValue(OPT_REC, false, argc, argv);
-  bool base = getBoolValue(OPT_BASE, false, argc, argv);
-  bool aligned = getBoolValue(OPT_ALIGNED, false, argc, argv);
   int debug = getIntValue(OPT_DEBUG, 0, argc, argv);
 
   if (d_m || d_p || d_d || d_s) do_disj = true;
@@ -117,15 +111,7 @@ int main (int argc, char ** argv)
     if (do_dl == 0) do_dl = 1;
   }
   
-	if (base + aligned > 1)
-	{
-		outs() << "Only one type of alignment can be chosen\n";
-		return 0;
-	}
-
-	if (!base && !aligned) aligned = true; // default
-
-  checkEquivalenceOfPrograms(argv[argc-2], argv[argc-1], aligned, max_attempts, to, densecode, aggressivepruning,
+  checkEquivalenceOfPrograms(argv[argc-2], argv[argc-1], to, densecode, aggressivepruning,
                      do_dl, do_mu, do_elim, do_arithm, do_disj, do_prop, mbp_eqs,
                      d_m, d_p, d_d, d_s, d_f, d_r, d_g, d_se, debug);
 

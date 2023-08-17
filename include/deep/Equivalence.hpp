@@ -364,7 +364,6 @@ namespace ufo
 
 
         public:
-            unsigned maxAttempts;
             unsigned to;
             bool freqs;
             bool aggp;
@@ -388,15 +387,15 @@ namespace ufo
             ExprSet mapping;
 
         EquivalenceInPaper(Extended_CHCs &r1, Extended_CHCs &r2,
-                unsigned _maxAttempts, unsigned _to, bool _freqs, bool _aggp, int _dat, int _mut,
+                unsigned _to, bool _freqs, bool _aggp, int _dat, int _mut,
                 bool _doElim, bool _doArithm, bool _doDisj, int _doProp, int _mbpEqs, bool _dAllMbp, bool _dAddProp, bool _dAddDat,
                 bool _dStrenMbp, int _dFwd, bool _dRec, bool _dGenerous, bool _dSee, int _debug, vector<vector<int>> &_pairings) :
             m_efac(r1.m_efac), m_z3(r1.m_z3), u(r1.m_efac, _to), 
-            source(r1), target(r2),
-            maxAttempts(_maxAttempts), to(_to), freqs(_freqs), aggp(_aggp), dat(_dat), mut(_mut),
-            doElim(_doElim), doArithm(_doArithm), doDisj(_doDisj), doProp(_doProp), mbpEqs(_mbpEqs), dAllMbp(_dAllMbp),
-            dAddProp(_dAddProp), dAddDat(_dAddDat), dStrenMbp(_dStrenMbp), dFwd(_dFwd), dRec(_dRec),
-            dGenerous(_dGenerous), dSee(_dSee), debug(_debug), pairings(_pairings)
+            source(r1), target(r2), to(_to), freqs(_freqs), aggp(_aggp), dat(_dat), mut(_mut),
+            doElim(_doElim), doArithm(_doArithm), doDisj(_doDisj), doProp(_doProp),
+            mbpEqs(_mbpEqs), dAllMbp(_dAllMbp), dAddProp(_dAddProp), dAddDat(_dAddDat),
+            dStrenMbp(_dStrenMbp), dFwd(_dFwd), dRec(_dRec), dGenerous(_dGenerous),
+            dSee(_dSee), debug(_debug), pairings(_pairings)
         {}
 
         /*
@@ -857,8 +856,8 @@ namespace ufo
         projRm.loopRel = cycle.srcRelation;
     }
         
-    bool checkEquivalence(Extended_CHCs &source, Extended_CHCs &target, bool doAlign,
-            unsigned maxAttempts, unsigned to, bool freqs, bool aggp, int dat, int mut, bool doElim,
+    bool checkEquivalence(Extended_CHCs &source, Extended_CHCs &target,
+            unsigned to, bool freqs, bool aggp, int dat, int mut, bool doElim,
             bool doArithm, bool doDisj, int doProp, int mbpEqs, bool dAllMbp, bool dAddProp,
             bool dAddDat, bool dStrenMbp, int dFwd, bool dRec, bool dGenerous, bool dSee, int debug)
     {
@@ -890,7 +889,7 @@ namespace ufo
             for (auto &comb : nonIterCombs) {
                 // cex loop
 
-                EquivalenceInPaper equiv(projectionSource, projectionTarget, maxAttempts, to, freqs,
+                EquivalenceInPaper equiv(projectionSource, projectionTarget, to, freqs,
                         aggp, dat, mut, doElim, doArithm, doDisj, doProp, mbpEqs, dAllMbp, dAddProp, dAddDat,
                         dStrenMbp, dFwd, dRec, dGenerous, dSee, debug, comb);
 
@@ -936,8 +935,8 @@ namespace ufo
 
 
     // check equivalence of programs
-    inline void checkEquivalenceOfPrograms(const char *chcfileSrc, const char *chcfileDst, bool doAlign,
-            unsigned maxAttempts, unsigned to, bool freqs, bool aggp, int dat, int mut, bool doElim, bool doArithm,
+    inline void checkEquivalenceOfPrograms(const char *chcfileSrc, const char *chcfileDst,
+            unsigned to, bool freqs, bool aggp, int dat, int mut, bool doElim, bool doArithm,
             bool doDisj, int doProp, int mbpEqs, bool dAllMbp, bool dAddProp, bool dAddDat,
             bool dStrenMbp, int dFwd, bool dRec, bool dGenerous, bool dSee, int debug)
     {
@@ -950,7 +949,7 @@ namespace ufo
         if (!ruleManagerSrc.parse(string(chcfileSrc), doElim, doArithm)) return;
         if (!ruleManagerDst.parse(string(chcfileDst), doElim, doArithm)) return;
 
-        if (checkEquivalence(ruleManagerSrc, ruleManagerDst, doAlign, maxAttempts, to, freqs, aggp, dat, mut, doElim,
+        if (checkEquivalence(ruleManagerSrc, ruleManagerDst, to, freqs, aggp, dat, mut, doElim,
                     doArithm, doDisj, doProp, mbpEqs, dAllMbp, dAddProp, dAddDat, dStrenMbp, dFwd, dRec, dGenerous, dSee, debug))
             outs() << "\nprograms are equivalent\n";
         else
