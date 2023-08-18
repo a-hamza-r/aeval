@@ -645,9 +645,12 @@ namespace ufo
         void createVariableMapping(Product_CHCs &product) {
             ExprVector combinedVars;
             Expr dcl = product.chcs[product.cycles[0][0]].srcRelation;
-            concatenateVectors(combinedVars, source.invVars[source.loopRel], target.invVars[target.loopRel]);
-            for (auto &pr : pairings) {
-                Expr e = mk<EQ>(source.invVars[source.loopRel][pr[0]], target.invVars[target.loopRel][pr[1]]);
+            concatenateVectors(combinedVars,
+                    source.invVars[source.loopRel], target.invVars[target.loopRel]);
+
+            for (const auto &pr : pairings) {
+                Expr e = mk<EQ>(source.invVars[source.loopRel][pr[0]],
+                        target.invVars[target.loopRel][pr[1]]);
                 mapping.insert(replaceAll(e, combinedVars, product.invVars[dcl]));
             }
         }
@@ -700,19 +703,22 @@ namespace ufo
             return bool(u.isSat(factBody));
         }
 
-        Expr getPrecondition(Product_CHCs &product) {
+        Expr getRelationalPrecondition(Product_CHCs &product) {
             Expr pre = conjoin(mapping, m_efac);
-            return replaceAll(pre, product.invVars[product.loopRel], product.invVarsPrime[product.loopRel]);
+            return replaceAll(pre,
+                    product.invVars[product.loopRel], product.invVarsPrime[product.loopRel]);
         }
 
         bool checkLockstepComposability(Product_CHCs &product) {
             
             auto query = product.getQuery();
-            auto &originalQuery = query->body;
-            auto loopGuard1 = source.getPrecondition(&source.chcs[source.cycles[0][0]]);
-            auto loopGuard2 = target.getPrecondition(&target.chcs[target.cycles[0][0]]);
-            Expr lockstepCheckPredicate = mk<NEQ>(loopGuard2, loopGuard1);
-            query->body = mk<AND>(lockstepCheckPredicate, originalQuery);
+            const auto &originalQuery = query->body;
+            const auto loopGuard1 =
+                std::move(source.getPrecondition(&source.chcs[source.cycles[0][0]]));
+            const auto loopGuard2 =
+                std::move(target.getPrecondition(&target.chcs[target.cycles[0][0]]));
+            const auto lockstepCheckPredicate = std::move(mk<NEQ>(loopGuard2, loopGuard1));
+            query->body = std::move(mk<AND>(lockstepCheckPredicate, originalQuery));
             // TODO: according to paper, we need to return <inv, cex>
             bool lockstepCheck = learnInvariantsPr(product, true);
             query->body = originalQuery;
@@ -720,33 +726,36 @@ namespace ufo
         }
 
         bool checkEquivalence(Product_CHCs &product) {
-            auto loopGuardS = source.getPrecondition(&source.chcs[source.cycles[0][0]]);
+
             auto query = product.getQuery();
-            auto &originalQuery = query->body;
-            Expr negationLoopGuardS = mkNeg(loopGuardS);
-            Expr post = simplifyBool(mkNeg(conjoin(mapping, m_efac)));
+            const auto &originalQuery = query->body;
+            const auto loopGuardS =
+                std::move(source.getPrecondition(&source.chcs[source.cycles[0][0]]));
+            const Expr negationLoopGuardS = std::move(mkNeg(loopGuardS));
+            const Expr post = std::move(simplifyBool(mkNeg(conjoin(mapping, m_efac))));
             // we only add negation of loop guard of source because we have verified, 
             // using lockstep check, that loop guards of source and target are always equal
-            query->body = mk<AND>(originalQuery, mk<AND>(negationLoopGuardS, post));
+            query->body = std::move(mk<AND>(originalQuery, mk<AND>(negationLoopGuardS, post)));
             bool equivalenceCheck = learnInvariantsPr(product);
             query->body = originalQuery;
             return equivalenceCheck;
         }
     };
 
-    void createNonIterCombs(Extended_CHCs &ruleManager1, Extended_CHCs &ruleManager2,
-            vector<vector<vector<int>>> &nonIterCombs)
+    void createIterCombs(Extended_CHCs &ruleManager1, Extended_CHCs &ruleManager2,
+            vector<vector<vector<int>>> &iterCombs)
     {
+
         vector<vector<vector<int>>> combsArray, combsInt, combsBool, combs1;
         combinationsOfVars(ruleManager1.varsArray, ruleManager2.varsArray, combsArray);
         combinationsOfVars(ruleManager1.varsInt, ruleManager2.varsInt, combsInt);
         combinationsOfVars(ruleManager1.varsBool, ruleManager2.varsBool, combsBool);
 
         joinVars(combsArray, combsInt, combs1);
-        joinVars(combs1, combsBool, nonIterCombs);
+        joinVars(combs1, combsBool, iterCombs);
         // fix later
         vector<vector<int>> v{{-1, -1}};
-        if (nonIterCombs.empty()) nonIterCombs.push_back(v);
+        if (iterCombs.empty()) iterCombs.push_back(v);
     }
 
     void decomposeSource(Extended_CHCs& source, Extended_CHCs& target, Extended_CHCs& SDecomposed) {
@@ -824,15 +833,17 @@ namespace ufo
     }
 
     void projection(Extended_CHCs& projRm, int i, Extended_CHCs &origRm) {
-        auto &prefix = origRm.chcs[origRm.prefixes[i].back()];
+        auto prefix = origRm.chcs[origRm.prefixes[i].back()];
         if (!prefix.isFact) {
             prefix.srcRelation = mk<TRUE>(origRm.m_efac);
             prefix.srcVars.clear();
             prefix.isFact = true;
         }
-        projRm.chcs.push_back(prefix);
-        auto &cycle = origRm.chcs[origRm.cycles[i][0]];
-        projRm.chcs.push_back(cycle);
+        projRm.chcs.push_back(std::move(prefix));
+
+        const auto cycle = origRm.chcs[origRm.cycles[i][0]];
+        projRm.chcs.push_back(std::move(cycle));
+
         Expr rel = cycle.srcRelation;
         projRm.decls.insert(origRm.getDecl(rel));
         projRm.invVars[rel] = origRm.invVars[rel];
@@ -846,7 +857,7 @@ namespace ufo
         hr.isFact = false;
         hr.isInductive = false;
         hr.srcVars = cycle.srcVars;
-        hr.dstVars = ExprVector();
+        hr.dstVars = ExprVector{};
         hr.body = mk<TRUE>(origRm.m_efac);
 
         for (int i = 0; i < projRm.chcs.size(); i++)
@@ -872,40 +883,46 @@ namespace ufo
         if (cycleSizeTgt > 1)
             decomposeSource(source, target, decomposedSource);
 
-        assert(cycleSizeTgt == decomposedSource.cycles.size());
+        auto numProjections = decomposedSource.cycles.size();
+        assert(cycleSizeTgt == numProjections);
         assert(target.chcs.size() == decomposedSource.chcs.size());
 
-        for (int i = 0; i < cycleSizeTgt; i++) {
-            Extended_CHCs projectionSource(decomposedSource, true);
-            projection(projectionSource, i, decomposedSource);
-            
-            Extended_CHCs projectionTarget(target, true);
-            projection(projectionTarget, i, target);
-            
+        for (int i = 0; i < numProjections; i++) {
+            // TODO: Use move semantics for better performance
+            Extended_CHCs projectionSource(decomposedSource, numProjections > 1);
+            Extended_CHCs projectionTarget(target, numProjections > 1);
+
+            if (numProjections > 1) {
+                projection(projectionSource, i, decomposedSource);
+                projection(projectionTarget, i, target);
+            }
+
             projectionSource.categorizeVars();
             projectionTarget.categorizeVars();
-            // TODO: change the name from nonitercombs to just combs
-            vector<vector<vector<int>>> nonIterCombs;
-            createNonIterCombs(projectionSource, projectionTarget, nonIterCombs);
 
-            bool equivalenceCheck;
-            for (auto &comb : nonIterCombs) {
+            vector<vector<vector<int>>> iterCombs;
+            createIterCombs(projectionSource, projectionTarget, iterCombs);
+
+            for (auto &comb : iterCombs) {
                 // cex loop
 
-                EquivalenceInPaper equiv(projectionSource, projectionTarget, to, freqs,
-                        aggp, dat, mut, doElim, doArithm, doDisj, doProp, mbpEqs, dAllMbp, dAddProp, dAddDat,
-                        dStrenMbp, dFwd, dRec, dGenerous, dSee, debug, comb);
+                EquivalenceInPaper equiv(projectionSource, projectionTarget, to, freqs, aggp,
+                        dat, mut, doElim, doArithm, doDisj, doProp, mbpEqs, dAllMbp, dAddProp,
+                        dAddDat, dStrenMbp, dFwd, dRec, dGenerous, dSee, debug, comb);
 
+                bool equivalenceCheck;
                 while (true) {
                     bool aligned = false;
+                    bool refined = false;
+
                     Product_CHCs product(projectionSource, projectionTarget, "_pr_", debug-2);
                     product.createProduct();
-
                     equiv.createVariableMapping(product);
-                    auto fact = product.getFact();
-                    fact->body = mk<AND>(fact->body, equiv.getPrecondition(product));
 
+                    auto fact = product.getFact();
+                    fact->body = mk<AND>(fact->body, equiv.getRelationalPrecondition(product));
                     bool factSanity = equiv.factSanityCheck(fact->body);
+
                     bool lockstepCheck;
                     if (factSanity) {
                         lockstepCheck = equiv.checkLockstepComposability(product);

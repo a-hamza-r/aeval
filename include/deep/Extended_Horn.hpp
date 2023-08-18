@@ -160,7 +160,7 @@ namespace ufo
                 : CHCs(old_chc, shallowCopy), iter(-1) {};
 
 
-            Expr getDecl(Expr relation)
+            Expr getDecl(Expr relation) const
             {
                 if (!isOpX<TRUE>(relation))
                 {
@@ -643,6 +643,8 @@ namespace ufo
 
             bool findIterators(bool requireIters)
             {
+                // TODO: Variable combinations have already been made,
+                // hence use those efficiently instead of making new ones
                 BndExpl bnd(*this, debug);
                 const HornRuleExt& rule = chcs[cycles[0][0]];
 
