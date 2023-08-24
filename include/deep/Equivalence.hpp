@@ -9,6 +9,15 @@ using namespace boost;
 namespace ufo
 {
 
+    template <typename T>
+    void concatenateVectors(vector<T> &result, vector<T> vec1, vector<T> vec2)
+    {
+        result.reserve(result.size()+vec1.size()+vec2.size());
+        result.insert(result.end(), vec1.begin(), vec1.end());
+        result.insert(result.end(), vec2.begin(), vec2.end());
+    }
+
+
     class Product_CHCs : public Extended_CHCs
     {
         private:
@@ -357,11 +366,6 @@ namespace ufo
             Extended_CHCs &source;
             Extended_CHCs &target;
             SMTUtils u;
-            int itersOutLoopR1;
-            int itersOutLoopR2;
-            int itersInLoopR1;
-            int itersInLoopR2;
-
 
         public:
             unsigned to;
@@ -383,13 +387,14 @@ namespace ufo
             bool dGenerous;
             int debug;
             bool dSee;
-            vector<vector<int>> pairings;
+            vector<pair<int, int>> pairings;
             ExprSet mapping;
 
         EquivalenceInPaper(Extended_CHCs &r1, Extended_CHCs &r2,
-                unsigned _to, bool _freqs, bool _aggp, int _dat, int _mut,
-                bool _doElim, bool _doArithm, bool _doDisj, int _doProp, int _mbpEqs, bool _dAllMbp, bool _dAddProp, bool _dAddDat,
-                bool _dStrenMbp, int _dFwd, bool _dRec, bool _dGenerous, bool _dSee, int _debug, vector<vector<int>> &_pairings) :
+                unsigned _to, bool _freqs, bool _aggp, int _dat, int _mut, bool _doElim,
+                bool _doArithm, bool _doDisj, int _doProp, int _mbpEqs, bool _dAllMbp,
+                bool _dAddProp, bool _dAddDat, bool _dStrenMbp, int _dFwd, bool _dRec,
+                bool _dGenerous, bool _dSee, int _debug, vector<pair<int, int>> &_pairings) :
             m_efac(r1.m_efac), m_z3(r1.m_z3), u(r1.m_efac, _to), 
             source(r1), target(r2), to(_to), freqs(_freqs), aggp(_aggp), dat(_dat), mut(_mut),
             doElim(_doElim), doArithm(_doArithm), doDisj(_doDisj), doProp(_doProp),
@@ -426,203 +431,180 @@ namespace ufo
         bool findIterators() {
             source.preprocessing();
             target.preprocessing();
-            bool bothItersFound = source.findIterators(true) && target.findIterators(true);
-            outs() << "source iter: " << source.iter << "\n";
-            outs() << "target iter: " << target.iter << "\n";
-            return bothItersFound;
+            return source.findIterators() && target.findIterators();
         }
 
-        bool getAlignmentVals(ExprSet& pre)
+        bool getAlignmentVals(ExprSet& pre, int &itersInLoop1, int &itersOutLoop1,
+                int &itersInLoop2, int &itersOutLoop2)
         {
-            /*
-               int iter1 = source.iter, iter2 = target.iter;
-               Expr rel1 = source.loopRel, rel2 = target.loopRel;
+            Expr numItersS = source.numOfIters;
+            Expr numItersT = target.numOfIters;
 
-               outs() << "\n\nassuming iters: "
-               << source.invVars[rel1][iter1] << " and " << target.invVars[rel2][iter2] << "\n";
-               */
-
-            Expr numIters1 = source.numOfIters;
-            Expr numIters2 = target.numOfIters;
-            //outs() << "numIters: " << numIters1 << " and " << numIters2 << "\n";
-
-            if (numIters1 == mkMPZ(-1, m_efac) || numIters2 == mkMPZ(-1, m_efac))
-            {
-                outs() << "number of iterations were not found\n";
-                return false;
-            }
-
-            outs() << "numIters source: " << numIters1 << "\n";
-            outs() << "numIters target: " << numIters1 << "\n";
-            // create a quantified formula for optimization query
+            // variables required for the quantified formula for optimization query
             Expr coef1 = bind::intConst(mkTerm<string>("coef1", m_efac));
             Expr coef2 = bind::intConst(mkTerm<string>("coef2", m_efac));
-
             Expr const1 = bind::intConst(mkTerm<string>("const1", m_efac));
             Expr const2 = bind::intConst(mkTerm<string>("const2", m_efac));
+            Expr numIters1 = bind::intConst(mkTerm<string>("numIters1", m_efac));
+            Expr numIters2 = bind::intConst(mkTerm<string>("numIters2", m_efac));
 
-            Expr minCoef1, minCoef2, minConst1, minConst2, quantifiedFla;
-
-            Expr coefs = mk<AND>(mk<GT>(coef1, mkMPZ(0, m_efac)), mk<GT>(coef2, mkMPZ(0, m_efac)));
-            Expr consts = mk<AND>(mk<GEQ>(const1, mkMPZ(0, m_efac)), mk<GEQ>(const2, mkMPZ(0, m_efac)));
-
-            Expr numIters = bind::intConst(mkTerm<string>("numIters1", m_efac));
-            Expr numItersP = bind::intConst(mkTerm<string>("numIters2", m_efac));
-
-            ExprVector varsIters;
-            Expr implFla = mk<EQ>(mk<MULT>(coef2, mk<MINUS>(numIters, const1)),
-                    mk<MULT>(coef1, mk<MINUS>(numItersP, const2)));
-
+            // remove redundant clauses in precondition
             for (auto it = pre.begin(); it != pre.end(); )
-                if (emptyIntersect(*it, numIters1) &&
-                        emptyIntersect(*it, numIters2)) it = pre.erase(it);
+                if (emptyIntersect(*it, numItersS) &&
+                        emptyIntersect(*it, numItersT)) it = pre.erase(it);
                 else ++it;
 
-            pre.insert(mk<EQ>(numIters, numIters1));
-            pre.insert(mk<EQ>(numItersP, numIters2));
+            // add exact value for numIters to precondition
+            pre.insert(mk<EQ>(numIters1, numItersS));
+            pre.insert(mk<EQ>(numIters2, numItersT));
+            Expr exprPre = conjoin(pre, m_efac);
 
-            filter(conjoin(pre, m_efac), IsConst(), inserter(varsIters, varsIters.begin()));
+            // get all variables in the precondition
+            ExprVector varsIters;
+            filter(exprPre, IsConst(), inserter(varsIters, varsIters.begin()));
 
-            Expr fla = mk<IMPL>(conjoin(pre, m_efac), implFla);
+            auto zero = mkMPZ(0, m_efac);
+            // coef1 > 0 && coef2 > 0
+            Expr coefs = mk<AND>(mk<GT>(coef1, zero), mk<GT>(coef2, zero));
+            // const1 >= 0 && const2 >= 0
+            Expr consts = mk<AND>(mk<GEQ>(const1, zero), mk<GEQ>(const2, zero));
+            // coef2 * (numIters1 - const1) = coef1 * (numIters2 - const2)
+            Expr constraint = mk<EQ>(mk<MULT>(coef2, mk<MINUS>(numIters1, const1)),
+                    mk<MULT>(coef1, mk<MINUS>(numIters2, const2)));
+            // pre => constraint
+            Expr preImpliesCst = mk<IMPL>(exprPre, constraint);
+            Expr quantifiedPreImpliesCst = createQuantifiedFormulaRestr(preImpliesCst, varsIters);
+            // exists coef1, coef2, const1, const2 . forall varsIters . pre => constraint
+            Expr quantifiedFla = mk<AND>(mk<AND>(consts, coefs), quantifiedPreImpliesCst);
 
-            quantifiedFla = createQuantifiedFormulaRestr(fla, varsIters);
-            quantifiedFla = mk<AND>(consts, mk<AND>(coefs, quantifiedFla));
+            ExprMap c1, c2, c12;
+            c12[const1] = zero;     c12[const2] = zero;
+            c1[const1] = zero;      c2[const2] = zero;
 
-            //outs() << "Quantified formula: " << quantifiedFla << "\n";
-
-            ExprMap c1, c2, c12, m1, m2, m12;
-            for (auto &c : {const1, const2}) c12[c] = mkMPZ(0, m_efac);
-            c1[const1] = mkMPZ(0, m_efac);
-            c2[const2] = mkMPZ(0, m_efac);
-
-            Expr model = NULL;
-            if (true == u.isSat(replaceAll(quantifiedFla, c12))) model = u.getModel();
-            else if (true == u.isSat(replaceAll(quantifiedFla, c1))) model = u.getModel();
-            else if (true == u.isSat(replaceAll(quantifiedFla, c2))) model = u.getModel();
-            else if (true == u.isSat(quantifiedFla)) model = u.getModel();
-            if (model == NULL)
+            Expr model = nullptr;
+            if (bool(u.isSat(replaceAll(quantifiedFla, c12)))) model = u.getModel();
+            else if (bool(u.isSat(replaceAll(quantifiedFla, c1)))) model = u.getModel();
+            else if (bool(u.isSat(replaceAll(quantifiedFla, c2)))) model = u.getModel();
+            else if (bool(u.isSat(quantifiedFla))) model = u.getModel();
+            if (model == nullptr)
             {
                 outs() << "No satisfying assignment for quantified formula was found\n";
                 return false;
             }
 
-            // iterative solving optimization query to get all minmodels
+            // iterative solving optimization query to get all minModels
+            ExprMap mp;
+            ExprSet s{coef1, coef2, const1, const2};
+            Expr minCoef1, minCoef2, minConst1, minConst2;
 
-            ExprMap mp;	ExprSet s{coef1, coef2, const1, const2};
-
+            // Solve for min coef1
             u.getOptModel<LT>(s, mp, coef1);
             minCoef1 = mp[coef1];
             quantifiedFla = mk<AND>(quantifiedFla, mk<EQ>(coef1, minCoef1));
             u.isSat(quantifiedFla);
 
+            // Solve for min coef2
             u.getOptModel<LT>(s, mp, coef2);
             minCoef2 = mp[coef2];
             quantifiedFla = mk<AND>(quantifiedFla, mk<EQ>(coef2, minCoef2));
             u.isSat(quantifiedFla);
 
+            // Solve for min const1
             u.getOptModel<LT>(s, mp, const1);
             minConst1 = mp[const1];
             quantifiedFla = mk<AND>(quantifiedFla, mk<EQ>(const1, minConst1));
             u.isSat(quantifiedFla);
 
+            // Solve for min const2
             u.getOptModel<LT>(s, mp, const2);
             minConst2 = mp[const2];
 
-            itersInLoopR1 = (int)lexical_cast<cpp_int>(minCoef1);
-            itersOutLoopR1 = (int)lexical_cast<cpp_int>(minConst1);
-            itersInLoopR2 = (int)lexical_cast<cpp_int>(minCoef2);
-            itersOutLoopR2 = (int)lexical_cast<cpp_int>(minConst2);
+            itersInLoop1 = (int)lexical_cast<cpp_int>(minCoef1);
+            itersOutLoop1 = (int)lexical_cast<cpp_int>(minConst1);
+            itersInLoop2 = (int)lexical_cast<cpp_int>(minCoef2);
+            itersOutLoop2 = (int)lexical_cast<cpp_int>(minConst2);
 
-            outs() << "copy " << itersOutLoopR1 << " iterations of loop 1 to fact and query combined\n";
-            outs() << "copy " << itersOutLoopR2 << " iterations of loop 2 to fact and query combined\n";
-            outs() << "we need " << itersInLoopR1 << " iterations of loop 1 to align\n";
-            outs() << "we need " << itersInLoopR2 << " iterations of loop 2 to align\n";
+            outs() << "copy "
+                << itersOutLoop1 << " iterations of loop 1 to fact and query combined\n";
+            outs() << "copy "
+                << itersOutLoop2 << " iterations of loop 2 to fact and query combined\n";
+            outs() << "we need " << itersInLoop1 << " iterations of loop 1 to align\n";
+            outs() << "we need " << itersInLoop2 << " iterations of loop 2 to align\n";
 
             return true;
         }
 
         bool alignPrograms()
         {
-            const vector<int> &cycle1 = source.cycles[0];
-            HornRuleExt &rule1 = source.chcs[cycle1[0]];
-            const vector<int> &prefix1 = source.prefixes[0];
-            HornRuleExt &prefixRule1 = source.chcs[prefix1[0]];
+            HornRuleExt &cycleS = source.chcs[source.cycles[0][0]];
+            HornRuleExt &prefixS = source.chcs[source.prefixes[0][0]];
 
-            const vector<int> &cycle2 = target.cycles[0];
-            HornRuleExt &rule2 = target.chcs[cycle2[0]];
-            const vector<int> &prefix2 = target.prefixes[0];
-            HornRuleExt &prefixRule2 = target.chcs[prefix2[0]];
+            HornRuleExt &cycleT = target.chcs[target.cycles[0][0]];
+            HornRuleExt &prefixT = target.chcs[target.cycles[0][0]];
 
             BndExpl bnd1(source, debug);
             BndExpl bnd2(target, debug);
-
             Expr pref1 = bnd1.compactPrefix(0), pref2 = bnd2.compactPrefix(0);
-            int iter1 = source.iter, iter2 = target.iter;
-            ExprSet preForEqualityCheck, preForQuantifiedFla;
+            int iterS = source.iter, iterT = target.iter;
+            ExprSet equalityChecks, preForQuantifiedFla;
 
-            // checks if initial values of iterators depend on any variables; also constant values are also added to pre
-            // we might as well check that the pair[1] variable is also constant, similar to third check
-            // arrays are not added because they make it difficult for solver to find solution
-            if (pairings[0][0] != -1)
+            for (const auto &pair : pairings)
             {
-                for (auto &pair : pairings)
-                {
-                    Expr var1Src = rule1.srcVars[pair[0]];
-                    Expr var2Src = rule2.srcVars[pair[1]];
-                    Expr var1Dst = rule1.dstVars[pair[0]];
-                    Expr var2Dst = rule2.dstVars[pair[1]];
+                auto &p1 = pair.first, &p2 = pair.second;
+                Expr var1Src = cycleS.srcVars[p1];
+                Expr var2Src = cycleT.srcVars[p2];
+                Expr var1Dst = cycleS.dstVars[p1];
+                Expr var2Dst = cycleT.dstVars[p2];
 
-                    // we create here the pre required for quantified formula and pre to check equality of iters later
-                    // we do not want to add arrays to any of the pre version
-                    if (!isOpX<ARRAY_TY>(bind::typeOf(var1Src)))
-                    {
-                        preForEqualityCheck.insert(mk<EQ>(var1Dst, var1Dst));
-                        preForQuantifiedFla.insert(mk<EQ>(var1Src, var2Src));
-                    }
+                // we create here the pre required for quantified formula
+                // and pre to check equality of iters later
+                // we do not want to add arrays to any of the pre version
+                if (!isOpX<ARRAY_TY>(bind::typeOf(var1Src)))
+                {
+                    equalityChecks.insert(mk<EQ>(var1Dst, var1Dst));
+                    preForQuantifiedFla.insert(mk<EQ>(var1Src, var2Src));
                 }
             }
 
-            if (!getAlignmentVals(preForQuantifiedFla)) return false;
+            int itersInLoopS, itersOutLoopS, itersInLoopT, itersOutLoopT;
+            if (!getAlignmentVals(preForQuantifiedFla, itersInLoopS, itersOutLoopS,
+                        itersInLoopT, itersOutLoopT)) return false;
 
-            // Currently, it does all combinations to check the number of iterations to be added to fact and query
-            vector<int> v1, v2;
-            vector<vector<int>> possibleFactQueryAligns;
-            for (int i = 0; i <= itersOutLoopR1; i++) v1.push_back(i);
-            for (int i = 0; i <= itersOutLoopR2; i++) v2.push_back(i);
+            // Currently, it does all combinations to check the number of iterations
+            // to be added to fact and query
+            vector<int> combsS, combsT;
+            for (int i = 0; i <= itersOutLoopS; i++) combsS.push_back(i);
+            for (int i = 0; i <= itersOutLoopT; i++) combsT.push_back(i);
 
-            for (auto &it : v1)
-                for (auto &it2 : v2)
-                    possibleFactQueryAligns.push_back(vector<int>{it, it2});
+            vector<pair<int, int>> possibleFactAligns;
+            for (auto &it : combsS)
+                for (auto &it2 : combsT)
+                    possibleFactAligns.push_back({it, it2});
 
-            Expr iterF = rule1.dstVars[iter1];
-            Expr iterS = rule2.dstVars[iter2];
-
-            bool impliesEq = false;
-            for (auto &possibleAlign : possibleFactQueryAligns)
+            Expr eq = mk<EQ>(cycleS.dstVars[iterS], cycleT.dstVars[iterT]);
+            for (const auto &possibleAlign : possibleFactAligns)
             {
-                ExprSet equalityChecks = preForEqualityCheck;
-                Expr prefixBody1 = prefixRule1.body, prefixBody2 = prefixRule2.body;
+                Expr prefixBody1 = prefixS.body, prefixBody2 = prefixT.body;
+                int toFactS = possibleAlign.first, toFactT = possibleAlign.second;
+                int toQueryS = itersOutLoopS - toFactS, toQueryT = itersOutLoopT - toFactT;
 
-                // check if adding certain iterations to query will make the initial values of iterators equal
+                // check if adding certain iterations to fact will make
+                // the initial values of iterators equal
                 // it is not greedy approach currently
-                source.createAlignment(0, possibleAlign[0], 0, bnd1, prefixBody1, false);
-                target.createAlignment(0, possibleAlign[1], 0, bnd2, prefixBody2, false);
-
+                source.createAlignment(0, toFactS, 0, bnd1, prefixBody1, false);
+                target.createAlignment(0, toFactT, 0, bnd2, prefixBody2, false);
                 equalityChecks.insert(prefixBody1);
                 equalityChecks.insert(prefixBody2);
 
-                Expr eq = mk<EQ>(iterF, iterS);
-                impliesEq = bool(u.implies(conjoin(equalityChecks, m_efac), eq));
-
-                if (impliesEq)
+                if (bool(u.implies(conjoin(equalityChecks, m_efac), eq)))
                 {
-                    Expr prefixBody1 = prefixRule1.body, prefixBody2 = prefixRule2.body;
+                    Expr prefixBody1 = prefixS.body, prefixBody2 = prefixT.body;
                     // actual alignment created here
-                    source.createAlignment(itersInLoopR1, possibleAlign[0], itersOutLoopR1-possibleAlign[0], bnd1, prefixBody1);
-                    prefixRule1.body = prefixBody1;
+                    source.createAlignment(itersInLoopS, toFactS, toQueryS, bnd1, prefixBody1);
+                    prefixS.body = prefixBody1;
 
-                    target.createAlignment(itersInLoopR2, possibleAlign[1], itersOutLoopR2-possibleAlign[1], bnd2, prefixBody2);
-                    prefixRule2.body = prefixBody2;
+                    target.createAlignment(itersInLoopT, toFactT, toQueryT, bnd2, prefixBody2);
+                    prefixT.body = prefixBody2;
 
                     for (auto &chc : source.chcs)
                     {
@@ -635,7 +617,6 @@ namespace ufo
                         chc.body = eliminateQuantifiers(chc.body, chc.locVars, true, false);
                         chc.locVars.clear();
                     }
-
                     return true;
                 }
             }
@@ -649,8 +630,8 @@ namespace ufo
                     source.invVars[source.loopRel], target.invVars[target.loopRel]);
 
             for (const auto &pr : pairings) {
-                Expr e = mk<EQ>(source.invVars[source.loopRel][pr[0]],
-                        target.invVars[target.loopRel][pr[1]]);
+                Expr e = mk<EQ>(source.invVars[source.loopRel][pr.first],
+                        target.invVars[target.loopRel][pr.second]);
                 mapping.insert(replaceAll(e, combinedVars, product.invVars[dcl]));
             }
         }
@@ -661,8 +642,9 @@ namespace ufo
             if (debug > 4) ruleManager.print(true);
             BndExpl bnd(ruleManager, to, debug);
 
-            RndLearnerV3 ds(ruleManager.m_efac, ruleManager.m_z3, ruleManager, to, freqs, aggp, mut, dat,
-                    doDisj, mbpEqs, dAllMbp, dAddProp, dAddDat, dStrenMbp, dFwd, dRec, dGenerous, to, debug);
+            RndLearnerV3 ds(ruleManager.m_efac, ruleManager.m_z3, ruleManager, to, freqs, aggp,
+                    mut, dat, doDisj, mbpEqs, dAllMbp, dAddProp, dAddDat, dStrenMbp, dFwd, dRec,
+                    dGenerous, to, debug);
 
             map<Expr, ExprSet> cands;
             Expr dcl = ruleManager.chcs[ruleManager.cycles[0][0]].srcRelation;
@@ -713,10 +695,10 @@ namespace ufo
             
             auto query = product.getQuery();
             const auto &originalQuery = query->body;
-            const auto loopGuard1 =
-                std::move(source.getPrecondition(&source.chcs[source.cycles[0][0]]));
-            const auto loopGuard2 =
-                std::move(target.getPrecondition(&target.chcs[target.cycles[0][0]]));
+            const auto loopGuard1 = std::move(
+                    simplifyArithm(source.getPrecondition(&source.chcs[source.cycles[0][0]])));
+            const auto loopGuard2 = std::move(
+                    simplifyArithm(target.getPrecondition(&target.chcs[target.cycles[0][0]])));
             const auto lockstepCheckPredicate = std::move(mk<NEQ>(loopGuard2, loopGuard1));
             query->body = std::move(mk<AND>(lockstepCheckPredicate, originalQuery));
             // TODO: according to paper, we need to return <inv, cex>
@@ -742,20 +724,72 @@ namespace ufo
         }
     };
 
+    void combinations(vector<int> &vars1, vector<int> &vars2, vector<pair<int, int>> c,
+            vector<int> vars2Used, vector<vector<pair<int, int>>> &combs, int pos)
+    {
+        if (c.size() >= vars1.size())
+        {
+            combs.push_back(c);
+            return;
+        }
+        for (int i = 0; i < vars2.size(); i++)
+        {
+            if (find(vars2Used.begin(), vars2Used.end(), i) == vars2Used.end())
+            {
+                vars2Used.push_back(i);
+                c.push_back({vars1[pos], vars2[i]});
+                combinations(vars1, vars2, c, vars2Used, combs, pos+1);
+                c.pop_back();
+                vars2Used.pop_back();
+            }
+        }
+    }
+
+
+    void combinationsOfVars(vector<int> &vars1, vector<int> &vars2,
+            vector<vector<pair<int, int>>> &combs)
+    {
+        for (int i = 0; i < vars2.size(); i++)
+        {
+            vector<int> vars2Used{i};
+            pair<int, int> v{vars1[0], vars2[i]};
+            vector<pair<int, int>> c{v};
+            combinations(vars1, vars2, c, vars2Used, combs, 1);
+        }
+    }
+
+    void joinVars(vector<vector<pair<int, int>>> &vec1, vector<vector<pair<int, int>>> &vec2,
+            vector<vector<pair<int, int>>> &combs)
+    {
+        if (vec1.empty() || vec2.empty())
+        {
+            concatenateVectors(combs, vec1, vec2);
+        }
+        else
+        {
+            for (auto &it : vec1)
+            {
+                for (auto &it2 : vec2)
+                {
+                    vector<pair<int, int>> v;
+                    concatenateVectors(v, it, it2);
+                    combs.push_back(v);
+                }
+            }
+        }
+    }
+
     void createIterCombs(Extended_CHCs &ruleManager1, Extended_CHCs &ruleManager2,
-            vector<vector<vector<int>>> &iterCombs)
+            vector<vector<pair<int, int>>> &iterCombs)
     {
 
-        vector<vector<vector<int>>> combsArray, combsInt, combsBool, combs1;
+        vector<vector<pair<int, int>>> combsArray, combsInt, combsBool, combs1;
         combinationsOfVars(ruleManager1.varsArray, ruleManager2.varsArray, combsArray);
         combinationsOfVars(ruleManager1.varsInt, ruleManager2.varsInt, combsInt);
         combinationsOfVars(ruleManager1.varsBool, ruleManager2.varsBool, combsBool);
 
         joinVars(combsArray, combsInt, combs1);
         joinVars(combs1, combsBool, iterCombs);
-        // fix later
-        vector<vector<int>> v{{-1, -1}};
-        if (iterCombs.empty()) iterCombs.push_back(v);
     }
 
     void decomposeSource(Extended_CHCs& source, Extended_CHCs& target, Extended_CHCs& SDecomposed) {
@@ -832,7 +866,15 @@ namespace ufo
         SDecomposed.wtoSort();
     }
 
-    void projection(Extended_CHCs& projRm, int i, Extended_CHCs &origRm) {
+    void projection(Extended_CHCs& projRm, int i, Extended_CHCs &origRm, bool multipleProjections) {
+        const auto cycle = origRm.chcs[origRm.cycles[i][0]];
+        projRm.loopRel = cycle.srcRelation;
+        if (!multipleProjections) {
+            auto query = projRm.getQuery();
+            query->body = mk<TRUE>(origRm.m_efac);
+            return;
+        }
+
         auto prefix = origRm.chcs[origRm.prefixes[i].back()];
         if (!prefix.isFact) {
             prefix.srcRelation = mk<TRUE>(origRm.m_efac);
@@ -841,7 +883,6 @@ namespace ufo
         }
         projRm.chcs.push_back(std::move(prefix));
 
-        const auto cycle = origRm.chcs[origRm.cycles[i][0]];
         projRm.chcs.push_back(std::move(cycle));
 
         Expr rel = cycle.srcRelation;
@@ -864,7 +905,6 @@ namespace ufo
             projRm.outgs[projRm.chcs[i].srcRelation].push_back(i);
 
         projRm.wtoSort();
-        projRm.loopRel = cycle.srcRelation;
     }
         
     bool checkEquivalenceOfRMs(Extended_CHCs &source, Extended_CHCs &target,
@@ -890,49 +930,49 @@ namespace ufo
         for (int i = 0; i < numProjections; i++) {
             // TODO: Use move semantics for better performance
             Extended_CHCs projectionSource(decomposedSource, numProjections > 1);
-            Extended_CHCs projectionTarget(target, numProjections > 1);
+            projection(projectionSource, i, decomposedSource, numProjections > 1);
 
-            if (numProjections > 1) {
-                projection(projectionSource, i, decomposedSource);
-                projection(projectionTarget, i, target);
-            }
+            Extended_CHCs projectionTarget(target, numProjections > 1);
+            projection(projectionTarget, i, target, numProjections > 1);
 
             projectionSource.categorizeVars();
             projectionTarget.categorizeVars();
 
-            vector<vector<vector<int>>> iterCombs;
+            vector<vector<pair<int, int>>> iterCombs;
             createIterCombs(projectionSource, projectionTarget, iterCombs);
 
-            for (auto &comb : iterCombs) {
+            int j = 0;
+            do {
                 // cex loop
-
+                auto comb = iterCombs.empty() ? vector<pair<int, int>>{} : iterCombs[j];
                 EquivalenceInPaper equiv(projectionSource, projectionTarget, to, freqs, aggp,
                         dat, mut, doElim, doArithm, doDisj, doProp, mbpEqs, dAllMbp, dAddProp,
                         dAddDat, dStrenMbp, dFwd, dRec, dGenerous, dSee, debug, comb);
 
-                bool equivalenceCheck;
+                bool equivalenceCheck = false;
                 while (true) {
                     bool aligned = false;
                     bool refined = false;
 
+                    // create product of source and target projections
                     Product_CHCs product(projectionSource, projectionTarget, "_pr_", debug-2);
                     product.createProduct();
                     equiv.createVariableMapping(product);
 
+                    // fact sanity check
                     auto fact = product.getFact();
                     fact->body = mk<AND>(fact->body, equiv.getRelationalPrecondition(product));
                     bool factSanity = equiv.factSanityCheck(fact->body);
 
-                    bool lockstepCheck;
+                    bool lockstepCheck = false;
                     if (factSanity) {
                         lockstepCheck = equiv.checkLockstepComposability(product);
                     }
                     if (!factSanity || !lockstepCheck) {
                         // align the programs
                         auto itersFound = equiv.findIterators();
-                        aligned = equiv.alignPrograms();
+                        if (itersFound) aligned = equiv.alignPrograms();
                         if (aligned) continue;
-                        //return false;
                     }
                     else {
                         // check equivalence
@@ -948,7 +988,8 @@ namespace ufo
                     break;
                 }
                 if (equivalenceCheck) break;
-            }
+                j++;
+            } while (j < iterCombs.size());
         }
         return true;
     }

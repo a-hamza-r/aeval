@@ -13,122 +13,45 @@ namespace ufo
 {
 
     template <typename T>
-        void concatenateVectors(vector<T> &result, vector<T> vec1, vector<T> vec2)
-        {
-            result.reserve(result.size()+vec1.size()+vec2.size());
-            result.insert(result.end(), vec1.begin(), vec1.end());
-            result.insert(result.end(), vec2.begin(), vec2.end());
-        }
-
-    template <typename T>
-        void setUnion(set<T> &result, set<T> set1, set<T> set2)
-        {
-            result = set1;
-            result.insert(set2.begin(), set2.end());
-        }
-
-    template <typename T, typename T1>
-        void concatenateMaps(map<T, T1> &result, map<T, T1> map1, map<T, T1> map2)
-        {
-            result = map1;
-            result.insert(map2.begin(), map2.end());
-        }
-
-    template <typename T>
-        void findExpr(Expr toFind, Expr conj, Expr &result, bool skipArray=false)
-        {
-            Expr res;
-            if (isOpX<AND>(conj))
-            {
-                for (auto it = conj->args_begin(); it != conj->args_end(); it++)
-                {
-                    findExpr<T>(toFind, *it, res, skipArray);
-                    if (res)
-                    {
-                        if (result)
-                            result = mk<AND>(result, res);
-                        else
-                            result = res;
-                        res = NULL;
-                    }
-                }
-            }
-            else if (isOpX<OR>(conj))
-            {
-                for (auto it = conj->args_begin(); it != conj->args_end(); it++)
-                {
-                    findExpr<T>(toFind, *it, res, skipArray);
-                    if (res)
-                    {
-                        if (result)
-                            result = mk<OR>(result, res);
-                        else
-                            result = res;
-                        res = NULL;
-                    }
-                }
-            }
-            else if (isOpX<T>(conj))
-            {
-                if (skipArray && containsOp<ARRAY_TY>(conj)) return;
-                if (contains(conj, toFind)) result = conj;
-            }
-        }
-
-    void combinations(vector<int> &vars1, vector<int> &vars2, vector<vector<int>> c,
-            vector<int> vars2Used, vector<vector<vector<int>>> &combs, int pos)
+    void findExpr(Expr toFind, Expr conj, Expr &result, bool skipArray=false)
     {
-        if (c.size() >= vars1.size())
+        Expr res;
+        if (isOpX<AND>(conj))
         {
-            combs.push_back(c);
-            return;
-        }
-        for (int i = 0; i < vars2.size(); i++)
-        {
-            if (find(vars2Used.begin(), vars2Used.end(), i) == vars2Used.end())
+            for (auto it = conj->args_begin(); it != conj->args_end(); it++)
             {
-                vars2Used.push_back(i);
-                c.push_back(vector<int>{vars1[pos], vars2[i]});
-                combinations(vars1, vars2, c, vars2Used, combs, pos+1);
-                c.pop_back();
-                vars2Used.pop_back();
-            }
-        }
-    }
-
-
-    void combinationsOfVars(vector<int> &vars1, vector<int> &vars2, vector<vector<vector<int>>> &combs)
-    {
-        for (int i = 0; i < vars2.size(); i++)
-        {
-            vector<int> vars2Used{i};
-            vector<int> v{vars1[0], vars2[i]};
-            vector<vector<int>> c{v};
-            combinations(vars1, vars2, c, vars2Used, combs, 1);
-        }
-    }
-
-    void joinVars(vector<vector<vector<int>>> &vec1, vector<vector<vector<int>>> &vec2,
-            vector<vector<vector<int>>> &combs)
-    {
-        if (vec1.empty() || vec2.empty())
-        {
-            concatenateVectors(combs, vec1, vec2);
-        }
-        else
-        {
-            for (auto &it : vec1)
-            {
-                for (auto &it2 : vec2)
+                findExpr<T>(toFind, *it, res, skipArray);
+                if (res)
                 {
-                    vector<vector<int>> v;
-                    concatenateVectors(v, it, it2);
-                    combs.push_back(v);
+                    if (result)
+                        result = mk<AND>(result, res);
+                    else
+                        result = res;
+                    res = NULL;
                 }
             }
         }
+        else if (isOpX<OR>(conj))
+        {
+            for (auto it = conj->args_begin(); it != conj->args_end(); it++)
+            {
+                findExpr<T>(toFind, *it, res, skipArray);
+                if (res)
+                {
+                    if (result)
+                        result = mk<OR>(result, res);
+                    else
+                        result = res;
+                    res = NULL;
+                }
+            }
+        }
+        else if (isOpX<T>(conj))
+        {
+            if (skipArray && containsOp<ARRAY_TY>(conj)) return;
+            if (contains(conj, toFind)) result = conj;
+        }
     }
-
 
     Expr myAbduce(Expr goal, Expr assmp, ExprVector varsNotInc=ExprVector())
     {
@@ -372,28 +295,24 @@ namespace ufo
 
             Expr findInitialValue(int i, Expr init)
             {
-                Expr initVal;
+                Expr equalities = nullptr;
                 Expr iter = invVars[loopRel][i];
 
-                findExpr<EQ>(iter, init, initVal, true);
-                if (initVal)
+                findExpr<EQ>(iter, init, equalities, true);
+                if (equalities)
                 {
-                    Expr newInit;
-                    if (isOpX<AND>(initVal))
+                    Expr initVal = nullptr;
+                    ExprSet equalitiesSet;
+                    getConj(equalities, equalitiesSet);
+                    for (const auto &it : equalitiesSet)
                     {
-                        ExprSet s;
-                        getConj(initVal, s);
-                        for (auto &it : s)
+                        Expr normalized = ineqSimplifier(iter, simplifyArithm(it));
+                        if (isOpX<EQ>(normalized) && normalized->left() == iter)
                         {
-                            Expr normalized = ineqSimplifier(iter, simplifyArithm(it));
-                            if (isOpX<EQ>(normalized) && normalized->left() == iter)
-                            {
-                                // if multiple equalities are found, just return; support more
-                                if (newInit) return NULL;
-                                else newInit = normalized;
-                            }
+                            // if multiple equalities are found, just return; support more
+                            if (initVal) return nullptr;
+                            else initVal = normalized;
                         }
-                        initVal = newInit;
                     }
                     if (initVal)
                     {
@@ -404,7 +323,7 @@ namespace ufo
                         return initVal;
                     }
                 }
-                return NULL;
+                return nullptr;
             }
 
             void getConjAndDisj(Expr e, ExprSet& allExprs)
@@ -538,126 +457,100 @@ namespace ufo
 
             Expr findTransitionValue(int i, Expr body)
             {
-                ExprSet allExprs;
-                Expr transitionVal, allExprsConj, e;
-                bool multipleTransVal = false;
-
                 Expr a = invVars[loopRel][i];
                 Expr b = invVarsPrime[loopRel][i];
 
-                findExpr<EQ>(b, body, e, true);
-                if (!e) return e;
-                e = ineqSimplifier(b, e);
+                Expr allTransitions = nullptr;
+                findExpr<EQ>(b, body, allTransitions, true);
+                if (!allTransitions) return NULL;
 
-                getConjAndDisj(e, allExprs);
-                for (auto &it : allExprs)
+                bool multipleTransVal = false;
+                Expr transition = nullptr;
+                ExprSet allExprsSet;
+                getConjAndDisj(allTransitions, allExprsSet);
+                for (const auto &it : allExprsSet)
                 {
                     Expr normalized = ineqSimplifier(b, simplifyArithm(it));
-                    if (contains(it, a) && isOpX<EQ>(normalized) && normalized->left() == b)
+                    if (contains(normalized, a) && isOpX<EQ>(normalized)
+                            && normalized->left() == b)
                     {
-                        if (allExprsConj) multipleTransVal = true;
-                        else allExprsConj = it;
+                        if (transition) multipleTransVal = true;
+                        else transition = normalized;
                     }
                 }
 
-                // Cases when transition can't be found: multiple transition rels, no transition rel, contains an ITE
-                if (multipleTransVal || !allExprsConj || allExprsConj->right()->arity() <= 1 || containsOp<ITE>(allExprsConj))
-                    return NULL;
+                // Cases when transition can't be found:
+                    // multiple transition rels, 
+                    // no transition rel, 
+                    // contains an ITE
+                if (multipleTransVal || !transition || transition->right()->arity() <= 1
+                        || containsOp<ITE>(transition))
+                    return nullptr;
 
-                Expr right = allExprsConj->right();
+                Expr rightOfTransition = transition->right();
 
+                Expr transitionVal = nullptr;
                 // assuming no local vars
-                if (right->arg(0) == a)
-                    transitionVal = right->arg(1);
+                if (rightOfTransition->arg(0) == a)
+                    transitionVal = rightOfTransition->arg(1);
                 else
-                    transitionVal = right->arg(0);
+                    transitionVal = rightOfTransition->arg(0);
 
                 // check if delta value is constant; Eq. 10, section 4 in paper
-                Expr replacedTrans = replaceAll(transitionVal, invVars[loopRel], invVarsPrime[loopRel]);
-                return u.implies(body, mk<EQ>(transitionVal, replacedTrans)) ? transitionVal : NULL;
+                Expr replacedTrans
+                    = replaceAll(transitionVal, invVars[loopRel], invVarsPrime[loopRel]);
+                return u.implies(body, mk<EQ>(transitionVal, replacedTrans))
+                    ? transitionVal : nullptr;
             }
 
             Expr findFinalValue(int i, Expr body, Expr& add, bool iterIncreases)
             {
-                Expr limitVal = NULL, limitEq;
-                Expr a = invVars[loopRel][i];
-                Expr b = invVarsPrime[loopRel][i];
+                Expr iter = invVars[loopRel][i];
+                auto &cycle = chcs[cycles[0][0]];
+                auto precondition = std::move(getPrecondition(&cycle));
 
-                Expr gt, ge, lt, le;
-                if (iterIncreases)
-                {
-                    findExpr<LT>(a, body, lt, true);
-                    findExpr<LEQ>(a, body, le, true);
-
-                    // make sure there is no case where both lt and le are not null
-                    // cannot think of any but could be
-                    // in case lt and le are either conjunction or disjunction, handle better
-                    if (lt)
-                    {
-                        lt = ineqSimplifier(a, lt);
-                        if (!(isOpX<AND>(lt) || isOpX<OR>(lt))) limitEq = lt;
-                    }
-                    if (le)
-                    {
-                        add = mkMPZ(1, a->getFactory());
-                        le = ineqSimplifier(a, le);
-                        if (!(isOpX<AND>(le) || isOpX<OR>(le))) limitEq = le;
-                    }
-                }
-                else
-                {
-                    findExpr<GT>(a, body, gt);
-                    findExpr<GEQ>(a, body, ge);
-
-                    // make sure there is no case where both gt and ge are not null
-                    // cannot think of any but could be
-                    if (gt)
-                    {
-                        gt = ineqSimplifier(a, gt);
-                        if (!(isOpX<AND>(gt) || isOpX<OR>(gt))) limitEq = gt;
-                    }
-                    if (ge)
-                    {
-                        add = mkMPZ(-1, a->getFactory());
-                        ge = ineqSimplifier(a, ge);
-                        if (!(isOpX<AND>(ge) || isOpX<OR>(ge))) limitEq = ge;
-                    }
+                if (!precondition || isOpX<AND>(precondition) || isOpX<OR>(precondition)) {
+                    // TODO: support more
+                    return nullptr;
                 }
 
-                if (limitEq)
-                {
-                    if (!loopGuard) loopGuard = limitEq;
-                    limitVal = limitEq->arg(1);
+                precondition = ineqSimplifier(iter, precondition);
+                if (!loopGuard) loopGuard = precondition;
 
-                    // check if limit value is constant; Eq. 8, section 4
-                    Expr replacedLimit = replaceAll(limitVal, invVars[loopRel], invVarsPrime[loopRel]);
-                    bool constLimitValCheck = bool(u.implies(body, mk<EQ>(limitVal, replacedLimit)));
+                if (containsOp<LEQ>(precondition)) add = mkMPZ(1, m_efac);
+                else if (containsOp<GEQ>(precondition)) add = mkMPZ(-1, m_efac);
+                else if (!containsOp<LT>(precondition) && !containsOp<GT>(precondition))
+                    return nullptr;
 
-                    // check the case that iter does not exceed limit value during transition; Eq. 7, section 4
-                    bool loopEndCheck = limitEq && !u.isSat(mk<AND>(mkNeg(limitEq), body));
+                Expr limitVal = precondition->arg(1);
+                
+                // check if limit value is constant; Eq. 8, section 4
+                Expr replacedLimit = replaceAll(limitVal, invVars[loopRel], invVarsPrime[loopRel]);
+                bool constLimitValCheck = bool(u.implies(body, mk<EQ>(limitVal, replacedLimit)));
 
-                    if (!constLimitValCheck || !loopEndCheck) return NULL;
-                }
+                // check the case that iter does not exceed limit value during transition;
+                // Eq. 7, section 4
+                bool loopEndCheck = precondition && !u.isSat(mk<AND>(mkNeg(precondition), body));
+
+                if (!constLimitValCheck || !loopEndCheck) return nullptr;
                 return limitVal;
             }
 
-            bool findIterators(bool requireIters)
+            bool findIterators()
             {
-                // TODO: Variable combinations have already been made,
-                // hence use those efficiently instead of making new ones
                 BndExpl bnd(*this, debug);
                 const HornRuleExt& rule = chcs[cycles[0][0]];
 
                 Expr pref = bnd.compactPrefix(0);
 
-                for (int i = 0; i < invVars[loopRel].size(); i++)
+                for (auto& i : varsInt)
                 {
                     Expr a = invVars[loopRel][i];
                     Expr b = invVarsPrime[loopRel][i];
 
                     bool isAnIter = false;
-                    bool iterDecreases = bind::isIntConst(a) && bool(u.implies(rule.body, mk<GT>(a, b)));
-                    bool iterIncreases = bind::isIntConst(a) && bool(u.implies(rule.body, mk<LT>(a, b)));
+                    bool iterDecreases = bool(u.implies(rule.body, mk<GT>(a, b)));
+                    bool iterIncreases = bool(u.implies(rule.body, mk<LT>(a, b)));
 
                     if (iterIncreases || iterDecreases)
                     {
@@ -673,18 +566,11 @@ namespace ufo
                             iter = i;
                             iterGrows = iterIncreases;
                             numOfIters = numIterations(initVal, transitionVal, limitVal, add);
+                            return true;
                         }
                     }
-
-                    // if not an iter, collect info about the type of variables
-                    if (!isAnIter)
-                    {
-                        if (bind::isIntConst(a)) varsInt.push_back(i);
-                        else if (bind::isBoolConst(a)) varsBool.push_back(i);
-                        else if (isOpX<ARRAY_TY>(bind::typeOf(a))) varsArray.push_back(i);
-                    }
                 }
-                return (iter >= 0);
+                return false;
             }
 
             void preprocessing()
