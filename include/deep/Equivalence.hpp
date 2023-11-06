@@ -358,49 +358,54 @@ namespace ufo
     };
 
 
-    class EquivalenceInPaper 
+    class Equivalence
     {
-        private:
-            ExprFactory &m_efac;
-            EZ3 &m_z3;
-            Extended_CHCs &source;
-            Extended_CHCs &target;
-            SMTUtils u;
+      private:
+        ExprFactory &m_efac;
+        EZ3 &m_z3;
+        SMTUtils u;
+        unsigned to;
+        bool freqs;
+        bool aggp;
+        int dat;
+        int mut;
+        bool doElim;
+        bool doArithm;
+        bool doDisj;
+        int doProp;
+        int mbpEqs;
+        bool dAllMbp;
+        bool dAddProp;
+        bool dAddDat;
+        bool dStrenMbp;
+        int dFwd;
+        bool dRec;
+        bool dGenerous;
+        int debug;
+        bool dSee;
+        ExprSet mapping;
+        vector<pair<int, int>> pairings;
+        Extended_CHCs &source;
+        Extended_CHCs &target;
+        std::vector<Extended_CHCs> sourceCHCs;
+        std::vector<Extended_CHCs> targetCHCs;
+        ExprVector sourceInvariants;
+        ExprVector targetInvariants;
+        RndLearnerV3* learner;
 
-        public:
-            unsigned to;
-            bool freqs;
-            bool aggp;
-            int dat;
-            int mut;
-            bool doElim;
-            bool doArithm;
-            bool doDisj;
-            int doProp;
-            int mbpEqs;
-            bool dAllMbp;
-            bool dAddProp;
-            bool dAddDat;
-            bool dStrenMbp;
-            int dFwd;
-            bool dRec;
-            bool dGenerous;
-            int debug;
-            bool dSee;
-            vector<pair<int, int>> pairings;
-            ExprSet mapping;
+      public:
 
-        EquivalenceInPaper(Extended_CHCs &r1, Extended_CHCs &r2,
+        Equivalence(Extended_CHCs &r1, Extended_CHCs &r2,
                 unsigned _to, bool _freqs, bool _aggp, int _dat, int _mut, bool _doElim,
                 bool _doArithm, bool _doDisj, int _doProp, int _mbpEqs, bool _dAllMbp,
                 bool _dAddProp, bool _dAddDat, bool _dStrenMbp, int _dFwd, bool _dRec,
-                bool _dGenerous, bool _dSee, int _debug, vector<pair<int, int>> &_pairings) :
+                bool _dGenerous, bool _dSee, int _debug) :
             m_efac(r1.m_efac), m_z3(r1.m_z3), u(r1.m_efac, _to), 
             source(r1), target(r2), to(_to), freqs(_freqs), aggp(_aggp), dat(_dat), mut(_mut),
             doElim(_doElim), doArithm(_doArithm), doDisj(_doDisj), doProp(_doProp),
             mbpEqs(_mbpEqs), dAllMbp(_dAllMbp), dAddProp(_dAddProp), dAddDat(_dAddDat),
             dStrenMbp(_dStrenMbp), dFwd(_dFwd), dRec(_dRec), dGenerous(_dGenerous),
-            dSee(_dSee), debug(_debug), pairings(_pairings)
+            dSee(_dSee), debug(_debug)
         {}
 
         /*
@@ -427,6 +432,20 @@ namespace ufo
             return true;
         }
         */
+
+        bool refine(bool target = false) {
+            auto learnedLemmas = learner->getlearnedLemmas(0);
+            return true;
+        }
+
+        void saveProjections() {
+            sourceCHCs.push_back(std::move(source));
+            targetCHCs.push_back(std::move(target));
+        }
+
+        void setVariableCombs(std::vector<pair<int, int>>& _pairings) {
+            pairings = _pairings;
+        }
 
         bool findIterators() {
             source.preprocessing();
@@ -540,7 +559,7 @@ namespace ufo
             HornRuleExt &prefixS = source.chcs[source.prefixes[0][0]];
 
             HornRuleExt &cycleT = target.chcs[target.cycles[0][0]];
-            HornRuleExt &prefixT = target.chcs[target.cycles[0][0]];
+            HornRuleExt &prefixT = target.chcs[target.prefixes[0][0]];
 
             BndExpl bnd1(source, debug);
             BndExpl bnd2(target, debug);
@@ -646,6 +665,8 @@ namespace ufo
                     mut, dat, doDisj, mbpEqs, dAllMbp, dAddProp, dAddDat, dStrenMbp, dFwd, dRec,
                     dGenerous, to, debug);
 
+            learner = &ds;
+
             map<Expr, ExprSet> cands;
             Expr dcl = ruleManager.chcs[ruleManager.cycles[0][0]].srcRelation;
             if (!ds.initializedDecl(dcl)) {
@@ -677,6 +698,14 @@ namespace ufo
             // call bootstrap with option to only consider equalities as candidates for finding invariant
             // also add equalities for variable matchings
             bool check = ds.bootstrap();
+            /*
+            if (!check) {
+                ds.calculateStatistics();
+                ds.deferredPriorities();
+                std::srand(std::time(0));
+                return ds.synthesize(2000000);
+            }
+            */
             return check;
             //return (check && ds.verifySolution(mapping));
         }
@@ -779,8 +808,8 @@ namespace ufo
         }
     }
 
-    void createIterCombs(Extended_CHCs &ruleManager1, Extended_CHCs &ruleManager2,
-            vector<vector<pair<int, int>>> &iterCombs)
+    void createVariableCombs(Extended_CHCs &ruleManager1, Extended_CHCs &ruleManager2,
+            vector<vector<pair<int, int>>> &variableCombs)
     {
 
         vector<vector<pair<int, int>>> combsArray, combsInt, combsBool, combs1;
@@ -789,7 +818,7 @@ namespace ufo
         combinationsOfVars(ruleManager1.varsBool, ruleManager2.varsBool, combsBool);
 
         joinVars(combsArray, combsInt, combs1);
-        joinVars(combs1, combsBool, iterCombs);
+        joinVars(combs1, combsBool, variableCombs);
     }
 
     void decomposeSource(Extended_CHCs& source, Extended_CHCs& target, Extended_CHCs& SDecomposed) {
@@ -935,22 +964,27 @@ namespace ufo
             Extended_CHCs projectionTarget(target, numProjections > 1);
             projection(projectionTarget, i, target, numProjections > 1);
 
+            // One possibility is to move the variable combinations related code outside the loop
+            // but then it will need to copy multiple times for each projection
+            // so it is better to keep it here
             projectionSource.categorizeVars();
             projectionTarget.categorizeVars();
 
-            vector<vector<pair<int, int>>> iterCombs;
-            createIterCombs(projectionSource, projectionTarget, iterCombs);
+            vector<vector<pair<int, int>>> variableCombs;
+            createVariableCombs(projectionSource, projectionTarget, variableCombs);
+
+            Equivalence equiv(projectionSource, projectionTarget, to, freqs, aggp,
+                    dat, mut, doElim, doArithm, doDisj, doProp, mbpEqs, dAllMbp, dAddProp,
+                    dAddDat, dStrenMbp, dFwd, dRec, dGenerous, dSee, debug);
 
             int j = 0;
             do {
-                // cex loop
-                auto comb = iterCombs.empty() ? vector<pair<int, int>>{} : iterCombs[j];
-                EquivalenceInPaper equiv(projectionSource, projectionTarget, to, freqs, aggp,
-                        dat, mut, doElim, doArithm, doDisj, doProp, mbpEqs, dAllMbp, dAddProp,
-                        dAddDat, dStrenMbp, dFwd, dRec, dGenerous, dSee, debug, comb);
+                auto comb = variableCombs.empty() ? std::vector<pair<int, int>>{} : variableCombs[j];
+                equiv.setVariableCombs(comb);
 
                 bool equivalenceCheck = false;
                 while (true) {
+                    // cex loop
                     bool aligned = false;
                     bool refined = false;
 
@@ -972,24 +1006,24 @@ namespace ufo
                         // align the programs
                         auto itersFound = equiv.findIterators();
                         if (itersFound) aligned = equiv.alignPrograms();
+                        //return false;
                         if (aligned) continue;
                     }
                     else {
                         // check equivalence
                         equivalenceCheck = equiv.checkEquivalence(product);
                         if (equivalenceCheck) {
-                            outs() << "current projections are equivalent\n";
-                        }
-                        else {
-                            outs() << "current projections are not equivalent\n";
-                            return false;
+                            equiv.saveProjections();
+                            break;
                         }
                     }
+                    bool refinedSource = equiv.refine();
+                    bool refinedTarget = equiv.refine(true);
                     break;
                 }
                 if (equivalenceCheck) break;
                 j++;
-            } while (j < iterCombs.size());
+            } while (j < variableCombs.size());
         }
         return true;
     }
