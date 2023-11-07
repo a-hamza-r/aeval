@@ -1,0 +1,46 @@
+(declare-rel loop ((Array Int Int) (Array Int Int) (Array Int Int) (Array Int Int) (Array Int Int) Int Int ))
+(declare-rel exit ())
+(declare-var i Int )
+(declare-var x_i Int )
+(declare-var b_i Int )
+(declare-var c_i Int )
+(declare-var d_i Int )
+(declare-var e_i Int )
+(declare-var count Int )
+(declare-var x_array (Array Int Int) )
+(declare-var x_array1 (Array Int Int) )
+(declare-var b_array (Array Int Int) )
+(declare-var b_array1 (Array Int Int) )
+(declare-var c_array (Array Int Int) )
+(declare-var d_array (Array Int Int) )
+(declare-var e_array (Array Int Int) )
+
+(rule (=> 
+	(and 
+		(= i 0)
+		(> count 0)
+	)
+	(loop x_array b_array c_array d_array e_array i count)
+))
+(rule (=> 
+	(and 
+		(loop x_array b_array c_array d_array e_array i count)
+		(< i (* count 8))
+		(= c_i (select c_array i))
+		(= d_i (select d_array i))
+		(= e_i (select e_array i))
+		(= b_i (+ c_i (* d_i e_i)))
+		(= b_array1 (store b_array i b_i))
+		(= x_i (+ (select b_array i) (* d_i d_i)))
+		(= x_array1 (store x_array i x_i))
+	)
+	(loop x_array1 b_array1 c_array d_array e_array (+ i 1) count)
+))
+(rule (=> 
+	(and 
+		(loop x_array b_array c_array d_array e_array i count)
+		(not (< i (* count 8)))
+	)
+	exit
+))
+(query exit)

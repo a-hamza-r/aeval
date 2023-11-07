@@ -1,0 +1,23 @@
+#include "declarations.h"
+
+//	control flow
+//	loop with independent conditional
+
+TYPE s272(int count, int t) {
+	for (int i = 0; i < count*8; i++) {
+		if (e[i] >= t) {
+			a[i] += c[i] * d[i];
+			b[i] += c[i] * c[i];
+		}
+	}
+	return 0;
+}
+
+
+int nondet();
+
+int main() {
+	int count = nondet();
+	int t = nondet();
+	s272(count, t);
+}

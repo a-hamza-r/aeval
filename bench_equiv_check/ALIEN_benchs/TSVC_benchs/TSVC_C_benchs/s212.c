@@ -1,0 +1,30 @@
+#include "declarations.h"
+
+//	statement reordering
+//	dependency needing temporary
+
+TYPE s212(int count) {
+	for (int i = 0; i < count*8-1; i++) {
+		a[i] *= c[i];
+		b[i] += a[i + 1] * d[i];
+	}
+  return 0;
+}
+
+/*after statement reordering:
+
+TYPE s212(int count) {
+	for (int i = 0; i < count*8-1; i++) {
+		b[i] += a[i + 1] * d[i];
+		a[i] *= c[i];
+	}
+  return 0;
+}*/
+
+
+int nondet();
+
+int main() {
+	int count = nondet();
+	s212(count);
+}

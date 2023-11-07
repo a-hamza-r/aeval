@@ -1,0 +1,46 @@
+(declare-rel loop ((Array Int Int) (Array Int Int) (Array Int Int) (Array Int Int) Int Int ))
+(declare-rel exit ())
+(declare-var i Int )
+(declare-var k Int )
+(declare-var j Int )
+(declare-var index_limit Int )
+(declare-var a_i Int )
+(declare-var b_k Int )
+(declare-var c_k Int )
+(declare-var d_i Int )
+(declare-var count Int )
+(declare-var a_array (Array Int Int) )
+(declare-var a_array_new (Array Int Int) )
+(declare-var b_array (Array Int Int) )
+(declare-var b_array_new (Array Int Int) )
+(declare-var c_array (Array Int Int) )
+(declare-var d_array (Array Int Int) )
+
+(rule (=> 
+	(and 
+		(= i 0)
+		(> count 0)
+	)
+	(loop a_array b_array c_array d_array i count)
+))
+(rule (=> 
+	(and 
+		(loop a_array b_array c_array d_array i count)
+		(< i (* count 4))
+		(= b_k (select b_array (* 2 i)))
+		(= c_k (select c_array (* 2 i)))
+		(= d_i (select d_array i))
+		(= a_i (- b_k d_i))
+		(= a_array_new (store a_array i a_i))
+		(= b_array_new (store b_array (* 2 i) (+ a_i c_k)))
+	)
+	(loop a_array_new b_array_new c_array d_array (+ i 1) count)
+))
+(rule (=> 
+	(and 
+		(loop a_array b_array c_array d_array i count)
+		(not (< i (* count 4)))
+	)
+	exit
+))
+(query exit)

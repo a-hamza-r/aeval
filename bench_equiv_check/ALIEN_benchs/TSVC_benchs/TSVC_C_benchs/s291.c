@@ -1,0 +1,31 @@
+#include "declarations.h"
+
+//	loop peeling
+//	wrap around variable, 1 level
+
+TYPE s291(int count) {
+	int im1 = count*8-1;
+	for (int i = 0; i < count*8; i++) {
+		a[i] = (b[i] + b[im1]) * (float).5;
+		im1 = i;
+	}
+  return 0;
+}
+
+
+/*after loop peeling:
+
+TYPE s291(int count) {
+	a[0] = (b[0] + b[count*8-1]) * (float).5;
+	for (int i = 1; i < count*8; i++) {
+		a[i] = (b[i] + b[i-1]) * (float).5;
+	}
+  return 0;
+}*/
+
+int nondet();
+
+int main() {
+	int count = nondet();
+	s291(count);
+}
