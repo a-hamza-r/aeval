@@ -117,6 +117,8 @@ namespace ufo
 
     CHCs(ExprFactory &efac, EZ3 &z3, int d = false) :
       u(efac), m_efac(efac), m_z3(z3), hasAnyArrays(false), debug(d) {};
+    CHCs(ExprFactory &efac, EZ3 &z3, string n, int d = false) :
+      m_efac(efac), m_z3(z3), varname(n), u(efac), hasAnyArrays(false), debug(d) {};
 
     bool isFapp (Expr e)
     {
