@@ -174,7 +174,66 @@ namespace ufo
 
   void decomposeSource(ExtendedCHCs& source, ExtendedCHCs& target, ExtendedCHCs& SDecomposed)
   {
-    /* WARNING: this method has not been implemented yet */
+    auto& efac = source.m_efac;
+    const auto& TCycles = target.cycles[target.loopRel];
+    auto TCyclesSize = TCycles.size();
+
+    // Assuming that source only has one cycle
+    int SPrefix = source.prefixes[source.loopRel][0].back();
+    int SCycle = source.cycles[source.loopRel][0][0];
+    const auto& SCycleCHC = source.chcs[SCycle];
+
+    Expr SLoopRel = SCycleCHC.srcRelation;
+    Expr SInductiveCHCRel_i_minus_1 = mk<TRUE>(efac);
+    Expr SCycleDecl = source.getDecl(SLoopRel);
+    ExprVector SLoopVars(SCycleDecl->args_begin()+1, SCycleDecl->args_end());
+    const ExprVector& SLoopSrcVars = SCycleCHC.srcVars;
+    Expr negSGuard;
+    ExprVector& invVars = source.invVars[SLoopRel];
+    ExprVector& invVarsPrime = source.invVarsPrime[SLoopRel];
+
+    for (int cycleNum = 0; cycleNum < TCyclesSize; cycleNum++) {
+      const auto& cycleList = TCycles[cycleNum];
+      auto& cycleCHC = target.chcs[cycleList.back()];
+
+      auto SNonInductiveCHC = source.chcs[SPrefix];
+      auto SInductiveCHC = source.chcs[SCycle];
+
+      // if-condition is required according to the paper implementation
+      if (cycleNum < TCyclesSize-1) {
+        // a better way would be to use precondition and eliminateQuantifiers
+        auto TGuard = std::move(target.getPrecondition(&cycleCHC));
+        auto P_i = replaceAll(TGuard, cycleCHC.srcVars, SInductiveCHC.srcVars);
+        SInductiveCHC.body = mk<AND>(SInductiveCHC.body, P_i);
+      }
+
+      Expr SInductiveCHCRel_i = mkTerm<string>(lexical_cast<string>(SLoopRel)+
+          "_"+to_string(cycleNum), efac);
+      SDecomposed.invVars[SInductiveCHCRel_i] = invVars;
+      SDecomposed.invVarsPrime[SInductiveCHCRel_i] = invVarsPrime;
+      SDecomposed.decls.insert(bind::fdecl(SInductiveCHCRel_i, SLoopVars));
+
+      SNonInductiveCHC.srcRelation = SInductiveCHCRel_i_minus_1;
+      if (!isOpX<TRUE>(SInductiveCHCRel_i_minus_1)) {
+        SNonInductiveCHC.srcVars = SLoopSrcVars;
+        SNonInductiveCHC.body = negSGuard;
+        SNonInductiveCHC.isFact = false;
+      }
+      SNonInductiveCHC.dstRelation = SInductiveCHCRel_i;
+      SInductiveCHC.srcRelation = SInductiveCHC.dstRelation = SInductiveCHCRel_i;
+      SInductiveCHCRel_i_minus_1 = SInductiveCHCRel_i;
+
+      SDecomposed.chcs.push_back(SNonInductiveCHC);
+      SDecomposed.chcs.push_back(SInductiveCHC);
+
+      auto SGuard = SDecomposed.getPrecondition(&SDecomposed.chcs.back());
+      negSGuard = mkNeg(replaceAll(SGuard, invVars, invVarsPrime));
+    }
+
+    auto SQuery = source.getQuery();
+    SQuery->srcRelation = SInductiveCHCRel_i_minus_1;
+    SDecomposed.chcs.push_back(*SQuery);
+    SDecomposed.findCycles();
   }
 
   void projection(ExtendedCHCs& projRm, int i, ExtendedCHCs &origRm, bool multipleProjections)
@@ -192,6 +251,11 @@ namespace ufo
   {
     auto cycleSizeSrc = source.cycles.size();
     auto cycleSizeTgt = target.cycles.size();
+    outs() << "cycleSizeSrc: " << cycleSizeSrc << "\n";
+    outs() << "cycleSizeTgt: " << cycleSizeTgt << "\n";
+    for (auto d : target.decls) {
+      outs() << "Decl: " << d << "\n";
+    }
     const auto& efac = source.m_efac;
     const auto& z3 = source.m_z3;
 
@@ -201,6 +265,11 @@ namespace ufo
     ExtendedCHCs decomposedSource(source, cycleSizeTgt > 1);
     if (cycleSizeTgt > 1)
       decomposeSource(source, target, decomposedSource);
+
+    if (debug >= 1) {
+      outs () << "\n\n      ** Decomposed Source **     \n\n";
+      decomposedSource.print(debug >= 3);
+    }
 
     auto numProjections = decomposedSource.cycles.size();
     //assert(cycleSizeTgt == numProjections);
@@ -289,14 +358,18 @@ namespace ufo
     ExprFactory m_efac;
     EZ3 z3(m_efac);
 
-    ExtendedCHCs ruleManagerSrc(m_efac, z3, "_v1_", debug-2);
-    ExtendedCHCs ruleManagerDst(m_efac, z3, "_v2_", debug-2);
+    ExtendedCHCs ruleManagerSrc(m_efac, z3, "_v1_", debug-1);
+    ExtendedCHCs ruleManagerDst(m_efac, z3, "_v2_", debug-1);
 
+    if (debug >= 1) outs() << "Checking equivalence of Source and Target:\n";
+    if (debug >= 1) outs() << "     ** Source **        \n";
     if (!ruleManagerSrc.parse(string(chcfileSrc), doElim, doArithm)) return;
+    if (debug >= 1) outs() << "     ** Target **        \n";
     if (!ruleManagerDst.parse(string(chcfileDst), doElim, doArithm)) return;
 
     if (checkEquivalenceOfRMs(ruleManagerSrc, ruleManagerDst, to, freqs, aggp, dat, mut, doElim,
-          doArithm, doDisj, doProp, mbpEqs, dAllMbp, dAddProp, dAddDat, dStrenMbp, dFwd, dRec, dGenerous, dSee, debug))
+          doArithm, doDisj, doProp, mbpEqs, dAllMbp, dAddProp, dAddDat, dStrenMbp, dFwd, dRec,
+          dGenerous, dSee, debug))
       outs() << "\nprograms are equivalent\n";
     else
       outs() << "\nprogram equivalence is unknown\n";
