@@ -14,6 +14,7 @@ namespace ufo
     ExprFactory &m_efac;
     EZ3 &m_z3;
     SMTUtils u;
+    unsigned maxAttempts;
     unsigned to;
     bool freqs;
     bool aggp;
@@ -39,14 +40,14 @@ namespace ufo
     ExtendedCHCs &target;
 
     public:
-    Equivalence(ExtendedCHCs &r1, ExtendedCHCs &r2,
+    Equivalence(ExtendedCHCs &r1, ExtendedCHCs &r2, unsigned _maxAttempts,
         unsigned _to, bool _freqs, bool _aggp, int _dat, int _mut, bool _doElim,
         bool _doArithm, bool _doDisj, int _doProp, int _mbpEqs, bool _dAllMbp,
         bool _dAddProp, bool _dAddDat, bool _dStrenMbp, int _dFwd, bool _dRec,
         bool _dGenerous, bool _dSee, int _debug) :
       m_efac(r1.m_efac), m_z3(r1.m_z3), u(r1.m_efac, _to),
-      source(r1), target(r2), to(_to), freqs(_freqs), aggp(_aggp), dat(_dat), mut(_mut),
-      doElim(_doElim), doArithm(_doArithm), doDisj(_doDisj), doProp(_doProp),
+      source(r1), target(r2), maxAttempts(_maxAttempts), to(_to), freqs(_freqs), aggp(_aggp),
+      dat(_dat), mut(_mut), doElim(_doElim), doArithm(_doArithm), doDisj(_doDisj), doProp(_doProp),
       mbpEqs(_mbpEqs), dAllMbp(_dAllMbp), dAddProp(_dAddProp), dAddDat(_dAddDat),
       dStrenMbp(_dStrenMbp), dFwd(_dFwd), dRec(_dRec), dGenerous(_dGenerous),
       dSee(_dSee), debug(_debug) {}
@@ -78,9 +79,70 @@ namespace ufo
       return bool(u.isSat(factBody));
     }
 
+    bool learnInvariantsPr(ProductCHCs &product, bool lockstepCheck = false)
+    {
+      if (product.hasBV)
+      {
+        outs() << "Bitvectors currently not supported. Try `bnd/expl`.\n";
+        return false;
+      }
+
+      BndExpl bnd(product, to, debug);
+
+      RndLearnerV3 ds(m_efac, m_z3, product, to, freqs, aggp, mut, dat, debug);
+
+      map<Expr, ExprSet> cands;
+
+      auto cycle = product.cycles[product.loopRel];
+      for (int i = 0; i < cycle.size(); i++)
+      {
+        Expr dcl = product.chcs[cycle[i][0]].srcRelation;
+        if (ds.initializedDecl(dcl)) continue;
+        ds.initializeDecl(dcl);
+        // adding the matching explicitly
+        cands[dcl].insert(mapping.begin(), mapping.end());
+
+        if (dSee || lockstepCheck) {
+          Expr pref = bnd.compactPrefix(product.loopRel, i);
+          ExprSet tmp;
+          getConj(pref, tmp);
+          for (auto & t : tmp)
+            if (hasOnlyVars(t, product.invVars[dcl]))
+              cands[dcl].insert(t);
+
+          if (mut > 0) ds.mutateHeuristicEq(cands[dcl], cands[dcl], dcl, true);
+          ds.initializeAux(cands[dcl], bnd, product.loopRel, i, pref);
+        }
+      }
+      if (dat > 0) ds.getDataCandidates(cands);
+
+      for (int i = 0; i < doProp; i++)
+        for (auto & a : cands[product.loopRel]) ds.propagate(product.loopRel, a, true);
+      ds.addCandidates(product.loopRel, cands[product.loopRel]);
+      ds.prepareSeeds(product.loopRel, cands[product.loopRel]);
+
+      bool check = ds.bootstrap();
+      if (check || lockstepCheck) return check;
+
+      ds.calculateStatistics();
+      ds.deferredPriorities();
+      std::srand(std::time(0));
+      return ds.synthesize(maxAttempts);
+    }
+
     bool checkLockstepComposability(ProductCHCs &product) {
-      /* WARNING: this method has not been implemented yet */
-      return true;
+      auto query = product.getQuery();
+      auto &originalQuery = query->body;
+      auto loopGuard1 = std::move(simplifyArithm(
+            source.getPrecondition(&source.chcs[source.cycles[source.loopRel][0][0]])));
+      auto loopGuard2 = std::move(simplifyArithm(
+            target.getPrecondition(&target.chcs[target.cycles[target.loopRel][0][0]])));
+      auto lockstepCheckPredicate = std::move(mk<NEQ>(loopGuard2, loopGuard1));
+      query->body = std::move(mk<AND>(lockstepCheckPredicate, originalQuery));
+      // TODO: according to paper, we need to return <inv, cex>
+      bool lockstepCheck = learnInvariantsPr(product, true);
+      query->body = originalQuery;
+      return lockstepCheck;
     }
 
     bool findIterators() {
@@ -238,13 +300,47 @@ namespace ufo
 
   void projection(ExtendedCHCs& projRm, int i, ExtendedCHCs &origRm, bool multipleProjections)
   {
-    /* WARNING: this method has not been implemented yet */
+    auto loopRel = origRm.wtoDecls[i];
+    const auto cycle = origRm.chcs[origRm.cycles[loopRel][0][0]];
+    projRm.loopRel = loopRel;
+    if (!multipleProjections) {
+      auto query = projRm.getQuery();
+      query->body = mk<TRUE>(origRm.m_efac);
+      return;
+    }
+
+    auto prefix = origRm.chcs[origRm.prefixes[loopRel][0].back()];
+    if (!prefix.isFact) {
+      prefix.srcRelation = mk<TRUE>(origRm.m_efac);
+      prefix.srcVars.clear();
+      prefix.isFact = true;
+    }
+    projRm.chcs.push_back(std::move(prefix));
+    projRm.chcs.push_back(std::move(cycle));
+
+    projRm.decls.insert(origRm.getDeclByName(loopRel));
+    projRm.invVars[loopRel] = origRm.invVars[loopRel];
+    projRm.invVarsPrime[loopRel] = origRm.invVarsPrime[loopRel];
+
+    projRm.chcs.push_back(HornRuleExt());
+    projRm.hasQuery = true;
+    HornRuleExt& hr = projRm.chcs.back();
+    hr.srcRelation = loopRel;
+    hr.dstRelation = mk<FALSE>(origRm.m_efac);
+    hr.isQuery = true;
+    hr.isFact = false;
+    hr.isInductive = false;
+    hr.srcVars = cycle.srcVars;
+    hr.dstVars = ExprVector{};
+    hr.body = mk<TRUE>(origRm.m_efac);
+
+    projRm.findCycles();
   }
 
   /**
    * check equivalence of two programs given as rule managers
    */
-  bool checkEquivalenceOfRMs(ExtendedCHCs &source, ExtendedCHCs &target,
+  bool checkEquivalenceOfRMs(ExtendedCHCs &source, ExtendedCHCs &target, unsigned maxAttempts,
       unsigned to, bool freqs, bool aggp, int dat, int mut, bool doElim,
       bool doArithm, bool doDisj, int doProp, int mbpEqs, bool dAllMbp, bool dAddProp,
       bool dAddDat, bool dStrenMbp, int dFwd, bool dRec, bool dGenerous, bool dSee, int debug)
@@ -262,13 +358,13 @@ namespace ufo
       decomposeSource(source, target, decomposedSource);
 
     if (debug >= 1) {
-      outs () << "\n\n      ** Decomposed Source **     \n\n";
+      outs () << "\n\n      ** Decomposed Source **     \n";
       decomposedSource.print(debug >= 3);
     }
 
     auto numProjections = decomposedSource.cycles.size();
-    //assert(cycleSizeTgt == numProjections);
-    //assert(target.chcs.size() == decomposedSource.chcs.size());
+    assert(cycleSizeTgt == numProjections);
+    assert(target.chcs.size() == decomposedSource.chcs.size());
 
     for (int i = 0; i < numProjections; i++) {
       // TODO: Use move semantics for better performance
@@ -287,7 +383,7 @@ namespace ufo
       vector<vector<pair<int, int>>> variableCombs;
       createVariableCombs(projectionSource, projectionTarget, variableCombs);
 
-      Equivalence equiv(projectionSource, projectionTarget, to, freqs, aggp,
+      Equivalence equiv(projectionSource, projectionTarget, maxAttempts, to, freqs, aggp,
           dat, mut, doElim, doArithm, doDisj, doProp, mbpEqs, dAllMbp, dAddProp,
           dAddDat, dStrenMbp, dFwd, dRec, dGenerous, dSee, debug);
 
@@ -357,14 +453,14 @@ namespace ufo
     ExtendedCHCs ruleManagerDst(m_efac, z3, "_v2_", debug-1);
 
     if (debug >= 1) outs() << "Checking equivalence of Source and Target:\n";
-    if (debug >= 1) outs() << "     ** Source **        \n";
+    if (debug >= 1) outs() << "\n\n     ** Source **        ";
     if (!ruleManagerSrc.parse(string(chcfileSrc), doElim, doArithm)) return;
-    if (debug >= 1) outs() << "     ** Target **        \n";
+    if (debug >= 1) outs() << "\n\n     ** Target **        ";
     if (!ruleManagerDst.parse(string(chcfileDst), doElim, doArithm)) return;
 
-    if (checkEquivalenceOfRMs(ruleManagerSrc, ruleManagerDst, to, freqs, aggp, dat, mut, doElim,
-          doArithm, doDisj, doProp, mbpEqs, dAllMbp, dAddProp, dAddDat, dStrenMbp, dFwd, dRec,
-          dGenerous, dSee, debug))
+    if (checkEquivalenceOfRMs(ruleManagerSrc, ruleManagerDst, maxAttempts, to, freqs, aggp, dat,
+          mut, doElim, doArithm, doDisj, doProp, mbpEqs, dAllMbp, dAddProp, dAddDat, dStrenMbp,
+          dFwd, dRec, dGenerous, dSee, debug))
       outs() << "\nprograms are equivalent\n";
     else
       outs() << "\nprogram equivalence is unknown\n";

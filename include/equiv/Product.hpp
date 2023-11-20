@@ -27,8 +27,8 @@ namespace ufo
       Expr nonRecursiveProduct(HornRuleExt &chc1, HornRuleExt &chc2, ExprVector &vars)
       {
         ExprVector chc1NonRecPart, chc2NonRecPart;
-        getSpecificSrcRelations(chc1.srcRelation, chc1.dstRelation, chc1NonRecPart);
-        getSpecificSrcRelations(chc2.srcRelation, chc2.dstRelation, chc2NonRecPart);
+        getNonRecurSrcRelations(chc1.srcRelation, chc1.dstRelation, chc1NonRecPart);
+        getNonRecurSrcRelations(chc2.srcRelation, chc2.dstRelation, chc2NonRecPart);
 
         Expr product;
         if (!chc1NonRecPart.empty())
@@ -61,17 +61,16 @@ namespace ufo
       }
 
 
-      void getSpecificSrcRelations(Expr srcRelation, Expr dstRelation, ExprVector &partitions,
-          bool recursive = false)
+      void getNonRecurSrcRelations(Expr srcRelation, Expr dstRelation, ExprVector &partitions)
       {
         if (isOpX<AND>(srcRelation))
         {
           for (int i = 0; i < srcRelation->arity(); i++)
-            getSpecificSrcRelations(srcRelation->arg(i), dstRelation, partitions, recursive);
+            getNonRecurSrcRelations(srcRelation->arg(i), dstRelation, partitions);
         }
         else if (!isOpX<TRUE>(srcRelation))
         {
-          if ((recursive == (srcRelation == dstRelation)))
+          if (srcRelation != dstRelation)
             partitions.push_back(srcRelation);
         }
       }
@@ -199,14 +198,13 @@ namespace ufo
       {
         Expr decl1 = subRule1->getDeclByName(rel1);
         Expr decl2 = subRule2->getDeclByName(rel2);
-        Expr productRel = stringProduct(rel1, rel2);
-
         ExprVector productTypes;
         productTypes.insert(productTypes.end(), decl1->args_begin()+1,
             decl1->args_begin()+decl1->arity()-1);
         productTypes.insert(productTypes.end(), decl2->args_begin()+1,
             decl2->args_begin()+decl2->arity()-1);
         productTypes.push_back(mk<BOOL_TY>(m_efac));
+        Expr productRel = stringProduct(rel1, rel2);
         return bind::fdecl(productRel, productTypes);
       }
 
@@ -266,7 +264,7 @@ namespace ufo
         std::deque<HornRuleExt> worklist(1, createProductQueries());
         while (!worklist.empty())
         {
-          auto&& currentRule = std::move(worklist.front());
+          auto currentRule = worklist.front();
           worklist.pop_front();
 
           // AH: In the original algorithm, the operation PARTITION is used that is defined:
@@ -274,9 +272,8 @@ namespace ufo
           // Here, just one partition created of two symbols because there are only two
           // relation symbols here
           ExprVector partition;
-          // argument false for non-recursive; getting non-recursive parts of the srcrelation
-          getSpecificSrcRelations(currentRule.srcRelation, currentRule.dstRelation, partition);
-          getSpecificSrcRelations(currentRule.srcRelation, currentRule.dstRelation, partition);
+          // getting non-recursive parts of the srcrelation
+          getNonRecurSrcRelations(currentRule.srcRelation, currentRule.dstRelation, partition);
 
           Expr freshP;
           if (partition.size() >= 2)
@@ -301,6 +298,7 @@ namespace ufo
         // changes variables from _v1_ and _v2_ prefixes to _pr_ with necessary changes
         assignVarsAndRewrite();
         findCycles();
+        loopRel = loopheads[0];
 
         outs() << "\n--------------------------CALCULATING PRODUCT DONE-----------------------------\n\n";
       }

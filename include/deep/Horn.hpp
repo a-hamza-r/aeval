@@ -122,7 +122,7 @@ namespace ufo
     CHCs(const CHCs &oldCHCs, bool shallowCopy=false) : m_efac(oldCHCs.m_efac),
       m_z3(oldCHCs.m_z3), u(oldCHCs.m_efac), indeces(oldCHCs.indeces),
       varname(oldCHCs.varname), failDecl(oldCHCs.failDecl), hasAnyArrays(oldCHCs.hasAnyArrays),
-      hasArrays(oldCHCs.hasArrays), debug(oldCHCs.debug)
+      hasArrays(oldCHCs.hasArrays), debug(oldCHCs.debug), hasQuery(oldCHCs.hasQuery)
     {
       if (shallowCopy) return;
       chcs = oldCHCs.chcs;
