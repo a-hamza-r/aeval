@@ -131,6 +131,9 @@ namespace ufo
       decls = oldCHCs.decls;
       prefixes = oldCHCs.prefixes;
       cycles = oldCHCs.cycles;
+      acyclic = oldCHCs.acyclic;
+      seqPoints = oldCHCs.seqPoints;
+      loopheads = oldCHCs.loopheads;
       outgs = oldCHCs.outgs;
       invVars = oldCHCs.invVars;
       invVarsPrime = oldCHCs.invVarsPrime;

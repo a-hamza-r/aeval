@@ -82,14 +82,14 @@ namespace ufo
         Expr decl;
         if (!chc.isInductive)
         {
-          if (ruleNum == 0) decl = subRule1->getDecl(chc.dstRelation);
-          else decl = subRule2->getDecl(chc.dstRelation);
+          if (ruleNum == 0) decl = subRule1->getDeclByName(chc.dstRelation);
+          else decl = subRule2->getDeclByName(chc.dstRelation);
           return bind::fapp(decl, chc.dstVars);
         }
         else
         {
-          if (ruleNum == 0) decl = subRule1->getDecl(chc.srcRelation);
-          else decl = subRule2->getDecl(chc.srcRelation);
+          if (ruleNum == 0) decl = subRule1->getDeclByName(chc.srcRelation);
+          else decl = subRule2->getDeclByName(chc.srcRelation);
           return bind::fapp(decl, chc.srcVars);
         }
       }
@@ -123,67 +123,24 @@ namespace ufo
 
       void bodyProduct(HornRuleExt &chc1, HornRuleExt &chc2, HornRuleExt &newProductRule)
       {
-        // constraint product
-
         // non-recursive part product
-        ExprVector nonRecursivePrVars;
-        Expr nonRecursivePr = nonRecursiveProduct(chc1, chc2, nonRecursivePrVars);
-
+        Expr nonRecursivePr = nonRecursiveProduct(chc1, chc2, newProductRule.srcVars);
         // recursive part product
-        ExprVector recursivePrVars;
-        Expr recursivePr = recursiveProduct(chc1, chc2, recursivePrVars);
+        Expr recursivePr = recursiveProduct(chc1, chc2, newProductRule.srcVars);
 
         if (nonRecursivePr && recursivePr)
-        {
           newProductRule.srcRelation = mk<AND>(nonRecursivePr, recursivePr);
-          concatenateVectors(newProductRule.srcVars, nonRecursivePrVars, recursivePrVars);
-        }
         else if (nonRecursivePr)
-        {
           newProductRule.srcRelation = nonRecursivePr;
-          newProductRule.srcVars = nonRecursivePrVars;
-        }
         else if (recursivePr)
-        {
           newProductRule.srcRelation = recursivePr;
-          newProductRule.srcVars = recursivePrVars;
-        }
         else
-        {
           newProductRule.srcRelation = mk<TRUE>(m_efac);
-          newProductRule.srcVars = ExprVector{};
-        }
+
         newProductRule.body = mk<AND>(chc1.body, chc2.body);
         newProductRule.isFact = (isOpX<TRUE>(newProductRule.srcRelation));
         newProductRule.isQuery = (newProductRule.dstRelation == failDecl);
         newProductRule.isInductive = (recursivePr != NULL);
-      }
-
-
-      HornRuleExt createProductQueries()
-      {
-        auto query1 = subRule1->getQuery();
-        auto query2 = subRule2->getQuery();
-
-        HornRuleExt queryPr;
-        queryPr.body = mk<AND>(query1->body, query2->body);
-        queryPr.srcRelation = mk<AND>(query1->srcRelation, query2->srcRelation);
-        queryPr.dstRelation = mkTerm<string>(lexical_cast<string>(query1->dstRelation) +
-            "*" + lexical_cast<string>(query2->dstRelation), m_efac);
-
-        // queries do not have dstVars
-        queryPr.dstVars = ExprVector{};
-        concatenateVectors(queryPr.srcVars, query1->srcVars, query2->srcVars);
-        concatenateVectors(queryPr.locVars, query1->locVars, query2->locVars);
-
-        queryPr.isFact = false;
-        queryPr.isQuery = true;
-        queryPr.isInductive = false;
-
-        if (!failDecl)
-          addFailDecl(queryPr.dstRelation);
-
-        return queryPr;
       }
 
 
@@ -206,12 +163,43 @@ namespace ufo
       }
 
 
+      inline Expr stringProduct(Expr e1, Expr e2)
+      {
+        return mkTerm<string>(lexical_cast<string>(e1) + "*" + lexical_cast<string>(e2), m_efac);
+      }
+
+
+      HornRuleExt createProductQueries()
+      {
+        assert(subRule1->hasQuery && subRule2->hasQuery);
+        auto query1 = subRule1->getQuery();
+        auto query2 = subRule2->getQuery();
+
+        HornRuleExt queryPr;
+        queryPr.body = mk<AND>(query1->body, query2->body);
+        queryPr.srcRelation = mk<AND>(query1->srcRelation, query2->srcRelation);
+        queryPr.dstRelation = stringProduct(query1->dstRelation, query2->dstRelation);
+
+        // queries do not have dstVars
+        queryPr.dstVars = ExprVector{};
+        concatenateVectors(queryPr.srcVars, query1->srcVars, query2->srcVars);
+        concatenateVectors(queryPr.locVars, query1->locVars, query2->locVars);
+
+        queryPr.isFact = false;
+        queryPr.isQuery = true;
+        queryPr.isInductive = false;
+        hasQuery = true;
+        if (!failDecl) addFailDecl(queryPr.dstRelation);
+
+        return queryPr;
+      }
+
+
       Expr relationSymbolsProduct(Expr rel1, Expr rel2)
       {
-        Expr decl1 = subRule1->getDecl(rel1);
-        Expr decl2 = subRule2->getDecl(rel2);
-        Expr productRel = mkTerm<string>(lexical_cast<string>(rel1) + "*" +
-            lexical_cast<string>(rel2), m_efac);
+        Expr decl1 = subRule1->getDeclByName(rel1);
+        Expr decl2 = subRule2->getDeclByName(rel2);
+        Expr productRel = stringProduct(rel1, rel2);
 
         ExprVector productTypes;
         productTypes.insert(productTypes.end(), decl1->args_begin()+1,
@@ -260,8 +248,6 @@ namespace ufo
           // might add dstVars of one of the CHCs to product locVars twice in some cases,
           // should not be a problem
           concatenateVectors(chc.locVars, chc.srcVars, chc.dstVars);
-
-          // this might not be needed if it is done already in some previous step
           chc.origSrc = chc.srcVars; chc.origDst = chc.dstVars;
 
           chc.srcVars.clear(); chc.dstVars.clear();
@@ -314,11 +300,6 @@ namespace ufo
 
         // changes variables from _v1_ and _v2_ prefixes to _pr_ with necessary changes
         assignVarsAndRewrite();
-
-        for (int i = 0; i < chcs.size(); i++)
-          outgs[chcs[i].srcRelation].push_back(i);
-
-        // sort rules
         findCycles();
 
         outs() << "\n--------------------------CALCULATING PRODUCT DONE-----------------------------\n\n";

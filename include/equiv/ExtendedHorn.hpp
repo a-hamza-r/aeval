@@ -30,18 +30,6 @@ namespace ufo
       ExtendedCHCs(const ExtendedCHCs &oldCHC, bool shallowCopy=false)
         : CHCs(oldCHC, shallowCopy) {};
 
-      Expr getDecl(Expr relation)
-      {
-        if (!isOpX<TRUE>(relation))
-        {
-          for (auto it = decls.begin(); it != decls.end(); it++)
-          {
-            if ((*it)->arg(0) == relation) return *it;
-          }
-        }
-        return NULL;
-      }
-
       void categorizeVars() {
         for (int i = 0; i < invVars[loopRel].size(); i++) {
           Expr var = invVars[loopRel][i];
@@ -62,6 +50,7 @@ namespace ufo
 
       HornRuleExt *getQuery()
       {
+        if (!hasQuery) return NULL;
         for (auto &chc : chcs)
         {
           if (chc.isQuery) return &chc;
@@ -71,9 +60,9 @@ namespace ufo
 
       void rulesOfPredicate(Expr decl, vector<HornRuleExt*> &rulesOfP)
       {
-        for (auto it = chcs.begin(); it != chcs.end(); it++)
-          if (decl == it->dstRelation)
-            rulesOfP.push_back(&*it);
+        for (auto& chc : chcs)
+          if (decl == chc.dstRelation)
+            rulesOfP.push_back(&chc);
       }
   };
 }

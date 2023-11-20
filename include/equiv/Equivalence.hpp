@@ -185,7 +185,7 @@ namespace ufo
 
     Expr SLoopRel = SCycleCHC.srcRelation;
     Expr SInductiveCHCRel_i_minus_1 = mk<TRUE>(efac);
-    Expr SCycleDecl = source.getDecl(SLoopRel);
+    Expr SCycleDecl = source.getDeclByName(SLoopRel);
     ExprVector SLoopVars(SCycleDecl->args_begin()+1, SCycleDecl->args_end());
     const ExprVector& SLoopSrcVars = SCycleCHC.srcVars;
     Expr negSGuard;
@@ -251,11 +251,6 @@ namespace ufo
   {
     auto cycleSizeSrc = source.cycles.size();
     auto cycleSizeTgt = target.cycles.size();
-    outs() << "cycleSizeSrc: " << cycleSizeSrc << "\n";
-    outs() << "cycleSizeTgt: " << cycleSizeTgt << "\n";
-    for (auto d : target.decls) {
-      outs() << "Decl: " << d << "\n";
-    }
     const auto& efac = source.m_efac;
     const auto& z3 = source.m_z3;
 
