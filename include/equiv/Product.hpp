@@ -257,17 +257,16 @@ namespace ufo
       {
         for (auto &chc : chcs)
         {
-          ExprVector srcVars = chc.srcVars, dstVars = chc.dstVars;
-
           // might add dstVars of one of the CHCs to product locVars twice in some cases,
           // should not be a problem
-          concatenateVectors(chc.locVars, srcVars, dstVars);
-          chc.srcVars.clear(); chc.dstVars.clear();
+          concatenateVectors(chc.locVars, chc.srcVars, chc.dstVars);
 
-          ExprSet eqs;
-          chc.assignVarsAndRewrite(srcVars, invVars[chc.srcRelation],
-              dstVars, invVarsPrime[chc.dstRelation], eqs);
-          chc.body = mk<AND>(chc.body, conjoin(eqs, m_efac));
+          // this might not be needed if it is done already in some previous step
+          chc.origSrc = chc.srcVars; chc.origDst = chc.dstVars;
+
+          chc.srcVars.clear(); chc.dstVars.clear();
+          chc.assignVarsAndRewrite(invVars[chc.srcRelation], invVarsPrime[chc.dstRelation]);
+          chc.body = mk<AND>(chc.body, conjoin(chc.lin, m_efac));
         }
       }
 
@@ -320,7 +319,7 @@ namespace ufo
           outgs[chcs[i].srcRelation].push_back(i);
 
         // sort rules
-        wtoSort();
+        findCycles();
 
         outs() << "\n--------------------------CALCULATING PRODUCT DONE-----------------------------\n\n";
       }

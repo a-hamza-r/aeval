@@ -21,7 +21,14 @@ namespace ufo
   class ExtendedCHCs : public CHCs
   {
     public:
+      Expr loopRel;
+      vector<int> varsInt;
+      vector<int> varsBool;
+      vector<int> varsArray;
+
       ExtendedCHCs(ExprFactory &efac, EZ3 &z3, string n, int d = false) : CHCs(efac, z3, n, d) {}
+      ExtendedCHCs(const ExtendedCHCs &oldCHC, bool shallowCopy=false)
+        : CHCs(oldCHC, shallowCopy) {};
 
       Expr getDecl(Expr relation)
       {
@@ -31,6 +38,24 @@ namespace ufo
           {
             if ((*it)->arg(0) == relation) return *it;
           }
+        }
+        return NULL;
+      }
+
+      void categorizeVars() {
+        for (int i = 0; i < invVars[loopRel].size(); i++) {
+          Expr var = invVars[loopRel][i];
+          if (bind::isIntConst(var)) varsInt.push_back(i);
+          else if (bind::isBoolConst(var)) varsBool.push_back(i);
+          else if (isOpX<ARRAY_TY>(bind::typeOf(var))) varsArray.push_back(i);
+        }
+      }
+
+      HornRuleExt *getFact()
+      {
+        for (auto &chc : chcs)
+        {
+          if (chc.isFact) return &chc;
         }
         return NULL;
       }
