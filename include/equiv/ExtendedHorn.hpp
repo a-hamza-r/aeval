@@ -86,7 +86,7 @@ namespace ufo
 
       ExtendedCHCs(ExprFactory &efac, EZ3 &z3, string n, int d = false) : CHCs(efac, z3, n, d) {}
       ExtendedCHCs(const ExtendedCHCs &oldCHC, bool shallowCopy=false)
-        : CHCs(oldCHC, shallowCopy) {};
+        : loopRel(oldCHC.loopRel), CHCs(oldCHC, shallowCopy) {};
 
       void categorizeVars() {
         for (int i = 0; i < invVars[loopRel].size(); i++) {

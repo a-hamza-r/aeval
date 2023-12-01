@@ -79,47 +79,52 @@ namespace ufo
       return bool(u.isSat(factBody));
     }
 
-    bool learnInvariantsPr(ProductCHCs &product, bool lockstepCheck = false)
+    bool learnInvariants(ExtendedCHCs &ruleManager, bool lockstepCheck = false)
     {
-      if (product.hasBV)
+      if (ruleManager.hasBV)
       {
         outs() << "Bitvectors currently not supported. Try `bnd/expl`.\n";
         return false;
       }
 
-      BndExpl bnd(product, to, debug);
+      BndExpl bnd(ruleManager, to, debug);
 
-      RndLearnerV3 ds(m_efac, m_z3, product, to, freqs, aggp, mut, dat, debug);
+      RndLearnerV3 ds(m_efac, m_z3, ruleManager, to, freqs, aggp, mut, dat, debug);
 
       map<Expr, ExprSet> cands;
 
-      auto cycle = product.cycles[product.loopRel];
-      for (int i = 0; i < cycle.size(); i++)
-      {
-        Expr dcl = product.chcs[cycle[i][0]].srcRelation;
-        if (ds.initializedDecl(dcl)) continue;
-        ds.initializeDecl(dcl);
-        // adding the matching explicitly
-        cands[dcl].insert(mapping.begin(), mapping.end());
+      for (auto& cyc : ruleManager.cycles) {
+        Expr rel = cyc.first;
+        for (int i = 0; i < cyc.second.size(); i++)
+        {
+          Expr dcl = ruleManager.chcs[cyc.second[i][0]].srcRelation;
+          if (ds.initializedDecl(dcl)) continue;
+          ds.initializeDecl(dcl);
+          // adding the matching explicitly
+          cands[dcl].insert(mapping.begin(), mapping.end());
 
-        if (dSee || lockstepCheck) {
-          Expr pref = bnd.compactPrefix(product.loopRel, i);
-          ExprSet tmp;
-          getConj(pref, tmp);
-          for (auto & t : tmp)
-            if (hasOnlyVars(t, product.invVars[dcl]))
-              cands[dcl].insert(t);
+          if (dSee || lockstepCheck) {
+            Expr pref = bnd.compactPrefix(rel, i);
+            ExprSet tmp;
+            getConj(pref, tmp);
+            for (auto & t : tmp)
+              if (hasOnlyVars(t, ruleManager.invVars[dcl]))
+                cands[dcl].insert(t);
 
-          if (mut > 0) ds.mutateHeuristicEq(cands[dcl], cands[dcl], dcl, true);
-          ds.initializeAux(cands[dcl], bnd, product.loopRel, i, pref);
+            if (mut > 0) ds.mutateHeuristicEq(cands[dcl], cands[dcl], dcl, true);
+            ds.initializeAux(cands[dcl], bnd, rel, i, pref);
+          }
         }
       }
       if (dat > 0) ds.getDataCandidates(cands);
 
-      for (int i = 0; i < doProp; i++)
-        for (auto & a : cands[product.loopRel]) ds.propagate(product.loopRel, a, true);
-      ds.addCandidates(product.loopRel, cands[product.loopRel]);
-      ds.prepareSeeds(product.loopRel, cands[product.loopRel]);
+      for (auto & dcl: ruleManager.wtoDecls)
+      {
+        for (int i = 0; i < doProp; i++)
+          for (auto & a : cands[dcl]) ds.propagate(dcl, a, true);
+        ds.addCandidates(dcl, cands[dcl]);
+        ds.prepareSeeds(dcl, cands[dcl]);
+      }
 
       bool check = ds.bootstrap();
       if (check || lockstepCheck) return check;
@@ -140,7 +145,7 @@ namespace ufo
       auto lockstepCheckPredicate = std::move(mk<NEQ>(loopGuard2, loopGuard1));
       query->body = std::move(mk<AND>(lockstepCheckPredicate, originalQuery));
       // TODO: according to paper, we need to return <inv, cex>
-      bool lockstepCheck = learnInvariantsPr(product, true);
+      bool lockstepCheck = learnInvariants(product, true);
       query->body = originalQuery;
       return lockstepCheck;
     }
@@ -350,13 +355,14 @@ namespace ufo
       // we only add negation of loop guard of source because we have verified,
       // using lockstep check, that loop guards of source and target are always equal
       query->body = std::move(mk<AND>(originalQuery, mk<AND>(negationLoopGuardS, post)));
-      bool equivalenceCheck = learnInvariantsPr(product);
+      bool equivalenceCheck = learnInvariants(product);
       query->body = originalQuery;
       return equivalenceCheck;
     }
 
-    bool refine(bool target = false) {
+    bool refine() {
       /* WARNING: this method has not been implemented yet */
+
       return true;
     }
   };
@@ -542,7 +548,7 @@ namespace ufo
   {
     auto cycleSizeSrc = source.cycles.size();
     auto cycleSizeTgt = target.cycles.size();
-    const auto& efac = source.m_efac;
+    auto& efac = source.m_efac;
     const auto& z3 = source.m_z3;
 
     assert(cycleSizeSrc == 1 && cycleSizeTgt >= 1);
@@ -591,8 +597,6 @@ namespace ufo
         while (true) {
           // cex loop
           bool aligned = false;
-          bool refined = false;
-
           // create product of source and target projections
           ProductCHCs product(projectionSource, projectionTarget, "_pr_", debug-2);
           product.createProduct();
@@ -622,8 +626,8 @@ namespace ufo
             }
           }
           bool refinedSource = equiv.refine();
-          bool refinedTarget = equiv.refine(true);
-          break;
+          bool refinedTarget = equiv.refine();
+          if (!refinedSource && !refinedTarget) return false;
         }
         if (equivalenceCheck) break;
         j++;
