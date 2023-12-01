@@ -16,6 +16,7 @@
 
 .mypy_cache
 .vscode
+.vimrc
 .sync
 .tags
 .tags1
