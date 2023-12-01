@@ -146,13 +146,198 @@ namespace ufo
     }
 
     bool findIterators() {
-      /* WARNING: this method has not been implemented yet */
+      //source.preprocessing();
+      //target.preprocessing();
+      return source.findIterators() && target.findIterators();
+    }
+
+    bool getAlignmentVals(ExprSet& pre, AlignmentParams& params)
+    {
+      Expr numItersS = source.iter->numOfIters;
+      Expr numItersT = target.iter->numOfIters;
+
+      // variables required for the quantified formula for optimization query
+      Expr coef1 = bind::intConst(mkTerm<string>("coef1", m_efac));
+      Expr coef2 = bind::intConst(mkTerm<string>("coef2", m_efac));
+      Expr const1 = bind::intConst(mkTerm<string>("const1", m_efac));
+      Expr const2 = bind::intConst(mkTerm<string>("const2", m_efac));
+      Expr numIters1 = bind::intConst(mkTerm<string>("numIters1", m_efac));
+      Expr numIters2 = bind::intConst(mkTerm<string>("numIters2", m_efac));
+
+      // remove redundant clauses in precondition
+      for (auto it = pre.begin(); it != pre.end(); )
+        if (emptyIntersect(*it, numItersS) &&
+            emptyIntersect(*it, numItersT)) it = pre.erase(it);
+        else ++it;
+
+      // add exact value for numIters to precondition
+      pre.insert(mk<EQ>(numIters1, numItersS));
+      pre.insert(mk<EQ>(numIters2, numItersT));
+      Expr exprPre = conjoin(pre, m_efac);
+
+      // get all variables in the precondition
+      ExprVector varsIters;
+      filter(exprPre, IsConst(), inserter(varsIters, varsIters.begin()));
+
+      auto zero = mkMPZ(0, m_efac);
+      // coef1 > 0 && coef2 > 0
+      Expr coefs = mk<AND>(mk<GT>(coef1, zero), mk<GT>(coef2, zero));
+      // const1 >= 0 && const2 >= 0
+      Expr consts = mk<AND>(mk<GEQ>(const1, zero), mk<GEQ>(const2, zero));
+      // coef2 * (numIters1 - const1) = coef1 * (numIters2 - const2)
+      Expr constraint = mk<EQ>(mk<MULT>(coef2, mk<MINUS>(numIters1, const1)),
+          mk<MULT>(coef1, mk<MINUS>(numIters2, const2)));
+      // pre => constraint
+      Expr preImpliesCst = mk<IMPL>(exprPre, constraint);
+      Expr quantifiedPreImpliesCst = mkQFla(preImpliesCst, varsIters, true);
+      // exists coef1, coef2, const1, const2 . forall varsIters . pre => constraint
+      Expr quantifiedFla = mk<AND>(mk<AND>(consts, coefs), quantifiedPreImpliesCst);
+
+      ExprMap c1, c2, c12;
+      c12[const1] = zero;     c12[const2] = zero;
+      c1[const1] = zero;      c2[const2] = zero;
+
+      Expr model = nullptr;
+      if (bool(u.isSat(replaceAll(quantifiedFla, c12)))) model = u.getModel();
+      else if (bool(u.isSat(replaceAll(quantifiedFla, c1)))) model = u.getModel();
+      else if (bool(u.isSat(replaceAll(quantifiedFla, c2)))) model = u.getModel();
+      else if (bool(u.isSat(quantifiedFla))) model = u.getModel();
+      if (model == nullptr)
+      {
+        outs() << "No satisfying assignment for quantified formula was found\n";
+        return false;
+      }
+
+      // iterative solving optimization query to get all minModels
+      ExprMap mp;
+      ExprSet s{coef1, coef2, const1, const2};
+      Expr minCoef1, minCoef2, minConst1, minConst2;
+
+      // Solve for min coef1
+      u.getOptModel<LT>(s, mp, coef1);
+      minCoef1 = mp[coef1];
+      quantifiedFla = mk<AND>(quantifiedFla, mk<EQ>(coef1, minCoef1));
+      u.isSat(quantifiedFla);
+
+      // Solve for min coef2
+      u.getOptModel<LT>(s, mp, coef2);
+      minCoef2 = mp[coef2];
+      quantifiedFla = mk<AND>(quantifiedFla, mk<EQ>(coef2, minCoef2));
+      u.isSat(quantifiedFla);
+
+      // Solve for min const1
+      u.getOptModel<LT>(s, mp, const1);
+      minConst1 = mp[const1];
+      quantifiedFla = mk<AND>(quantifiedFla, mk<EQ>(const1, minConst1));
+      u.isSat(quantifiedFla);
+
+      // Solve for min const2
+      u.getOptModel<LT>(s, mp, const2);
+      minConst2 = mp[const2];
+
+      params.itersInLoopS = (int)lexical_cast<cpp_int>(minCoef1);
+      params.itersOutLoopS = (int)lexical_cast<cpp_int>(minConst1);
+      params.itersInLoopT = (int)lexical_cast<cpp_int>(minCoef2);
+      params.itersOutLoopT = (int)lexical_cast<cpp_int>(minConst2);
+
+      outs() << "copy "
+        << params.itersOutLoopS << " iterations of loop 1 to fact and query combined\n";
+      outs() << "copy "
+        << params.itersOutLoopT << " iterations of loop 2 to fact and query combined\n";
+      outs() << "we need " << params.itersInLoopS << " iterations of loop 1 to align\n";
+      outs() << "we need " << params.itersInLoopT << " iterations of loop 2 to align\n";
+
       return true;
     }
 
-    bool alignPrograms() {
-      /* WARNING: this method has not been implemented yet */
-      return true;
+    bool alignPrograms()
+    {
+      HornRuleExt &cycleS = source.chcs[source.cycles[source.loopRel][0][0]];
+      HornRuleExt &prefixS = source.chcs[source.prefixes[source.loopRel][0][0]];
+
+      HornRuleExt &cycleT = target.chcs[target.cycles[target.loopRel][0][0]];
+      HornRuleExt &prefixT = target.chcs[target.prefixes[target.loopRel][0][0]];
+
+      BndExpl bnd1(source, debug);
+      BndExpl bnd2(target, debug);
+      Expr pref1 = bnd1.compactPrefix(source.loopRel, 0);
+      Expr pref2 = bnd2.compactPrefix(target.loopRel, 0);
+      auto iterStructS = source.iter;
+      auto iterStructT = target.iter;
+      ExprSet equalityChecks, preForQuantifiedFla;
+
+      for (const auto &pair : pairings)
+      {
+        auto &p1 = pair.first, &p2 = pair.second;
+        Expr var1Src = cycleS.srcVars[p1];
+        Expr var2Src = cycleT.srcVars[p2];
+        Expr var1Dst = cycleS.dstVars[p1];
+        Expr var2Dst = cycleT.dstVars[p2];
+
+        // we create here the pre required for quantified formula
+        // and pre to check equality of iters later
+        // we do not want to add arrays to any of the pre version
+        if (!isOpX<ARRAY_TY>(bind::typeOf(var1Src)))
+        {
+          equalityChecks.insert(mk<EQ>(var1Dst, var1Dst));
+          preForQuantifiedFla.insert(mk<EQ>(var1Src, var2Src));
+        }
+      }
+
+      AlignmentParams params;
+      if (!getAlignmentVals(preForQuantifiedFla, params)) return false;
+
+      // Currently, it does all combinations to check the number of iterations
+      // to be added to fact and query
+      vector<int> combsS, combsT;
+      for (int i = 0; i <= params.itersOutLoopS; i++) combsS.push_back(i);
+      for (int i = 0; i <= params.itersOutLoopT; i++) combsT.push_back(i);
+
+      vector<pair<int, int>> possibleFactAligns;
+      for (auto &it : combsS)
+        for (auto &it2 : combsT)
+          possibleFactAligns.push_back({it, it2});
+
+      Expr eq = mk<EQ>(cycleS.dstVars[iterStructS->var], cycleT.dstVars[iterStructT->var]);
+      for (const auto &possibleAlign : possibleFactAligns)
+      {
+        Expr prefixBody1 = prefixS.body, prefixBody2 = prefixT.body;
+        int toFactS = possibleAlign.first, toFactT = possibleAlign.second;
+        int toQueryS = params.itersOutLoopS - toFactS, toQueryT = params.itersOutLoopT - toFactT;
+
+        // check if adding certain iterations to fact will make
+        // the initial values of iterators equal
+        // it is not greedy approach currently
+        source.createAlignment(0, toFactS, 0, bnd1, prefixBody1, false);
+        target.createAlignment(0, toFactT, 0, bnd2, prefixBody2, false);
+        equalityChecks.insert(prefixBody1);
+        equalityChecks.insert(prefixBody2);
+
+        if (bool(u.implies(conjoin(equalityChecks, m_efac), eq)))
+        {
+          Expr prefixBody1 = prefixS.body, prefixBody2 = prefixT.body;
+          // actual alignment created here
+          source.createAlignment(params.itersInLoopS, toFactS, toQueryS, bnd1, prefixBody1);
+          prefixS.body = prefixBody1;
+
+          target.createAlignment(params.itersInLoopT, toFactT, toQueryT, bnd2, prefixBody2);
+          prefixT.body = prefixBody2;
+
+          for (auto &chc : source.chcs)
+          {
+            chc.body = simplifyArithm(eliminateQuantifiers(chc.body, chc.locVars, true, false));
+            chc.locVars.clear();
+          }
+
+          for (auto &chc : target.chcs)
+          {
+            chc.body = simplifyArithm(eliminateQuantifiers(chc.body, chc.locVars, true, false));
+            chc.locVars.clear();
+          }
+          return true;
+        }
+      }
+      return false;
     }
 
     bool checkEquivalence(ProductCHCs &product) {

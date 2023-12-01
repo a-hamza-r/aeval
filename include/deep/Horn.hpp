@@ -83,7 +83,7 @@ namespace ufo
 
   class CHCs
   {
-    private:
+    protected:
     set<int> indeces;
     string varname = "_FH_";
     SMTUtils u;
