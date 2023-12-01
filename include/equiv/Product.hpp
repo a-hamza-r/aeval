@@ -299,6 +299,12 @@ namespace ufo
         assignVarsAndRewrite();
         findCycles();
         loopRel = loopheads[0];
+        // prepare a version of wtoCHCs w/o queries
+        dwtoCHCs = wtoCHCs;
+        for (auto it = dwtoCHCs.begin(); it != dwtoCHCs.end();)
+          if ((*it)->isQuery) it = dwtoCHCs.erase(it);
+          else ++it;
+
 
         outs() << "\n--------------------------CALCULATING PRODUCT DONE-----------------------------\n\n";
       }
