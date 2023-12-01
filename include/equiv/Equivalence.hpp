@@ -341,8 +341,18 @@ namespace ufo
     }
 
     bool checkEquivalence(ProductCHCs &product) {
-      /* WARNING: this method has not been implemented yet */
-      return true;
+      auto query = product.getQuery();
+      auto &originalQuery = query->body;
+      auto loopGuardS = std::move(
+          source.getPrecondition(&source.chcs[source.cycles[source.loopRel][0][0]]));
+      Expr negationLoopGuardS = std::move(mkNeg(loopGuardS));
+      Expr post = std::move(simplifyBool(mkNeg(conjoin(mapping, m_efac))));
+      // we only add negation of loop guard of source because we have verified,
+      // using lockstep check, that loop guards of source and target are always equal
+      query->body = std::move(mk<AND>(originalQuery, mk<AND>(negationLoopGuardS, post)));
+      bool equivalenceCheck = learnInvariantsPr(product);
+      query->body = originalQuery;
+      return equivalenceCheck;
     }
 
     bool refine(bool target = false) {
