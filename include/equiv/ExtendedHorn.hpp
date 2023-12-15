@@ -76,7 +76,6 @@ namespace ufo
   class ExtendedCHCs : public CHCs
   {
     public:
-      Expr loopRel;
       vector<int> varsInt;
       vector<int> varsBool;
       vector<int> varsArray;
@@ -86,11 +85,11 @@ namespace ufo
 
       ExtendedCHCs(ExprFactory &efac, EZ3 &z3, string n, int d = false) : CHCs(efac, z3, n, d) {}
       ExtendedCHCs(const ExtendedCHCs &oldCHC, bool shallowCopy=false)
-        : loopRel(oldCHC.loopRel), CHCs(oldCHC, shallowCopy) {};
+        : CHCs(oldCHC, shallowCopy) {};
 
       void categorizeVars() {
-        for (int i = 0; i < invVars[loopRel].size(); i++) {
-          Expr var = invVars[loopRel][i];
+        for (int i = 0; i < invVars[loopheads[0]].size(); i++) {
+          Expr var = invVars[loopheads[0]][i];
           if (bind::isIntConst(var)) varsInt.push_back(i);
           else if (bind::isBoolConst(var)) varsBool.push_back(i);
           else if (isOpX<ARRAY_TY>(bind::typeOf(var))) varsArray.push_back(i);
@@ -138,8 +137,8 @@ namespace ufo
 
       Expr findFinalValue(int i, Expr body, Expr& add, bool iterIncreases)
       {
-        Expr iter = invVars[loopRel][i];
-        auto &cycle = chcs[cycles[loopRel][0][0]];
+        Expr iter = invVars[loopheads[0]][i];
+        auto &cycle = chcs[cycles[loopheads[0]][0][0]];
         auto precondition = std::move(getPrecondition(&cycle));
 
         if (!precondition || isOpX<AND>(precondition) || isOpX<OR>(precondition)) {
@@ -156,7 +155,7 @@ namespace ufo
         Expr limitVal = precondition->arg(1);
 
         // check if limit value is constant; Eq. 8, section 4
-        Expr replacedLimit = replaceAll(limitVal, invVars[loopRel], invVarsPrime[loopRel]);
+        Expr replacedLimit = replaceAll(limitVal, invVars[loopheads[0]], invVarsPrime[loopheads[0]]);
         bool constLimitValCheck = bool(u.implies(body, mk<EQ>(limitVal, replacedLimit)));
 
         // check the case that iter does not exceed limit value during transition;
@@ -169,8 +168,8 @@ namespace ufo
 
       Expr findTransitionValue(int i, Expr body)
       {
-        Expr a = invVars[loopRel][i];
-        Expr b = invVarsPrime[loopRel][i];
+        Expr a = invVars[loopheads[0]][i];
+        Expr b = invVarsPrime[loopheads[0]][i];
 
         Expr allTransitions = NULL;
         findExpr<EQ>(b, body, allTransitions, true);
@@ -210,7 +209,7 @@ namespace ufo
 
         // check if delta value is constant; Eq. 10, section 4 in paper
         Expr replacedTrans
-          = replaceAll(transitionVal, invVars[loopRel], invVarsPrime[loopRel]);
+          = replaceAll(transitionVal, invVars[loopheads[0]], invVarsPrime[loopheads[0]]);
         return u.implies(body, mk<EQ>(transitionVal, replacedTrans))
           ? transitionVal : NULL;
       }
@@ -218,7 +217,7 @@ namespace ufo
       Expr findInitialValue(int i, Expr init)
       {
         Expr equalities = NULL;
-        Expr iter = invVars[loopRel][i];
+        Expr iter = invVars[loopheads[0]][i];
 
         findExpr<EQ>(iter, init, equalities, true);
         if (equalities)
@@ -241,7 +240,7 @@ namespace ufo
             Expr normalized = ineqSimplifier(iter, simplifyArithm(initVal));
             initVal = normalized->right();
             // assigns non-primed variables
-            initVal = replaceAll(initVal, invVarsPrime[loopRel], invVars[loopRel]);
+            initVal = replaceAll(initVal, invVarsPrime[loopheads[0]], invVars[loopheads[0]]);
             return initVal;
           }
         }
@@ -251,14 +250,14 @@ namespace ufo
       bool findIterators()
       {
         BndExpl bnd(*this, debug);
-        const HornRuleExt& rule = chcs[cycles[loopRel][0][0]];
+        const HornRuleExt& rule = chcs[cycles[loopheads[0]][0][0]];
 
-        Expr pref = bnd.compactPrefix(loopRel, 0);
+        Expr pref = bnd.compactPrefix(loopheads[0], 0);
 
         for (auto& i : varsInt)
         {
-          Expr a = invVars[loopRel][i];
-          Expr b = invVarsPrime[loopRel][i];
+          Expr a = invVars[loopheads[0]][i];
+          Expr b = invVarsPrime[loopheads[0]][i];
 
           bool isAnIter = false;
           bool iterDecreases = bool(u.implies(rule.body, mk<GT>(a, b)));
@@ -375,9 +374,9 @@ namespace ufo
           cout << "Iterations added to query: " << unrollQuery << "\n";
         }
 
-        vector<int>& cycle = cycles[loopRel][0];
+        vector<int>& cycle = cycles[loopheads[0]][0];
         HornRuleExt& loopRule = chcs[cycle[0]];
-        vector<int>& prefix = prefixes[loopRel][0];
+        vector<int>& prefix = prefixes[loopheads[0]][0];
         HornRuleExt& prefixRule = chcs[prefix[0]];
 
         // ************* FACT UNROLLING ***************

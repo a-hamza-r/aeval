@@ -58,13 +58,13 @@ namespace ufo
 
     void createVariableMapping(ProductCHCs &product) {
       ExprVector combinedVars;
-      Expr dcl = product.chcs[product.cycles[product.loopRel][0][0]].srcRelation;
+      Expr dcl = product.chcs[product.cycles[product.loopheads[0]][0][0]].srcRelation;
       concatenateVectors(combinedVars,
-          source.invVars[source.loopRel], target.invVars[target.loopRel]);
+          source.invVars[source.loopheads[0]], target.invVars[target.loopheads[0]]);
 
       for (const auto &pr : pairings) {
-        Expr e = mk<EQ>(source.invVars[source.loopRel][pr.first],
-            target.invVars[target.loopRel][pr.second]);
+        Expr e = mk<EQ>(source.invVars[source.loopheads[0]][pr.first],
+            target.invVars[target.loopheads[0]][pr.second]);
         mapping.insert(replaceAll(e, combinedVars, product.invVars[dcl]));
       }
     }
@@ -72,7 +72,7 @@ namespace ufo
     Expr getRelationalPrecondition(ProductCHCs &product) {
       Expr pre = conjoin(mapping, m_efac);
       return replaceAll(pre,
-          product.invVars[product.loopRel], product.invVarsPrime[product.loopRel]);
+          product.invVars[product.loopheads[0]], product.invVarsPrime[product.loopheads[0]]);
     }
 
     bool factSanityCheck(Expr &factBody) {
@@ -139,9 +139,9 @@ namespace ufo
       auto query = product.getQuery();
       auto &originalQuery = query->body;
       auto loopGuard1 = std::move(simplifyArithm(
-            source.getPrecondition(&source.chcs[source.cycles[source.loopRel][0][0]])));
+            source.getPrecondition(&source.chcs[source.cycles[source.loopheads[0]][0][0]])));
       auto loopGuard2 = std::move(simplifyArithm(
-            target.getPrecondition(&target.chcs[target.cycles[target.loopRel][0][0]])));
+            target.getPrecondition(&target.chcs[target.cycles[target.loopheads[0]][0][0]])));
       auto lockstepCheckPredicate = std::move(mk<NEQ>(loopGuard2, loopGuard1));
       query->body = std::move(mk<AND>(lockstepCheckPredicate, originalQuery));
       // TODO: according to paper, we need to return <inv, cex>
@@ -257,16 +257,16 @@ namespace ufo
 
     bool alignPrograms()
     {
-      HornRuleExt &cycleS = source.chcs[source.cycles[source.loopRel][0][0]];
-      HornRuleExt &prefixS = source.chcs[source.prefixes[source.loopRel][0][0]];
+      HornRuleExt &cycleS = source.chcs[source.cycles[source.loopheads[0]][0][0]];
+      HornRuleExt &prefixS = source.chcs[source.prefixes[source.loopheads[0]][0][0]];
 
-      HornRuleExt &cycleT = target.chcs[target.cycles[target.loopRel][0][0]];
-      HornRuleExt &prefixT = target.chcs[target.prefixes[target.loopRel][0][0]];
+      HornRuleExt &cycleT = target.chcs[target.cycles[target.loopheads[0]][0][0]];
+      HornRuleExt &prefixT = target.chcs[target.prefixes[target.loopheads[0]][0][0]];
 
       BndExpl bnd1(source, debug);
       BndExpl bnd2(target, debug);
-      Expr pref1 = bnd1.compactPrefix(source.loopRel, 0);
-      Expr pref2 = bnd2.compactPrefix(target.loopRel, 0);
+      Expr pref1 = bnd1.compactPrefix(source.loopheads[0], 0);
+      Expr pref2 = bnd2.compactPrefix(target.loopheads[0], 0);
       auto iterStructS = source.iter;
       auto iterStructT = target.iter;
       ExprSet equalityChecks, preForQuantifiedFla;
@@ -349,7 +349,7 @@ namespace ufo
       auto query = product.getQuery();
       auto &originalQuery = query->body;
       auto loopGuardS = std::move(
-          source.getPrecondition(&source.chcs[source.cycles[source.loopRel][0][0]]));
+          source.getPrecondition(&source.chcs[source.cycles[source.loopheads[0]][0][0]]));
       Expr negationLoopGuardS = std::move(mkNeg(loopGuardS));
       Expr post = std::move(simplifyBool(mkNeg(conjoin(mapping, m_efac))));
       // we only add negation of loop guard of source because we have verified,
@@ -438,15 +438,14 @@ namespace ufo
   void decomposeSource(ExtendedCHCs& source, ExtendedCHCs& target, ExtendedCHCs& SDecomposed)
   {
     auto& efac = source.m_efac;
-    const auto& TCycles = target.cycles[target.loopRel];
-    auto TCyclesSize = TCycles.size();
+    auto TCyclesSize = target.cycles.size();
 
     // Assuming that source only has one cycle
-    int SPrefix = source.prefixes[source.loopRel][0].back();
-    int SCycle = source.cycles[source.loopRel][0][0];
-    const auto& SCycleCHC = source.chcs[SCycle];
+    Expr SLoopRel = source.loopheads[0];
+    auto SPrefix = source.prefixes[SLoopRel][0].back();
+    auto SCycle = source.cycles[SLoopRel][0][0];
+    const HornRuleExt& SCycleCHC = source.chcs[SCycle];
 
-    Expr SLoopRel = SCycleCHC.srcRelation;
     Expr SInductiveCHCRel_i_minus_1 = mk<TRUE>(efac);
     Expr SCycleDecl = source.getDeclByName(SLoopRel);
     ExprVector SLoopVars(SCycleDecl->args_begin()+1, SCycleDecl->args_end());
@@ -456,8 +455,9 @@ namespace ufo
     ExprVector& invVarsPrime = source.invVarsPrime[SLoopRel];
 
     for (int cycleNum = 0; cycleNum < TCyclesSize; cycleNum++) {
-      const auto& cycleList = TCycles[cycleNum];
-      auto& cycleCHC = target.chcs[cycleList.back()];
+      Expr TLoopRel = target.loopheads[cycleNum];
+      int cycle = target.cycles[TLoopRel][0][0];
+      HornRuleExt& cycleCHC = target.chcs[cycle];
 
       auto SNonInductiveCHC = source.chcs[SPrefix];
       auto SInductiveCHC = source.chcs[SCycle];
@@ -469,13 +469,13 @@ namespace ufo
         auto P_i = replaceAll(TGuard, cycleCHC.srcVars, SInductiveCHC.srcVars);
         SInductiveCHC.body = mk<AND>(SInductiveCHC.body, P_i);
       }
-
       Expr SInductiveCHCRel_i = mkTerm<string>(lexical_cast<string>(SLoopRel)+
           "_"+to_string(cycleNum), efac);
       SDecomposed.invVars[SInductiveCHCRel_i] = invVars;
       SDecomposed.invVarsPrime[SInductiveCHCRel_i] = invVarsPrime;
       SDecomposed.decls.insert(bind::fdecl(SInductiveCHCRel_i, SLoopVars));
 
+      // create non-inductive CHC
       SNonInductiveCHC.srcRelation = SInductiveCHCRel_i_minus_1;
       if (!isOpX<TRUE>(SInductiveCHCRel_i_minus_1)) {
         SNonInductiveCHC.srcVars = SLoopSrcVars;
@@ -483,19 +483,22 @@ namespace ufo
         SNonInductiveCHC.isFact = false;
       }
       SNonInductiveCHC.dstRelation = SInductiveCHCRel_i;
+      SDecomposed.chcs.push_back(SNonInductiveCHC);
+
+      // create inductive CHC
       SInductiveCHC.srcRelation = SInductiveCHC.dstRelation = SInductiveCHCRel_i;
       SInductiveCHCRel_i_minus_1 = SInductiveCHCRel_i;
-
-      SDecomposed.chcs.push_back(SNonInductiveCHC);
       SDecomposed.chcs.push_back(SInductiveCHC);
 
       auto SGuard = SDecomposed.getPrecondition(&SDecomposed.chcs.back());
       negSGuard = mkNeg(replaceAll(SGuard, invVars, invVarsPrime));
     }
 
+    // create query
     auto SQuery = source.getQuery();
     SQuery->srcRelation = SInductiveCHCRel_i_minus_1;
     SDecomposed.chcs.push_back(*SQuery);
+
     SDecomposed.findCycles();
     // prepare a version of wtoCHCs w/o queries
     SDecomposed.dwtoCHCs = SDecomposed.wtoCHCs;
@@ -506,17 +509,17 @@ namespace ufo
 
   void projection(ExtendedCHCs& projRm, int i, ExtendedCHCs &origRm, bool multipleProjections)
   {
-    auto loopRel = origRm.wtoDecls[i];
-    const auto cycle = origRm.chcs[origRm.cycles[loopRel][0][0]];
-    projRm.loopRel = loopRel;
     if (!multipleProjections) {
       auto query = projRm.getQuery();
       query->body = mk<TRUE>(origRm.m_efac);
       return;
     }
 
-    auto prefix = origRm.chcs[origRm.prefixes[loopRel][0].back()];
+    auto loopRel = origRm.loopheads[i];
+    const HornRuleExt& cycle = origRm.chcs[origRm.cycles[loopRel][0][0]];
+    HornRuleExt prefix = origRm.chcs[origRm.prefixes[loopRel][0].back()];
     if (!prefix.isFact) {
+      // for all cycles except the first
       prefix.srcRelation = mk<TRUE>(origRm.m_efac);
       prefix.srcVars.clear();
       prefix.isFact = true;
@@ -528,6 +531,7 @@ namespace ufo
     projRm.invVars[loopRel] = origRm.invVars[loopRel];
     projRm.invVarsPrime[loopRel] = origRm.invVarsPrime[loopRel];
 
+    // create query
     projRm.chcs.push_back(HornRuleExt());
     projRm.hasQuery = true;
     HornRuleExt& hr = projRm.chcs.back();

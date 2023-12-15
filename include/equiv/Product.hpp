@@ -298,7 +298,6 @@ namespace ufo
         // changes variables from _v1_ and _v2_ prefixes to _pr_ with necessary changes
         assignVarsAndRewrite();
         findCycles();
-        loopRel = loopheads[0];
         // prepare a version of wtoCHCs w/o queries
         dwtoCHCs = wtoCHCs;
         for (auto it = dwtoCHCs.begin(); it != dwtoCHCs.end();)
