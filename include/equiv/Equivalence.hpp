@@ -497,6 +497,11 @@ namespace ufo
     SQuery->srcRelation = SInductiveCHCRel_i_minus_1;
     SDecomposed.chcs.push_back(*SQuery);
     SDecomposed.findCycles();
+    // prepare a version of wtoCHCs w/o queries
+    SDecomposed.dwtoCHCs = SDecomposed.wtoCHCs;
+    for (auto it = SDecomposed.dwtoCHCs.begin(); it != SDecomposed.dwtoCHCs.end();)
+      if ((*it)->isQuery) it = SDecomposed.dwtoCHCs.erase(it);
+      else ++it;
   }
 
   void projection(ExtendedCHCs& projRm, int i, ExtendedCHCs &origRm, bool multipleProjections)
@@ -536,6 +541,11 @@ namespace ufo
     hr.body = mk<TRUE>(origRm.m_efac);
 
     projRm.findCycles();
+    // prepare a version of wtoCHCs w/o queries
+    projRm.dwtoCHCs = projRm.wtoCHCs;
+    for (auto it = projRm.dwtoCHCs.begin(); it != projRm.dwtoCHCs.end();)
+      if ((*it)->isQuery) it = projRm.dwtoCHCs.erase(it);
+      else ++it;
   }
 
   /**

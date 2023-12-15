@@ -119,7 +119,7 @@ namespace ufo
       u(efac), m_efac(efac), m_z3(z3), hasAnyArrays(false), debug(d) {};
     CHCs(ExprFactory &efac, EZ3 &z3, string n, int d = false) :
       m_efac(efac), m_z3(z3), varname(n), u(efac), hasAnyArrays(false), debug(d) {};
-    CHCs(const CHCs &oldCHCs, bool shallowCopy=false) : m_efac(oldCHCs.m_efac),
+    CHCs(const CHCs &oldCHCs, bool shallowCopy) : m_efac(oldCHCs.m_efac),
       m_z3(oldCHCs.m_z3), u(oldCHCs.m_efac), indeces(oldCHCs.indeces),
       varname(oldCHCs.varname), failDecl(oldCHCs.failDecl), hasAnyArrays(oldCHCs.hasAnyArrays),
       hasArrays(oldCHCs.hasArrays), debug(oldCHCs.debug), hasQuery(oldCHCs.hasQuery)
@@ -137,6 +137,7 @@ namespace ufo
       outgs = oldCHCs.outgs;
       invVars = oldCHCs.invVars;
       invVarsPrime = oldCHCs.invVarsPrime;
+      dwtoCHCs = oldCHCs.dwtoCHCs;
     }
 
     bool isFapp (Expr e)
