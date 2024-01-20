@@ -19,6 +19,7 @@
 .sync
 .tags
 .tags1
+.vimrc
 .ipynb_checkpoints
 terraform.tfstate
 terraform.tfstate.backup*
