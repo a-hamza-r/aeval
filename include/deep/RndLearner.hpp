@@ -119,6 +119,7 @@ namespace ufo
           cand1 = replaceAll(cand1, invarVarsShort[ind1], hr.srcVars);
           m_smt_solver.assertExpr(cand1);
 
+          // ASK: not sure what this does
           lmApp = sf1.getAllLemmas();
           lmApp = replaceAll(lmApp, invarVarsShort[ind1], hr.srcVars);
           m_smt_solver.assertExpr(lmApp);
