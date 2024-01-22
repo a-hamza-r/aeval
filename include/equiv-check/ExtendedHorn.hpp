@@ -259,6 +259,50 @@ namespace ufo
         else
           hr.body = conjoin(hr.lin, m_efac);
       }
+      if (doElim)
+      {
+        int sz = chcs.size();
+        for (int c = 0; c < chcs.size(); c++)
+        {
+          chcsToCheck1.insert(c);
+          chcsToCheck2.insert(c);
+        }
+        if (!eliminateDecls()) return false;
+
+        // eliminating all at once,
+        // otherwise elements at chcsToCheck* need updates
+        for (auto it = toEraseChcs.rbegin(); it != toEraseChcs.rend(); ++it)
+          chcs.erase(chcs.begin() + *it);
+        toEraseChcs.clear();
+
+        // get rid of vacuous:
+        while (true)
+        {
+          bool toBreak = true;
+          for (auto & d : decls)
+          {
+            set<int> toEraseChcs;
+            bool toCont = false;
+            for (int c = 0; c < chcs.size(); c++)
+            {
+              if (chcs[c].dstRelation == d->left())
+              {
+                toCont = true;
+                break;
+              }
+              if (chcs[c].srcRelation == d->left())
+                toEraseChcs.insert(c);
+            }
+            if (toCont) continue;
+            for (auto it = toEraseChcs.rbegin(); it != toEraseChcs.rend(); ++it)
+            {
+              toBreak = false;
+              chcs.erase(chcs.begin() + *it);
+            }
+          }
+          if (toBreak) break;
+        }
+      }
 
       for (int i = 0; i < chcs.size(); i++)
         outgs[chcs[i].srcRelation].push_back(i);
@@ -350,7 +394,7 @@ namespace ufo
     SMTUtils u(m_efac);
 
     ExtendedCHCs ruleManager(m_efac, z3, debug - 2);
-    auto res = ruleManager.parseRecursiveAndLoop(smt, false, doArithm);
+    auto res = ruleManager.parseRecursiveAndLoop(smt, doElim, doArithm);
     if (ser)
     {
       ruleManager.serialize();
