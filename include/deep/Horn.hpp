@@ -81,6 +81,25 @@ namespace ufo
 
   };
 
+  struct RecursiveCHC {
+    Expr condition;
+    pair<Expr, Expr> recursiveEquality;
+
+    Expr getDefinition() const {
+      Expr unquantified = mk<IMPL>(condition,
+        mk<EQ>(recursiveEquality.first, recursiveEquality.second));
+      return mkQFla(unquantified, true);;
+    }
+
+    void print() const {
+      outs() << "if ";
+      outs() << "(" << condition << ") ";
+      outs() << "then ";
+      outs() << "{ " << recursiveEquality.first << " = "
+        << recursiveEquality.second << " }\n";
+    }
+  };
+
   class CHCs
   {
     protected:
@@ -94,6 +113,8 @@ namespace ufo
     EZ3 &m_z3;
 
     Expr failDecl;
+    vector<RecursiveCHC> recursiveCHCs;
+    set<Expr> declsRecursive;
     vector<HornRuleExt> chcs;
     vector<HornRuleExt*> allCHCs;
     vector<HornRuleExt*> wtoCHCs, dwtoCHCs;
@@ -117,6 +138,12 @@ namespace ufo
 
     CHCs(ExprFactory &efac, EZ3 &z3, int d = false) :
       u(efac), m_efac(efac), m_z3(z3), hasAnyArrays(false), debug(d) {};
+
+    ExprVector getRecursiveDefinitions() const {
+      ExprVector res;
+      for (auto &c : recursiveCHCs) res.push_back(c.getDefinition());
+      return res;
+    }
 
     bool isFapp (Expr e)
     {

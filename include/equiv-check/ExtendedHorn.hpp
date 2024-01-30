@@ -23,30 +23,19 @@ using namespace boost;
 
 namespace ufo
 {
-  struct RecursiveCHC {
-    Expr condition;
-    pair<Expr, Expr> recursiveEquality;
-  };
-
-  static void printRecursiveDefinition(const vector<RecursiveCHC>& recs) {
-    for (int i = 0; i < recs.size(); i++) {
-      if (i == 0) outs() << "if ";
-      else outs() << "else if ";
-      outs() << "(" << recs[i].condition << ") ";
-      outs() << "then ";
-      outs() << "{ " << recs[i].recursiveEquality.first << " = "
-        << recs[i].recursiveEquality.second << " }\n";
-    }
-  }
-
   class ExtendedCHCs : public CHCs
   {
-    vector<RecursiveCHC> recursiveCHCs;
-    set<Expr> declsRecursive;
 
   public:
     ExtendedCHCs(ExprFactory &efac, EZ3 &z3, int d = false) :
       CHCs(efac, z3, d) {};
+
+    void printRecursiveDefinition() const {
+      for (int i = 0; i < recursiveCHCs.size(); i++) {
+        if (i > 0) outs() << "else ";
+        recursiveCHCs[i].print();
+      }
+    }
 
     bool normalizeRecursiveAndLoop(Expr& r, HornRuleExt& hr, bool& isRecursive)
     {
@@ -214,7 +203,7 @@ namespace ufo
         outs() << "Reserved space for " << recursiveCHCs.size()
                           << " recursive CHCs and " << declsRecursive.size() << " declarations\n";
         outs() << "Recursive CHCs:\n";
-        printRecursiveDefinition(recursiveCHCs);
+        printRecursiveDefinition();
         outs() << "\n";
       }
       if (debug > 0) outs () << "Reserved space for " << chcs.size()
@@ -324,7 +313,7 @@ namespace ufo
     }
   };
 
-  void learnInvariants(ExtendedCHCs& ruleManager, unsigned maxAttempts, unsigned to,
+  void learnInvariants(CHCs& ruleManager, unsigned maxAttempts, unsigned to,
        bool freqs, bool aggp, int dat, int mut, bool doElim, bool doArithm,
        bool doDisj, int doProp, int mbpEqs, bool dAllMbp, bool dAddProp,
        bool dAddDat, bool dStrenMbp, int dFwd, bool dRec, bool dGenerous,
