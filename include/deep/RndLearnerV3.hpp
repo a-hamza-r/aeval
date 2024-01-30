@@ -392,7 +392,8 @@ namespace ufo
       if (!checkInit(rel)) return false;
       if (!checkInductiveness(rel)) return false;
 
-      return !propa || propagate(invNum, conjoin(candidates[invNum], m_efac), false);
+      return true;
+      //return !propa || propagate(invNum, conjoin(candidates[invNum], m_efac), false);
     }
 
     void addLemma (int invNum, SamplFactory& sf, Expr l)
@@ -1294,6 +1295,10 @@ namespace ufo
           negged.insert(mkNeg(a));
         }
         exprs.insert(disjoin(negged, m_efac));
+      }
+      if (hasUninterpFunc(conjoin(exprs, m_efac))) {
+        auto recursDef = ruleManager.getRecursiveDefinitions();
+        exprs.insert(recursDef.begin(), recursDef.end());
       }
       return u.isSat(exprs);
     }
