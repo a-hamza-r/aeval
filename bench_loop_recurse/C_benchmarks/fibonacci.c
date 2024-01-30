@@ -18,8 +18,9 @@ int main() {
     while (i < n) {
         sassert(x == Fib(i));
         sassert(y == Fib(i+1));
+        int tmp = x;
         x = y;
-        y = x + y;
+        y = tmp + y;
         i++;
     }
     sassert(x == Fib(n));

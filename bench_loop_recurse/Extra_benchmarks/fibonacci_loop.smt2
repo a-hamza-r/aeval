@@ -1,29 +1,3 @@
-; recursive definition axiom
-(declare-fun fib_rec (Int) Int)
-(assert 
-    (forall
-        ((n Int))
-        (=>
-            (and
-                (>= n 0)
-                (< n 2)
-            )
-            (= (fib_rec n) n)
-        )
-    )
-)
-
-(assert
-    (forall
-        ((n Int))
-        (=>
-            (>= n 2)
-            (= (fib_rec n) (+ (fib_rec (- n 1)) (fib_rec (- n 2))))
-        )
-    )
-)
-
-
 ; transition system
 (declare-fun fib_loop (Int Int Int Int) Bool)
 (assert
@@ -42,8 +16,6 @@
         (=> 
             (and
                 (fib_loop x y i n)
-                (= x (fib_rec i))
-                (= y (fib_rec (+ i 1)))
                 (< i n)
                 (= x1 y)
                 (= y1 (+ x y))
@@ -60,7 +32,7 @@
             (and
                 (fib_loop x y i n)
                 (not (< i n))
-                (not (= x (fib_rec n)))
+                (not (= i n))
             )
             false
         )
