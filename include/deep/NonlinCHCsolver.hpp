@@ -66,13 +66,19 @@ namespace ufo
       set<vector<int>> unsat_prefs;
       vector<ExprMap> tree_map;
 
-      map<string, map<string, vector<string>>> & signature; // <contract_name, <function_name_or_constructor, vector_of_param_names>>
+    // map<string, map<string, vector<string>>> & signature; // <contract_name, <function_name_or_constructor, vector_of_param_names>>
 
   public:
 
       NonlinCHCsolver(CHCs &r, map<string, map<string,vector<string>>> & s) :
         m_efac(r.m_efac), ruleManager(r),
         u(m_efac, r.m_z3.getAdtAccessors(), 10000, r.m_z3.adts, r.m_z3.adts_seen), signature(s) {}
+    NonlinCHCsolver(CHCs &r
+                    /*, map<string, map<string,vector<string>>> & s */
+                    ) :
+        m_efac(r.m_efac), ruleManager(r),
+        u(m_efac, r.m_z3.getAdtAccessors(), 10000) /*, signature(s) */
+        {}
 
       bool checkAllOver(bool checkQuery = false) {
           for (auto &hr: ruleManager.chcs) {
@@ -348,8 +354,6 @@ namespace ufo
 //          break;
           }
         }
-        //outs() << "Exit index: " << exit_index << " : id" << exit_v << "\n";
-        //vector<int> entries(entries_tmp.begin(), entries_tmp.end());
         vector<int> entries; //all leaves end with "-1", because sometimes node can be leaf (isFact=true) and not leaf
         entries.push_back(-1);
 
@@ -1123,43 +1127,27 @@ namespace ufo
 
   };
 
-    inline void testgen(char* smt, map<string, map<string, vector<string>>>& signature, unsigned maxAttempts, unsigned to,
-                    bool freqs, bool aggp, bool enableDataLearning, bool doElim,
+inline void check_equivalence(char* contract1, char* contract2,
+                    unsigned maxAttempts, unsigned to, bool freqs, bool aggp,
+                    bool enableDataLearning, bool doElim,
                     bool doDisj, int doProp, bool dAllMbp, bool dAddProp, bool dAddDat,
                     bool dStrenMbp, bool toSkip, int invMode, int lookahead,
                     bool lb, bool lmax, bool prio, int debug) {
-      ExprFactory m_efac;
-      EZ3 z3(m_efac);
-      ExprMap invs;
-      CHCs ruleManager(m_efac, z3);
-      string contract = signature.begin()->first;
+    ExprFactory m_efac;
+    EZ3 z3(m_efac);
 
-      ruleManager.parse(smt, contract, true);
+    CHCs ruleManagerC1(m_efac, z3, "_v1_");
+    ruleManagerC1.parse(contract1);
 
-      ruleManager.print();
-      //ruleManager.print_parse_results();
-      // if (ruleManager.index_cycle_chc == -1 || ruleManager.index_fact_chc == -1){
-      //   outs() << "no function found\n";
-      //   return;
-      // }
+    /*
+    CHCs ruleManagerC2(m_efac, z3, "_v2_");
+    ruleManagerC2.parse(contract2);
 
-      NonlinCHCsolver nonlin(ruleManager, signature);
-      if (signature.size() != 1)
-      {
-        outs () << "multiple contracs case\n"; //"Only a single contract is supported, currently\n";
-        //exit(0);
-      }
-      //nonlin.setSignature(signature);
-      // nonlin.solveIncrementally();
-
-      // if (nums.size() > 0)
-      {
-        // nonlin.initKeys(nums, lb);
-        // nonlin.setInvs(invs);
-        // todo
-        nonlin.exploreTracesNonLinearTG(7);
-      }
-    }
+    NonlinCHCsolver nonlin(ruleManager);
+    // nonlin.solveIncrementally();
+    nonlin.exploreTracesNonLinearTG(7);
+    */
+}
 };
 
 #endif

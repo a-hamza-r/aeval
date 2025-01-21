@@ -74,11 +74,11 @@ namespace ufo
     }
   };
 
-  class CHCs
-  {
-    private:
-    set<int> indeces;
-    string varname = "_FH_";
+class CHCs
+{
+private:
+    std::set<int> indeces;
+    std::string varname = "_FH_";
 
     public:
 
@@ -88,21 +88,21 @@ namespace ufo
     ExprSet decls;
     Expr failDecl;
     ExprVector extras;
-    vector<HornRuleExt> chcs;
+    std::vector<HornRuleExt> chcs;
     int index_fact_chc;
-    vector<int> index_cycle_chc;
+    std::vector<int> index_cycle_chc;
     map<Expr, ExprVector> invVars;
-    map<Expr, vector<int>> incms;
+    map<Expr, std::vector<int>> incms;
     map<Expr, int> expr_id;
     int qCHCNum;  // index of the query in chc
     int total_var_cnt = 0;
     ExprVector constructors;
-    string infile;
+    std::string infile;
 
       //ToDo: Remove or recheck later on; move from Horn.hpp
     int debug;
 
-    CHCs(ExprFactory &efac, EZ3 &z3) : m_efac(efac), m_z3(z3) {};
+    CHCs(ExprFactory &efac, EZ3 &z3, std::string name) : m_efac(efac), m_z3(z3), varname(name) {};
 
     bool isFapp (Expr e)
     {
@@ -337,7 +337,7 @@ namespace ufo
         else prune();
     }
 
-    void parse(string smt, string contract, bool removeQuery = false)
+    void parse(string smt /*, string contract*/)
     {
       // GF: this entry part is different from the original implementation
       // (since the fixpoint format does not support ADTs)

@@ -67,6 +67,7 @@ bool isContract(string w1){
   return w1.find(contract_string) != std::string::npos;
 }
 
+#if 0
 void print_signature(map<string, map<string, vector<string>>>& signature){
   for (auto const &pair: signature) {
     outs() << "contract:" << pair.first << "\n";
@@ -118,6 +119,7 @@ static inline void getSignature(map<string, map<string, vector<string>>>& signat
 
     //print_signature(signature);
 }
+#endif
 
 
 const char *OPT_HELP = "--help";
@@ -143,8 +145,8 @@ const char *OPT_DEBUG = "--debug";
 
 int main (int argc, char ** argv)
 {
-    map<string, map<string, vector<string>>> signature;
-    getSignature(signature, getStrValue("--keys", NULL, argc, argv));
+    // map<string, map<string, vector<string>>> signature;
+    // getSignature(signature, getStrValue("--keys", NULL, argc, argv));
     bool to_skip = getBoolValue("--no-term", false, argc, argv);
     int lookahead = getIntValue("--lookahead", 3, argc, argv);
     bool prio = getBoolValue("--prio", false, argc, argv);
@@ -179,8 +181,8 @@ int main (int argc, char ** argv)
     if (d_m || d_p || d_d || d_s) do_disj = true;
     if (do_disj) do_dl = true;
 
-    testgen(argv[argc-1], signature, max_attempts, to, densecode, aggressivepruning,
-            do_dl, do_elim, do_disj, do_prop, d_m, d_p, d_d, d_s,
-            to_skip, invMode, lookahead, lb, lmax, prio, debug);
+    check_equivalence(argv[argc-2], argv[argc-1], /*signature, */max_attempts, to, densecode,
+                      aggressivepruning, do_dl, do_elim, do_disj, do_prop, d_m, d_p, d_d, d_s,
+                      to_skip, invMode, lookahead, lb, lmax, prio, debug);
     return 0;
 }
