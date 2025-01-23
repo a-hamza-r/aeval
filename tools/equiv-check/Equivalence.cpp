@@ -1,3 +1,4 @@
+#include <iostream>
 #include "deep/NonlinCHCsolver.hpp"
 
 using namespace ufo;
@@ -142,11 +143,54 @@ const char *OPT_D3 = "--phase-data";
 const char *OPT_D4 = "--stren-mbp";
 const char *OPT_MBP = "--eqs-mbp";
 const char *OPT_DEBUG = "--debug";
+const char *OPT_PREDS = "--preds";
 
 int main (int argc, char ** argv)
 {
     // map<string, map<string, vector<string>>> signature;
     // getSignature(signature, getStrValue("--keys", NULL, argc, argv));
+
+    // AH: (Possibly) temporarily hardcoding the predicates
+    std::set<std::pair<std::string, std::string>> equivalences;
+    std::set<std::string> predicatesC1, predicatesC2;
+    if (char* predicateFile = getStrValue(OPT_PREDS, nullptr, argc, argv))
+    {
+        ifstream in(predicateFile);
+        if (!in.is_open())
+        {
+            errs() << "ERROR: cannot open file " << predicateFile << "\n";
+            return 1;
+        }
+        std::string line;
+        while (getline(in, line) && line != "%")
+        {
+            size_t pos = line.find(' ');
+            if (pos == string::npos)
+            {
+                errs() << "ERROR: invalid line in predicates file: " << line << "\n";
+                return 1;
+            }
+            std::string pred1 = line.substr(0, pos);
+            std::string pred2 = line.substr(pos+1);
+            equivalences.insert({pred1, pred2});
+            predicatesC1.insert(pred1);
+            predicatesC2.insert(pred2);
+        }
+        while (getline(in, line) && line != "%")
+        {
+            predicatesC1.insert(line);
+        }
+        while (getline(in, line) && line != "%")
+        {
+            predicatesC2.insert(line);
+        }
+    }
+    else
+    {
+        errs() << "ERROR: --preds option is required\n";
+        return 1;
+    }
+
     bool to_skip = getBoolValue("--no-term", false, argc, argv);
     int lookahead = getIntValue("--lookahead", 3, argc, argv);
     bool prio = getBoolValue("--prio", false, argc, argv);
@@ -181,8 +225,9 @@ int main (int argc, char ** argv)
     if (d_m || d_p || d_d || d_s) do_disj = true;
     if (do_disj) do_dl = true;
 
-    check_equivalence(argv[argc-2], argv[argc-1], /*signature, */max_attempts, to, densecode,
-                      aggressivepruning, do_dl, do_elim, do_disj, do_prop, d_m, d_p, d_d, d_s,
-                      to_skip, invMode, lookahead, lb, lmax, prio, debug);
+    check_equivalence(argv[argc-2], argv[argc-1], equivalences, predicatesC1, predicatesC2,
+                      /*signature, */max_attempts, to, densecode, aggressivepruning, do_dl, do_elim,
+                      do_disj, do_prop, d_m, d_p, d_d,  d_s, to_skip, invMode, lookahead, lb, lmax,
+                      prio, debug);
     return 0;
 }

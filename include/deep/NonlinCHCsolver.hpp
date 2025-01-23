@@ -70,15 +70,11 @@ namespace ufo
 
   public:
 
-      NonlinCHCsolver(CHCs &r, map<string, map<string,vector<string>>> & s) :
+      NonlinCHCsolver(CHCs &r
+                      /*, map<string, map<string,vector<string>>> & s */
+                       ) :
         m_efac(r.m_efac), ruleManager(r),
-        u(m_efac, r.m_z3.getAdtAccessors(), 10000, r.m_z3.adts, r.m_z3.adts_seen), signature(s) {}
-    NonlinCHCsolver(CHCs &r
-                    /*, map<string, map<string,vector<string>>> & s */
-                    ) :
-        m_efac(r.m_efac), ruleManager(r),
-        u(m_efac, r.m_z3.getAdtAccessors(), 10000) /*, signature(s) */
-        {}
+        u(m_efac, r.m_z3.getAdtAccessors(), 10000, r.m_z3.adts, r.m_z3.adts_seen)/*, signature(s) */ {}
 
       bool checkAllOver(bool checkQuery = false) {
           for (auto &hr: ruleManager.chcs) {
@@ -866,6 +862,7 @@ namespace ufo
                 auto d = ruleManager.chcs.back().srcRelations[fun];
                 string name = lexical_cast<string>(d);
                 // outs() << ruleManager.chcs.back().body << "\n" << "Name: " << name << "\n";
+                /*
                 for (auto & a : signature)
                 {
                   for (auto & b : a.second)
@@ -914,6 +911,7 @@ namespace ufo
                     break;
                   }
                 }
+            */
               }
               testfile << "END TEST " << ++number_of_tests << "\n";
               testfile.close();
@@ -1128,6 +1126,9 @@ namespace ufo
   };
 
 inline void check_equivalence(char* contract1, char* contract2,
+                    const std::set<std::pair<std::string, std::string>>& equivalences,
+                    std::set<std::string>& predicatesC1,
+                    std::set<std::string>& predicatesC2,
                     unsigned maxAttempts, unsigned to, bool freqs, bool aggp,
                     bool enableDataLearning, bool doElim,
                     bool doDisj, int doProp, bool dAllMbp, bool dAddProp, bool dAddDat,
@@ -1137,11 +1138,12 @@ inline void check_equivalence(char* contract1, char* contract2,
     EZ3 z3(m_efac);
 
     CHCs ruleManagerC1(m_efac, z3, "_v1_");
-    ruleManagerC1.parse(contract1);
+    ruleManagerC1.parse(contract1, predicatesC1);
+    //ruleManagerC1.print();
 
     /*
     CHCs ruleManagerC2(m_efac, z3, "_v2_");
-    ruleManagerC2.parse(contract2);
+    ruleManagerC2.parse(contract2, predicatesC2);
 
     NonlinCHCsolver nonlin(ruleManager);
     // nonlin.solveIncrementally();

@@ -337,7 +337,7 @@ private:
         else prune();
     }
 
-    void parse(string smt /*, string contract*/)
+    void parse(std::string smt /*, std::string contract*/, std::set<std::string>& predicates)
     {
       // GF: this entry part is different from the original implementation
       // (since the fixpoint format does not support ADTs)
@@ -584,6 +584,38 @@ private:
 //      for (int i = 0; i < chcs.size(); i++) {
 //        outs() << "Chc " << i << " :" << chcs[i].body  << "=>"  << chcs[i].head << "\n";
 //      }
+
+        std::set<std::string> processed;
+        std::set<int> toKeep;
+        std::vector<std::string> worklist(predicates.begin(), predicates.end());
+        for (size_t i = 0; i < worklist.size(); i++) {
+            std::string p = worklist[i];
+            if (processed.find(p) != processed.end()) continue;
+            processed.insert(p);
+            for (auto &d : decls) {
+                if (lexical_cast<std::string>(d->left()).compare(p) == 0) {
+                    auto incms_for_p = incms[d->left()];
+                    toKeep.insert(incms_for_p.begin(), incms_for_p.end());
+                    for (auto &incm : incms_for_p) {
+                        for (auto &src : chcs[incm].srcRelations) {
+                            std::string src_str = lexical_cast<std::string>(src);
+                            if (src_str.find("interface") == std::string::npos) {
+                                worklist.push_back(src_str);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        std::vector<HornRuleExt> new_chcs;
+        new_chcs.reserve(toKeep.size());
+        for (auto &i : toKeep) {
+            new_chcs.push_back(chcs[i]);
+        }
+        chcs = std::move(new_chcs);
+        computeIncms();
+
+    /*
       index_fact_chc = -1;
       // find: index_cycle_chc
       for (int i = 0; i < chcs.size(); i++)
@@ -614,6 +646,7 @@ private:
           break;
         }
       }
+    */
     }
 
     vector<vector<int>> cur_batch;
