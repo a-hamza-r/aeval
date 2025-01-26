@@ -98,6 +98,10 @@ private:
     int total_var_cnt = 0;
     ExprVector constructors;
     std::string infile;
+    // Equivalence Checks related
+    std::vector<int> target_CHCs; // CHCs that are actual target for equivalence check
+    std::vector<std::string> trailing_target_preds; // predicates that are used to define the
+                                                    // control-flow of the functions
 
       //ToDo: Remove or recheck later on; move from Horn.hpp
     int debug;
@@ -336,6 +340,30 @@ private:
         if (sz == decls.size()) return;
         else prune();
     }
+
+    using predicate_pair = std::pair<std::string, std::string>;
+    using filter_function = std::function<std::string(std::pair<std::string, std::string>)>;
+
+    void find_target_CHCs(const std::set<predicate_pair>& target_pairs, filter_function filter) {
+        target_CHCs.reserve(target_pairs.size());
+        trailing_target_preds.reserve(target_pairs.size());
+        for (auto &pair : target_pairs) {
+            std::string predicate = filter(pair);
+            for (int i = 0; i < chcs.size(); i++) {
+                if (lexical_cast<std::string>(chcs[i].dstRelation).compare(predicate) == 0) {
+                    target_CHCs.push_back(i);
+                    for (auto &src : chcs[i].srcRelations) {
+                        std::string src_str = lexical_cast<std::string>(src);
+                        if (src_str.find("summary") != std::string::npos) {
+                            trailing_target_preds.push_back(src_str);
+                        }
+                    }
+                    break; // assuming only one target per predicate
+                }
+            }
+        }
+    }
+
 
     void parse(std::string smt /*, std::string contract*/, std::set<std::string>& predicates)
     {

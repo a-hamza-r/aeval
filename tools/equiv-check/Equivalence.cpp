@@ -172,16 +172,20 @@ int main (int argc, char ** argv)
             }
             std::string pred1 = line.substr(0, pos);
             std::string pred2 = line.substr(pos+1);
+            assert(pred1.find("summary") != string::npos);
+            assert(pred2.find("summary") != string::npos);
             equivalences.insert({pred1, pred2});
             predicatesC1.insert(pred1);
             predicatesC2.insert(pred2);
         }
         while (getline(in, line) && line != "%")
         {
+            assert(line.find("summary") != string::npos);
             predicatesC1.insert(line);
         }
         while (getline(in, line) && line != "%")
         {
+            assert(line.find("summary") != string::npos);
             predicatesC2.insert(line);
         }
     }

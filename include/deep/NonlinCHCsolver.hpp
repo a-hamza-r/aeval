@@ -1125,6 +1125,32 @@ namespace ufo
 
   };
 
+
+
+class Equivalence {
+  private:
+    CHCs m_contract1; // contract1
+    CHCs m_contract2; // contract2
+    std::vector<std::pair<int, int>> m_targetPairs;
+    std::vector<std::pair<std::string, std::string>> m_trailingPredicatePairs;
+
+  public:
+    Equivalence(CHCs& contract1, CHCs& contract2)
+        : m_contract1(contract1), m_contract2(contract2) {
+        size_t sizeC1 = m_contract1.target_CHCs.size();
+        size_t sizeC2 = m_contract2.target_CHCs.size();
+        assert(sizeC1 == sizeC2);
+        m_targetPairs.reserve(sizeC1);
+        m_trailingPredicatePairs.reserve(sizeC1);
+        for (size_t i = 0; i < sizeC1; i++) {
+            m_targetPairs.emplace_back(m_contract1.target_CHCs[i], m_contract2.target_CHCs[i]);
+            m_trailingPredicatePairs.emplace_back(m_contract1.trailing_target_preds[i],
+                                                  m_contract2.trailing_target_preds[i]);
+        }
+    }
+};
+
+
 inline void check_equivalence(char* contract1, char* contract2,
                     const std::set<std::pair<std::string, std::string>>& equivalences,
                     std::set<std::string>& predicatesC1,
@@ -1141,14 +1167,19 @@ inline void check_equivalence(char* contract1, char* contract2,
     ruleManagerC1.parse(contract1, predicatesC1);
     //ruleManagerC1.print();
 
-    /*
     CHCs ruleManagerC2(m_efac, z3, "_v2_");
     ruleManagerC2.parse(contract2, predicatesC2);
+    //ruleManagerC2.print();
 
-    NonlinCHCsolver nonlin(ruleManager);
-    // nonlin.solveIncrementally();
-    nonlin.exploreTracesNonLinearTG(7);
-    */
+    ruleManagerC1.find_target_CHCs(equivalences, [](std::pair<std::string, std::string> p) {
+        return p.first;
+    });
+    ruleManagerC2.find_target_CHCs(equivalences, [](std::pair<std::string, std::string> p) {
+        return p.second;
+    });
+
+    auto equiv = Equivalence(ruleManagerC1, ruleManagerC2);
+
 }
 };
 
