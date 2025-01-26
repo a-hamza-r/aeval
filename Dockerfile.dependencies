@@ -1,0 +1,28 @@
+# Use an official Ubuntu base image
+FROM ubuntu:22.04
+
+# Set non-interactive mode to avoid prompts during package installation
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    cmake \
+    git \
+    libboost-all-dev \
+    libgmp-dev \
+    libpthread-stubs0-dev \
+    gcc \
+    g++ \
+    python3 \
+    python3-pip \
+    && apt-get clean
+
+# Create a symlink for python
+RUN ln -s /usr/bin/python3 /usr/bin/python
+
+# Set the working directory (mount the local code here)
+WORKDIR /code
+
+# Default command: run bash
+CMD ["/bin/bash"]
+
