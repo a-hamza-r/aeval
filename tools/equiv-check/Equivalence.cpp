@@ -151,8 +151,8 @@ int main (int argc, char ** argv)
     // getSignature(signature, getStrValue("--keys", NULL, argc, argv));
 
     // AH: (Possibly) temporarily hardcoding the predicates
-    std::set<std::pair<std::string, std::string>> equivalences;
-    std::set<std::string> predicatesC1, predicatesC2;
+    std::vector<std::pair<std::string, std::string>> equivalences;
+    std::vector<std::string> predicatesC1, predicatesC2;
     if (char* predicateFile = getStrValue(OPT_PREDS, nullptr, argc, argv))
     {
         ifstream in(predicateFile);
@@ -174,19 +174,19 @@ int main (int argc, char ** argv)
             std::string pred2 = line.substr(pos+1);
             assert(pred1.find("summary") != string::npos);
             assert(pred2.find("summary") != string::npos);
-            equivalences.insert({pred1, pred2});
-            predicatesC1.insert(pred1);
-            predicatesC2.insert(pred2);
+            equivalences.emplace_back(pred1, pred2);
+            predicatesC1.push_back(pred1);
+            predicatesC2.push_back(pred2);
         }
         while (getline(in, line) && line != "%")
         {
             assert(line.find("summary") != string::npos);
-            predicatesC1.insert(line);
+            predicatesC1.push_back(line);
         }
         while (getline(in, line) && line != "%")
         {
             assert(line.find("summary") != string::npos);
-            predicatesC2.insert(line);
+            predicatesC2.push_back(line);
         }
     }
     else

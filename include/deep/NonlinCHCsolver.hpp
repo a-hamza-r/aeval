@@ -1131,19 +1131,21 @@ class Equivalence {
   private:
     CHCs m_contract1; // contract1
     CHCs m_contract2; // contract2
-    std::vector<std::pair<int, int>> m_targetPairs;
+    std::vector<std::pair<std::string, std::string>> m_targetPredicatePairs;
+    std::vector<std::pair<int, int>> m_targetCHCPairs;
     std::vector<std::pair<std::string, std::string>> m_trailingPredicatePairs;
 
   public:
-    Equivalence(CHCs& contract1, CHCs& contract2)
-        : m_contract1(contract1), m_contract2(contract2) {
+    Equivalence(CHCs& contract1, CHCs& contract2,
+                std::vector<std::pair<std::string, std::string>> equivalences)
+        : m_contract1(contract1), m_contract2(contract2), m_targetPredicatePairs(equivalences) {
         size_t sizeC1 = m_contract1.target_CHCs.size();
         size_t sizeC2 = m_contract2.target_CHCs.size();
         assert(sizeC1 == sizeC2);
-        m_targetPairs.reserve(sizeC1);
+        m_targetCHCPairs.reserve(sizeC1);
         m_trailingPredicatePairs.reserve(sizeC1);
         for (size_t i = 0; i < sizeC1; i++) {
-            m_targetPairs.emplace_back(m_contract1.target_CHCs[i], m_contract2.target_CHCs[i]);
+            m_targetCHCPairs.emplace_back(m_contract1.target_CHCs[i], m_contract2.target_CHCs[i]);
             m_trailingPredicatePairs.emplace_back(m_contract1.trailing_target_preds[i],
                                                   m_contract2.trailing_target_preds[i]);
         }
@@ -1152,9 +1154,9 @@ class Equivalence {
 
 
 inline void check_equivalence(char* contract1, char* contract2,
-                    const std::set<std::pair<std::string, std::string>>& equivalences,
-                    std::set<std::string>& predicatesC1,
-                    std::set<std::string>& predicatesC2,
+                    const std::vector<std::pair<std::string, std::string>>& equivalences,
+                    std::vector<std::string>& predicatesC1,
+                    std::vector<std::string>& predicatesC2,
                     unsigned maxAttempts, unsigned to, bool freqs, bool aggp,
                     bool enableDataLearning, bool doElim,
                     bool doDisj, int doProp, bool dAllMbp, bool dAddProp, bool dAddDat,
@@ -1163,12 +1165,12 @@ inline void check_equivalence(char* contract1, char* contract2,
     ExprFactory m_efac;
     EZ3 z3(m_efac);
 
-    CHCs ruleManagerC1(m_efac, z3, "_v1_");
-    ruleManagerC1.parse(contract1, predicatesC1);
+    CHCs ruleManagerC1(m_efac, z3, "_v1_", predicatesC1);
+    ruleManagerC1.parse(contract1);
     //ruleManagerC1.print();
 
-    CHCs ruleManagerC2(m_efac, z3, "_v2_");
-    ruleManagerC2.parse(contract2, predicatesC2);
+    CHCs ruleManagerC2(m_efac, z3, "_v2_", predicatesC2);
+    ruleManagerC2.parse(contract2);
     //ruleManagerC2.print();
 
     ruleManagerC1.find_target_CHCs(equivalences, [](std::pair<std::string, std::string> p) {
@@ -1178,7 +1180,7 @@ inline void check_equivalence(char* contract1, char* contract2,
         return p.second;
     });
 
-    auto equiv = Equivalence(ruleManagerC1, ruleManagerC2);
+    auto equiv = Equivalence(ruleManagerC1, ruleManagerC2, equivalences);
 
 }
 };

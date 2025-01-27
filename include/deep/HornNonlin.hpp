@@ -99,6 +99,7 @@ private:
     ExprVector constructors;
     std::string infile;
     // Equivalence Checks related
+    std::vector<std::string> target_preds; // predicates that are actual target for equivalence check
     std::vector<int> target_CHCs; // CHCs that are actual target for equivalence check
     std::vector<std::string> trailing_target_preds; // predicates that are used to define the
                                                     // control-flow of the functions
@@ -106,7 +107,8 @@ private:
       //ToDo: Remove or recheck later on; move from Horn.hpp
     int debug;
 
-    CHCs(ExprFactory &efac, EZ3 &z3, std::string name) : m_efac(efac), m_z3(z3), varname(name) {};
+    CHCs(ExprFactory &efac, EZ3 &z3, std::string name, std::vector<std::string> preds)
+        : m_efac(efac), m_z3(z3), varname(name), target_preds(preds) {}
 
     bool isFapp (Expr e)
     {
@@ -344,7 +346,7 @@ private:
     using predicate_pair = std::pair<std::string, std::string>;
     using filter_function = std::function<std::string(std::pair<std::string, std::string>)>;
 
-    void find_target_CHCs(const std::set<predicate_pair>& target_pairs, filter_function filter) {
+    void find_target_CHCs(const std::vector<predicate_pair>& target_pairs, filter_function filter) {
         target_CHCs.reserve(target_pairs.size());
         trailing_target_preds.reserve(target_pairs.size());
         for (auto &pair : target_pairs) {
@@ -365,7 +367,7 @@ private:
     }
 
 
-    void parse(std::string smt /*, std::string contract*/, std::set<std::string>& predicates)
+    void parse(std::string smt /*, std::string contract*/)
     {
       // GF: this entry part is different from the original implementation
       // (since the fixpoint format does not support ADTs)
@@ -615,7 +617,7 @@ private:
 
         std::set<std::string> processed;
         std::set<int> toKeep;
-        std::vector<std::string> worklist(predicates.begin(), predicates.end());
+        std::vector<std::string> worklist = target_preds;
         for (size_t i = 0; i < worklist.size(); i++) {
             std::string p = worklist[i];
             if (processed.find(p) != processed.end()) continue;
