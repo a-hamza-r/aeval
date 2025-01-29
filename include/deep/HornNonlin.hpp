@@ -75,12 +75,6 @@ namespace ufo
   };
 
 
-struct call {
-    int from_predicate; // index of the predicate that calls the other predicate
-    int to_predicate; // index of the predicate that is called
-};
-
-
 class CHCs
 {
 private:
@@ -110,7 +104,48 @@ private:
     std::vector<int> CHCs_for_funcs; // CHCs containing preds_for_funcs as head
     std::vector<std::string> trailing_preds; // predicates that are used to define the
                                                     // control-flow of the functions
-    std::vector<call> calls; // calls represented using paths between predicates
+
+
+    struct call_graph {
+        // a map from caller to callees
+        std::unordered_map<int, std::vector<int>> m_caller_to_callee;
+        std::vector<int> m_topological_order;
+
+        void add(int from_predicate, int to_predicate) {
+            m_caller_to_callee[from_predicate].push_back(to_predicate);
+        }
+
+        // topological sort
+        void sort() {
+            std::unordered_set<int> visited;
+            std::function<void(int)> dfs = [&](int predicate) {
+                if (visited.find(predicate) != visited.end()) return;
+                visited.insert(predicate);
+                for (auto &callee : m_caller_to_callee[predicate]) {
+                    dfs(callee);
+                }
+                m_topological_order.push_back(predicate);
+            };
+            for (auto &caller_callee : m_caller_to_callee) {
+                dfs(caller_callee.first);
+            }
+        }
+
+        std::vector<int> get_topological_order() {
+            return m_topological_order;
+        }
+
+        void print(const std::vector<std::string>& preds) {
+            for (auto &caller_callee : m_caller_to_callee) {
+                for (auto &callee : caller_callee.second) {
+                    std::cout << preds[caller_callee.first] << " calls ";
+                    std::cout << preds[callee] << "\n";
+                }
+            }
+        }
+    };
+    call_graph calls;
+
 
       //ToDo: Remove or recheck later on; move from Horn.hpp
     int debug;
@@ -385,13 +420,14 @@ private:
                     std::cout << "Cannot check equivalence\n";
                     exit(0);
                 } else if (found_trace1) {
-                    calls.push_back({i, j});
+                    calls.add(i, j);
                 }
                 else if (found_trace2) {
-                    calls.push_back({j, i});
+                    calls.add(j, i);
                 }
             }
         }
+        //calls.print(preds_for_funcs);
     }
 
 
