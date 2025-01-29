@@ -721,9 +721,6 @@ private:
         }
         chcs = std::move(new_chcs);
         computeIncms();
-        for (auto &p : pred_to_expr) {
-            std::cout << "Predicate: " << p.first << " -> " << p.second << "\n";
-        }
 
         // fill in the data structures required to compare predicates (representing functions)
         CHCs_for_funcs.reserve(preds_for_funcs.size());

@@ -1173,11 +1173,11 @@ inline void check_equivalence(char* contract1, char* contract2,
 
     CHCs ruleManagerC1(m_efac, z3, "_v1_", std::move(predicatesC1));
     ruleManagerC1.parse(contract1);
-    ruleManagerC1.print();
+    //ruleManagerC1.print();
 
     CHCs ruleManagerC2(m_efac, z3, "_v2_", std::move(predicatesC2));
     ruleManagerC2.parse(contract2);
-    ruleManagerC2.print();
+    //ruleManagerC2.print();
 
     auto equiv = Equivalence(ruleManagerC1, ruleManagerC2, equivalences);
 
