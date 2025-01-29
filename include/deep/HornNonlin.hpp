@@ -104,6 +104,7 @@ private:
     std::vector<int> CHCs_for_funcs; // CHCs containing preds_for_funcs as head
     std::vector<std::string> trailing_preds; // predicates that are used to define the
                                                     // control-flow of the functions
+    std::unordered_map<std::string, Expr> pred_to_expr;
 
 
     struct call_graph {
@@ -697,7 +698,8 @@ private:
             processed.insert(p);
             for (auto &d : decls) {
                 if (lexical_cast<std::string>(d->left()).compare(p) == 0) {
-                    auto incms_for_p = incms[d->left()];
+                    pred_to_expr[p] = d->left();
+                    auto incms_for_p = incms[pred_to_expr[p]];
                     toKeep.insert(incms_for_p.begin(), incms_for_p.end());
                     for (auto &incm : incms_for_p) {
                         for (auto &src : chcs[incm].srcRelations) {
@@ -717,22 +719,23 @@ private:
         }
         chcs = std::move(new_chcs);
         computeIncms();
+        for (auto &p : pred_to_expr) {
+            std::cout << "Predicate: " << p.first << " -> " << p.second << "\n";
+        }
 
         // fill in the data structures required to compare predicates (representing functions)
         CHCs_for_funcs.reserve(preds_for_funcs.size());
         trailing_preds.reserve(preds_for_funcs.size());
         for (auto &pred : preds_for_funcs) {
-            for (int i = 0; i < chcs.size(); i++) {
-                if (lexical_cast<std::string>(chcs[i].dstRelation).compare(pred) == 0) {
-                    CHCs_for_funcs.push_back(i);
-                    for (auto &src : chcs[i].srcRelations) {
-                        std::string src_str = lexical_cast<std::string>(src);
-                        if (src_str.find("summary") != std::string::npos) {
-                            trailing_preds.push_back(src_str);
-                            break;
-                        }
-                    }
-                    break; // assuming only one target per predicate
+            Expr e = pred_to_expr[pred];
+            auto& chcs_for_pred = incms[e];
+            assert(chcs_for_pred.size() == 1); // only 1 CHC for each predicate representing a func
+            CHCs_for_funcs.push_back(chcs_for_pred[0]);
+            for (auto &src : chcs[chcs_for_pred[0]].srcRelations) {
+                std::string src_str = lexical_cast<std::string>(src);
+                if (src_str.find("summary") != std::string::npos) {
+                    trailing_preds.push_back(src_str);
+                    break;
                 }
             }
         }
