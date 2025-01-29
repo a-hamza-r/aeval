@@ -670,7 +670,7 @@ private:
             it1 = hr.locVars.erase(it1);
           else ++it1;
         }
-        outs() << "Chc: " << hr.body << " => " << hr.head << "\n";
+        // outs() << "Chc: " << hr.body << " => " << hr.head << "\n";
       }
 
       for (int i = 0; i < chcs.size(); i++) {
