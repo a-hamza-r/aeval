@@ -74,6 +74,13 @@ namespace ufo
     }
   };
 
+
+struct call {
+    int from_predicate; // index of the predicate that calls the other predicate
+    int to_predicate; // index of the predicate that is called
+};
+
+
 class CHCs
 {
 private:
@@ -103,6 +110,7 @@ private:
     std::vector<int> CHCs_for_funcs; // CHCs containing preds_for_funcs as head
     std::vector<std::string> trailing_preds; // predicates that are used to define the
                                                     // control-flow of the functions
+    std::vector<call> calls; // calls represented using paths between predicates
 
       //ToDo: Remove or recheck later on; move from Horn.hpp
     int debug;
@@ -344,9 +352,47 @@ private:
     }
 
 
+    // paths between two predicates represent a function call
+    bool chc_trace_between(int start, std::string callee) {
+        HornRuleExt& hr = chcs[start];
+        Expr dst = hr.dstRelation;
+        if (hr.isFact) return false;
+        for (auto &src : hr.srcRelations) {
+            std::string src_str = lexical_cast<std::string>(src);
+            if (src_str.compare(callee) == 0) return true;
+        }
+        for (auto &src : hr.srcRelations) {
+            for (auto &incm : incms[src]) {
+                if (chc_trace_between(incm, callee)) return true;
+            }
+        }
+        return false;
+    }
+
+
+    void compute_call_graph() {
+        if (preds_for_funcs.size() < 2) return;
+        for (int i = 0; i < preds_for_funcs.size(); i++) {
+            for (int j = i+1; j < preds_for_funcs.size(); j++) {
+                // trailing predicates define the control-flow of the functions,
+                // however, we will start with the actual CHCs since we know the CHC numbers
+                // for them, then trace back (trailing predicates should be on the path)
+                bool found_trace1 = chc_trace_between(CHCs_for_funcs[i], trailing_preds[j]);
+                bool found_trace2 = chc_trace_between(CHCs_for_funcs[j], trailing_preds[i]);
+                if (found_trace1 && found_trace2) {
+                    std::cout << "Both " << trailing_preds[i] << " and "
+                        << trailing_preds[j] << " call each other\n";
+                    std::cout << "Cannot check equivalence\n";
+                    exit(0);
+                } else if (found_trace1) {
+                    calls.push_back({i, j});
+                }
+                else if (found_trace2) {
+                    calls.push_back({j, i});
                 }
             }
         }
+    }
 
 
     int find_index_for_predicate(std::string pred) {
@@ -654,6 +700,8 @@ private:
                 }
             }
         }
+
+        compute_call_graph();
 
     /*
       index_fact_chc = -1;
