@@ -229,7 +229,8 @@ int main (int argc, char ** argv)
     if (d_m || d_p || d_d || d_s) do_disj = true;
     if (do_disj) do_dl = true;
 
-    check_equivalence(argv[argc-2], argv[argc-1], equivalences, predicatesC1, predicatesC2,
+    check_equivalence(argv[argc-2], argv[argc-1], equivalences, std::move(predicatesC1),
+                      std::move(predicatesC2),
                       /*signature, */max_attempts, to, densecode, aggressivepruning, do_dl, do_elim,
                       do_disj, do_prop, d_m, d_p, d_d,  d_s, to_skip, invMode, lookahead, lb, lmax,
                       prio, debug);

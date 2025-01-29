@@ -99,16 +99,16 @@ private:
     ExprVector constructors;
     std::string infile;
     // Equivalence Checks related
-    std::vector<std::string> target_preds; // predicates that are actual target for equivalence check
-    std::vector<int> target_CHCs; // CHCs that are actual target for equivalence check
-    std::vector<std::string> trailing_target_preds; // predicates that are used to define the
+    std::vector<std::string> preds_for_funcs; // predicates representing functions
+    std::vector<int> CHCs_for_funcs; // CHCs containing preds_for_funcs as head
+    std::vector<std::string> trailing_preds; // predicates that are used to define the
                                                     // control-flow of the functions
 
       //ToDo: Remove or recheck later on; move from Horn.hpp
     int debug;
 
     CHCs(ExprFactory &efac, EZ3 &z3, std::string name, std::vector<std::string> preds)
-        : m_efac(efac), m_z3(z3), varname(name), target_preds(preds) {}
+        : m_efac(efac), m_z3(z3), varname(name), preds_for_funcs(std::move(preds)) {}
 
     bool isFapp (Expr e)
     {
@@ -343,27 +343,18 @@ private:
         else prune();
     }
 
-    using predicate_pair = std::pair<std::string, std::string>;
-    using filter_function = std::function<std::string(std::pair<std::string, std::string>)>;
 
-    void find_target_CHCs(const std::vector<predicate_pair>& target_pairs, filter_function filter) {
-        target_CHCs.reserve(target_pairs.size());
-        trailing_target_preds.reserve(target_pairs.size());
-        for (auto &pair : target_pairs) {
-            std::string predicate = filter(pair);
-            for (int i = 0; i < chcs.size(); i++) {
-                if (lexical_cast<std::string>(chcs[i].dstRelation).compare(predicate) == 0) {
-                    target_CHCs.push_back(i);
-                    for (auto &src : chcs[i].srcRelations) {
-                        std::string src_str = lexical_cast<std::string>(src);
-                        if (src_str.find("summary") != std::string::npos) {
-                            trailing_target_preds.push_back(src_str);
-                        }
-                    }
-                    break; // assuming only one target per predicate
                 }
             }
         }
+
+
+    int find_index_for_predicate(std::string pred) {
+        auto it = std::find(preds_for_funcs.begin(), preds_for_funcs.end(), pred);
+        if (it != preds_for_funcs.end()) {
+            return std::distance(preds_for_funcs.begin(), it);
+        }
+        return -1;
     }
 
 
@@ -617,7 +608,7 @@ private:
 
         std::set<std::string> processed;
         std::set<int> toKeep;
-        std::vector<std::string> worklist = target_preds;
+        std::vector<std::string> worklist = preds_for_funcs;
         for (size_t i = 0; i < worklist.size(); i++) {
             std::string p = worklist[i];
             if (processed.find(p) != processed.end()) continue;
@@ -644,6 +635,25 @@ private:
         }
         chcs = std::move(new_chcs);
         computeIncms();
+
+        // fill in the data structures required to compare predicates (representing functions)
+        CHCs_for_funcs.reserve(preds_for_funcs.size());
+        trailing_preds.reserve(preds_for_funcs.size());
+        for (auto &pred : preds_for_funcs) {
+            for (int i = 0; i < chcs.size(); i++) {
+                if (lexical_cast<std::string>(chcs[i].dstRelation).compare(pred) == 0) {
+                    CHCs_for_funcs.push_back(i);
+                    for (auto &src : chcs[i].srcRelations) {
+                        std::string src_str = lexical_cast<std::string>(src);
+                        if (src_str.find("summary") != std::string::npos) {
+                            trailing_preds.push_back(src_str);
+                            break;
+                        }
+                    }
+                    break; // assuming only one target per predicate
+                }
+            }
+        }
 
     /*
       index_fact_chc = -1;

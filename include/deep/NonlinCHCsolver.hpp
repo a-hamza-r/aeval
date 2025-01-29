@@ -1131,23 +1131,21 @@ class Equivalence {
   private:
     CHCs m_contract1; // contract1
     CHCs m_contract2; // contract2
-    std::vector<std::pair<std::string, std::string>> m_targetPredicatePairs;
-    std::vector<std::pair<int, int>> m_targetCHCPairs;
-    std::vector<std::pair<std::string, std::string>> m_trailingPredicatePairs;
+    std::vector<std::pair<int, int>> m_targetPredicatePairs;
 
   public:
     Equivalence(CHCs& contract1, CHCs& contract2,
-                std::vector<std::pair<std::string, std::string>> equivalences)
-        : m_contract1(contract1), m_contract2(contract2), m_targetPredicatePairs(equivalences) {
-        size_t sizeC1 = m_contract1.target_CHCs.size();
-        size_t sizeC2 = m_contract2.target_CHCs.size();
-        assert(sizeC1 == sizeC2);
-        m_targetCHCPairs.reserve(sizeC1);
-        m_trailingPredicatePairs.reserve(sizeC1);
-        for (size_t i = 0; i < sizeC1; i++) {
-            m_targetCHCPairs.emplace_back(m_contract1.target_CHCs[i], m_contract2.target_CHCs[i]);
-            m_trailingPredicatePairs.emplace_back(m_contract1.trailing_target_preds[i],
-                                                  m_contract2.trailing_target_preds[i]);
+                const std::vector<std::pair<std::string, std::string>>& equivalences)
+        : m_contract1(contract1), m_contract2(contract2) {
+        m_targetPredicatePairs.reserve(equivalences.size());
+        for (auto &pair : equivalences) {
+            std::string pred1 = pair.first;
+            std::string pred2 = pair.second;
+            int pos1 = m_contract1.find_index_for_predicate(pred1);
+            int pos2 = m_contract2.find_index_for_predicate(pred2);
+            assert(pos1 != -1 && pos2 != -1);
+            m_targetPredicatePairs.emplace_back(pos1, pos2);
+        }
         }
     }
 };
@@ -1155,8 +1153,8 @@ class Equivalence {
 
 inline void check_equivalence(char* contract1, char* contract2,
                     const std::vector<std::pair<std::string, std::string>>& equivalences,
-                    std::vector<std::string>& predicatesC1,
-                    std::vector<std::string>& predicatesC2,
+                    std::vector<std::string>&& predicatesC1,
+                    std::vector<std::string>&& predicatesC2,
                     unsigned maxAttempts, unsigned to, bool freqs, bool aggp,
                     bool enableDataLearning, bool doElim,
                     bool doDisj, int doProp, bool dAllMbp, bool dAddProp, bool dAddDat,
@@ -1165,20 +1163,13 @@ inline void check_equivalence(char* contract1, char* contract2,
     ExprFactory m_efac;
     EZ3 z3(m_efac);
 
-    CHCs ruleManagerC1(m_efac, z3, "_v1_", predicatesC1);
+    CHCs ruleManagerC1(m_efac, z3, "_v1_", std::move(predicatesC1));
     ruleManagerC1.parse(contract1);
-    //ruleManagerC1.print();
+    ruleManagerC1.print();
 
-    CHCs ruleManagerC2(m_efac, z3, "_v2_", predicatesC2);
+    CHCs ruleManagerC2(m_efac, z3, "_v2_", std::move(predicatesC2));
     ruleManagerC2.parse(contract2);
-    //ruleManagerC2.print();
-
-    ruleManagerC1.find_target_CHCs(equivalences, [](std::pair<std::string, std::string> p) {
-        return p.first;
-    });
-    ruleManagerC2.find_target_CHCs(equivalences, [](std::pair<std::string, std::string> p) {
-        return p.second;
-    });
+    ruleManagerC2.print();
 
     auto equiv = Equivalence(ruleManagerC1, ruleManagerC2, equivalences);
 
