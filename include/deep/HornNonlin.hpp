@@ -105,6 +105,7 @@ private:
     std::vector<std::string> trailing_preds; // predicates that are used to define the
                                                     // control-flow of the functions
     std::unordered_map<std::string, Expr> pred_to_expr;
+    std::vector<std::unordered_set<int>> pred_to_chcs;
 
 
     struct call_graph {
@@ -428,6 +429,7 @@ private:
                 }
             }
         }
+        calls.sort();
         //calls.print(preds_for_funcs);
     }
 
@@ -742,6 +744,35 @@ private:
 
         compute_call_graph();
 
+        std::set<int> processed_CHCs;
+        pred_to_chcs.resize(preds_for_funcs.size());
+        for (auto i : calls.get_topological_order()) {
+            std::vector<int> worklist = {CHCs_for_funcs[i]};
+            for (int j = 0; j < worklist.size(); j++) {
+                int chc_num = worklist[j];
+                if (processed_CHCs.find(chc_num) != processed_CHCs.end()) continue;
+                processed_CHCs.insert(chc_num);
+                pred_to_chcs[i].insert(chc_num);
+                auto &chc = chcs[chc_num];
+                for (auto &src : chc.srcRelations) {
+                    auto& incms_for_src = incms[src];
+                    worklist.insert(worklist.end(), incms_for_src.begin(), incms_for_src.end());
+                }
+            }
+            // AH: This is a hack to make sure CHCs are grouped correctly; revisit later
+            for (int j = 0; j < chcs.size(); j++) {
+                if (processed_CHCs.find(j) != processed_CHCs.end()) continue;
+                if (chcs[j].srcRelations.size() == 1) {
+                    std::string src_str = lexical_cast<std::string>(chcs[j].srcRelations[0]);
+                    if (src_str.compare(trailing_preds[i]) == 0) {
+                        pred_to_chcs[i].insert(j);
+                        processed_CHCs.insert(j);
+                    }
+                }
+            }
+        }
+
+        print_grouped_chcs();
     /*
       index_fact_chc = -1;
       // find: index_cycle_chc
@@ -991,6 +1022,17 @@ private:
       }
       return conjoin(newCnjs, m_efac);
     }
+
+    void print_grouped_chcs(bool full = false) {
+        for (int i = 0; i < preds_for_funcs.size(); i++) {
+            std::cout << "Function: " << preds_for_funcs[i] << "\n";
+            for (auto &chc_num : pred_to_chcs[i]) {
+                print(chcs[chc_num], full);
+            }
+            std::cout << "\n\n";
+        }
+    }
+
 
     void print()
     {
