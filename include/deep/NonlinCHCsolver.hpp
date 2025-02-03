@@ -1152,8 +1152,8 @@ class Equivalence {
         for (int i = 0; i < m_targetPredicatePairs.size(); i++) {
             int pos1 = m_targetPredicatePairs[i].first;
             int pos2 = m_targetPredicatePairs[i].second;
-            std::cout << "Checking equivalence for " << m_contract1.preds_for_funcs[pos1] << " and " << m_contract2.preds_for_funcs[pos2] << "." << std::endl;
-            std::cout << "Corresponding trailing predicates: " << m_contract1.trailing_preds[pos1] << " and " << m_contract2.trailing_preds[pos2] << "." << std::endl;
+            std::cout << "Checking equivalence for " << m_contract1.fpreds_names[pos1] << " and " << m_contract2.fpreds_names[pos2] << "." << std::endl;
+            std::cout << "Corresponding trailing predicates: " << m_contract1.fpreds_trailing_preds[pos1] << " and " << m_contract2.fpreds_trailing_preds[pos2] << "." << std::endl;
         }
     }
 };

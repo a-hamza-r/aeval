@@ -80,7 +80,8 @@ class InliningCandidates {
     std::vector<HornRuleExt> &chcs;
 
 public:
-    InliningCandidates(std::vector<HornRuleExt> &chcs, std::unordered_set<int> &chc_nums, int skip)
+    InliningCandidates(std::vector<HornRuleExt> &chcs, const std::unordered_set<int> &chc_nums,
+                       int skip)
         : chcs(chcs) {
         for (auto &chc_num : chc_nums) {
             auto &chc = chcs[chc_num];
@@ -157,12 +158,21 @@ private:
     ExprVector constructors;
     std::string infile;
     // Equivalence Checks related
-    std::vector<std::string> preds_for_funcs; // predicates representing functions
-    std::vector<int> CHCs_for_funcs; // CHCs containing preds_for_funcs as head
-    std::vector<std::string> trailing_preds; // predicates that are used to define the
+
+    // Below data-structures store data for each predicate that represents a function
+    // e.g., a predicate like "summary_foo" represents a function "foo", we call these
+    // function predicates (or fpreds)
+    // Indexes in each vector correspond to the index of the function predicate in fpreds_names
+    std::vector<std::string> fpreds_names; // names for function predicates
+    std::vector<int> fpreds_sinks; // CHC containing function predicates as head (sinks)
+    std::vector<int> fpreds_sources; // for each function predicate, the CHC that is fact (source)
+    std::vector<std::string> fpreds_trailing_preds; // predicates that are used to define the
                                                     // control-flow of the functions
-    std::unordered_map<std::string, Expr> pred_to_expr;
-    std::vector<std::unordered_set<int>> pred_to_chcs;
+    std::vector<std::unordered_set<int>> fpreds_chcs; // all CHCs that define the functionality of
+                                                      // a function represented by a func-predicate
+
+    std::unordered_map<std::string, Expr> fpreds_to_expr; // function predicate to Expr mapping
+                                                          // (only used for ease of access)
 
 
     struct call_graph {
@@ -205,12 +215,11 @@ private:
     };
     call_graph calls;
 
-
       //ToDo: Remove or recheck later on; move from Horn.hpp
     int debug;
 
     CHCs(ExprFactory &efac, EZ3 &z3, std::string name, std::vector<std::string> preds)
-        : m_efac(efac), m_z3(z3), varname(name), preds_for_funcs(std::move(preds)) {}
+        : m_efac(efac), m_z3(z3), varname(name), fpreds_names(std::move(preds)) {}
 
     bool isFapp (Expr e)
     {
@@ -465,17 +474,17 @@ private:
 
 
     void compute_call_graph() {
-        if (preds_for_funcs.size() < 2) return;
-        for (int i = 0; i < preds_for_funcs.size(); i++) {
-            for (int j = i+1; j < preds_for_funcs.size(); j++) {
+        if (fpreds_names.size() < 2) return;
+        for (int i = 0; i < fpreds_names.size(); i++) {
+            for (int j = i+1; j < fpreds_names.size(); j++) {
                 // trailing predicates define the control-flow of the functions,
                 // however, we will start with the actual CHCs since we know the CHC numbers
                 // for them, then trace back (trailing predicates should be on the path)
-                bool found_trace1 = chc_trace_between(CHCs_for_funcs[i], trailing_preds[j]);
-                bool found_trace2 = chc_trace_between(CHCs_for_funcs[j], trailing_preds[i]);
+                bool found_trace1 = chc_trace_between(fpreds_sinks[i], fpreds_trailing_preds[j]);
+                bool found_trace2 = chc_trace_between(fpreds_sinks[j], fpreds_trailing_preds[i]);
                 if (found_trace1 && found_trace2) {
-                    std::cout << "Both " << trailing_preds[i] << " and "
-                        << trailing_preds[j] << " call each other\n";
+                    std::cout << "Both " << fpreds_trailing_preds[i] << " and "
+                        << fpreds_trailing_preds[j] << " call each other\n";
                     std::cout << "Cannot check equivalence\n";
                     exit(0);
                 } else if (found_trace1) {
@@ -487,35 +496,23 @@ private:
             }
         }
         calls.sort();
-        //calls.print(preds_for_funcs);
+        //calls.print(fpreds_names);
     }
 
 
-    int find_index_for_predicate(std::string pred) {
-        auto it = std::find(preds_for_funcs.begin(), preds_for_funcs.end(), pred);
-        if (it != preds_for_funcs.end()) {
-            return std::distance(preds_for_funcs.begin(), it);
+    int find_index_for_predicate(std::string fpred_name) {
+        auto it = std::find(fpreds_names.begin(), fpreds_names.end(), fpred_name);
+        if (it != fpreds_names.end()) {
+            return std::distance(fpreds_names.begin(), it);
         }
         return -1;
     }
 
 
     void inlining_single_function(int index) {
-        auto &chcs_for_func = pred_to_chcs[index];
-        int actual_fact = -1;
-        // Identify fact
-        for (auto &i : chcs_for_func) {
-            if (chcs[i].isFact && i != CHCs_for_funcs[index]) {
-                actual_fact = i;
-                break;
-            }
-        }
-        if (actual_fact == -1) {
-            std::cout << "No fact found for " << preds_for_funcs[index] << "\n";
-            return;
-        }
-        InliningCandidates inline_chcs(chcs, chcs_for_func, actual_fact);
-        inline_chcs.insert(-1, actual_fact);
+        InliningCandidates inline_chcs(chcs, fpreds_chcs[index], fpreds_sources[index]);
+        // prioritize the source
+        inline_chcs.insert(-1, fpreds_sources[index]);
         while (!inline_chcs.empty()) {
             auto entry = inline_chcs.pop();
             auto &chc = chcs[entry.second];
@@ -780,15 +777,15 @@ private:
 
         std::set<std::string> processed;
         std::set<int> toKeep;
-        std::vector<std::string> worklist = preds_for_funcs;
+        std::vector<std::string> worklist = fpreds_names;
         for (size_t i = 0; i < worklist.size(); i++) {
             std::string p = worklist[i];
             if (processed.find(p) != processed.end()) continue;
             processed.insert(p);
             for (auto &d : decls) {
                 if (lexical_cast<std::string>(d->left()).compare(p) == 0) {
-                    pred_to_expr[p] = d->left();
-                    auto incms_for_p = incms[pred_to_expr[p]];
+                    fpreds_to_expr[p] = d->left();
+                    auto incms_for_p = incms[fpreds_to_expr[p]];
                     toKeep.insert(incms_for_p.begin(), incms_for_p.end());
                     for (auto &incm : incms_for_p) {
                         for (auto &src : chcs[incm].srcRelations) {
@@ -810,17 +807,17 @@ private:
         computeIncms();
 
         // fill in the data structures required to compare predicates (representing functions)
-        CHCs_for_funcs.reserve(preds_for_funcs.size());
-        trailing_preds.reserve(preds_for_funcs.size());
-        for (auto &pred : preds_for_funcs) {
-            Expr e = pred_to_expr[pred];
-            auto& chcs_for_pred = incms[e];
-            assert(chcs_for_pred.size() == 1); // only 1 CHC for each predicate representing a func
-            CHCs_for_funcs.push_back(chcs_for_pred[0]);
-            for (auto &src : chcs[chcs_for_pred[0]].srcRelations) {
+        fpreds_sinks.reserve(fpreds_names.size());
+        fpreds_trailing_preds.reserve(fpreds_names.size());
+        for (auto &pred : fpreds_names) {
+            Expr e = fpreds_to_expr[pred];
+            auto& all_sinks = incms[e];
+            assert(all_sinks.size() == 1); // only one CHC (sink) for a function predicate
+            fpreds_sinks.push_back(all_sinks[0]);
+            for (auto &src : chcs[all_sinks[0]].srcRelations) {
                 std::string src_str = lexical_cast<std::string>(src);
                 if (src_str.find("summary") != std::string::npos) {
-                    trailing_preds.push_back(src_str);
+                    fpreds_trailing_preds.push_back(src_str);
                     break;
                 }
             }
@@ -829,18 +826,32 @@ private:
         compute_call_graph();
 
         std::set<int> processed_CHCs;
-        pred_to_chcs.resize(preds_for_funcs.size());
+        fpreds_chcs.resize(fpreds_names.size());
+        fpreds_sources.resize(fpreds_names.size());
         for (auto i : calls.get_topological_order()) {
-            std::vector<int> worklist = {CHCs_for_funcs[i]};
+            std::vector<int> worklist = {fpreds_sinks[i]};
             for (int j = 0; j < worklist.size(); j++) {
                 int chc_num = worklist[j];
                 if (processed_CHCs.find(chc_num) != processed_CHCs.end()) continue;
                 processed_CHCs.insert(chc_num);
-                pred_to_chcs[i].insert(chc_num);
+                fpreds_chcs[i].insert(chc_num);
                 auto &chc = chcs[chc_num];
-                for (auto &src : chc.srcRelations) {
-                    auto& incms_for_src = incms[src];
-                    worklist.insert(worklist.end(), incms_for_src.begin(), incms_for_src.end());
+                // identifying source (fact) for the function predicate
+                if (chc.isFact) {
+                    auto &dst_source = chc.dstRelation;
+                    ExprVector& srcs_sink = chcs[fpreds_sinks[i]].srcRelations;
+                    // we are only interested in the source that is not one of the src relations
+                    // in the sink of the function predicate
+                    if (find(srcs_sink.begin(), srcs_sink.end(), dst_source) == srcs_sink.end()) {
+                        fpreds_sources[i] = chc_num;
+                    }
+                }
+                else {
+                    // recursively add all the CHCs that are sources for the current CHC
+                    for (auto &src : chc.srcRelations) {
+                        auto& incms_for_src = incms[src];
+                        worklist.insert(worklist.end(), incms_for_src.begin(), incms_for_src.end());
+                    }
                 }
             }
             // AH: This is a hack to make sure CHCs are grouped correctly; revisit later
@@ -848,8 +859,8 @@ private:
                 if (processed_CHCs.find(j) != processed_CHCs.end()) continue;
                 if (chcs[j].srcRelations.size() == 1) {
                     std::string src_str = lexical_cast<std::string>(chcs[j].srcRelations[0]);
-                    if (src_str.compare(trailing_preds[i]) == 0) {
-                        pred_to_chcs[i].insert(j);
+                    if (src_str.compare(fpreds_trailing_preds[i]) == 0) {
+                        fpreds_chcs[i].insert(j);
                         processed_CHCs.insert(j);
                     }
                 }
@@ -1108,9 +1119,9 @@ private:
     }
 
     void print_grouped_chcs(bool full = false) {
-        for (int i = 0; i < preds_for_funcs.size(); i++) {
-            std::cout << "Function: " << preds_for_funcs[i] << "\n";
-            for (auto &chc_num : pred_to_chcs[i]) {
+        for (int i = 0; i < fpreds_names.size(); i++) {
+            std::cout << "Function: " << fpreds_names[i] << "\n";
+            for (auto &chc_num : fpreds_chcs[i]) {
                 print(chcs[chc_num], full);
             }
             std::cout << "\n\n";
