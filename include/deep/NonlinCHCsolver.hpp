@@ -1179,6 +1179,9 @@ inline void check_equivalence(char* contract1, char* contract2,
     ruleManagerC2.parse(contract2);
     //ruleManagerC2.print();
 
+    ruleManagerC1.inlining();
+    ruleManagerC2.inlining();
+
     auto equiv = Equivalence(ruleManagerC1, ruleManagerC2, equivalences);
 
 }

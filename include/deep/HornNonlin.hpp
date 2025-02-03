@@ -75,6 +75,63 @@ namespace ufo
   };
 
 
+class InliningCandidates {
+    std::set<std::pair<int, int>> m_queue;
+    std::vector<HornRuleExt> &chcs;
+
+public:
+    InliningCandidates(std::vector<HornRuleExt> &chcs, std::unordered_set<int> &chc_nums, int skip)
+        : chcs(chcs) {
+        for (auto &chc_num : chc_nums) {
+            auto &chc = chcs[chc_num];
+            if (skip != chc_num) {
+                insert(chc.srcRelations.size(), chc_num);
+            }
+        }
+    }
+
+    void insert(int arity, int index) {
+        m_queue.insert(std::make_pair(arity, index));
+    }
+
+    std::pair<int, int> pop() {
+        if (m_queue.empty()) throw std::runtime_error("Queue is empty");
+        auto it = m_queue.begin();
+        std::pair<int, int> res = *it;
+        m_queue.erase(it);
+
+        update_queue(res.second);
+
+        return res;
+    }
+
+    size_t size() {
+        return m_queue.size();
+    }
+
+    bool empty() {
+        return m_queue.empty();
+    }
+
+    void update_queue(int index) {
+        std::set<std::pair<int, int>> new_queue;
+        auto &chc_processed = chcs[index];
+        for (auto &p : m_queue) {
+            auto chc_num = p.second;
+            auto &chc = chcs[chc_num];
+            auto &srcs = chc.srcRelations;
+            if (find(srcs.begin(), srcs.end(), chc_processed.dstRelation) != srcs.end()) {
+                new_queue.insert({p.first - 1, p.second});
+            }
+            else {
+                new_queue.insert(p);
+            }
+        }
+        m_queue = std::move(new_queue);
+    }
+};
+
+
 class CHCs
 {
 private:
@@ -440,6 +497,36 @@ private:
             return std::distance(preds_for_funcs.begin(), it);
         }
         return -1;
+    }
+
+
+    void inlining_single_function(int index) {
+        auto &chcs_for_func = pred_to_chcs[index];
+        int actual_fact = -1;
+        // Identify fact
+        for (auto &i : chcs_for_func) {
+            if (chcs[i].isFact && i != CHCs_for_funcs[index]) {
+                actual_fact = i;
+                break;
+            }
+        }
+        if (actual_fact == -1) {
+            std::cout << "No fact found for " << preds_for_funcs[index] << "\n";
+            return;
+        }
+        InliningCandidates inline_chcs(chcs, chcs_for_func, actual_fact);
+        inline_chcs.insert(-1, actual_fact);
+        while (!inline_chcs.empty()) {
+            auto entry = inline_chcs.pop();
+            auto &chc = chcs[entry.second];
+        }
+    }
+
+
+    void inlining() {
+        for (auto &i : calls.get_topological_order()) {
+            inlining_single_function(i);
+        }
     }
 
 
