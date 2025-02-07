@@ -2,6 +2,7 @@
 #define HORNNONLIN__HPP__
 
 #include "ae/AeValSolver.hpp"
+#include <memory>
 
 using namespace std;
 using namespace boost;
@@ -75,60 +76,132 @@ namespace ufo
   };
 
 
-class InliningCandidates {
-    std::set<std::pair<int, int>> m_queue;
-    std::vector<HornRuleExt> &chcs;
+// A class to represent a node in the CHC graph
+// A node is a CHC with a unique CHC number
+class Node {
+public:
+    int chc_num;
+    std::shared_ptr<Node> next;
+    ExprVector& srcs;
+
+    explicit Node(int _chc_num, ExprVector& _srcs)
+        : chc_num(_chc_num), next(nullptr), srcs(_srcs) {}
+
+
+    void print(std::ostream &os) {
+        os << chc_num << " <- ";
+        if (srcs.empty()) {
+            os << "\u22A4"; // print top symbol
+            os << "\n";
+            return;
+        }
+        for (int i = 0; i < srcs.size() - 1; i++) {
+            os << srcs[i] << ", ";
+        }
+        os << srcs.back() << "\n";
+    }
+};
+
+
+// A class to define non-linear CHCs
+class CHCsGraph {
+private:
+    // Mapping from CHC number to the corresponding node
+    std::unordered_map<int, std::shared_ptr<Node>> chc_num_to_node;
+    // Mapping from destination relation to the corresponding node
+    // This maintains a linked list of CHCs that share the same destination relation
+    std::unordered_map<Expr, std::shared_ptr<Node>> dstRelation_to_node;
+
+    // TODO: define iterator for the linked list of nodes with the same destination relation
 
 public:
-    InliningCandidates(std::vector<HornRuleExt> &chcs, const std::unordered_set<int> &chc_nums,
-                       int skip)
-        : chcs(chcs) {
-        for (auto &chc_num : chc_nums) {
-            auto &chc = chcs[chc_num];
-            if (skip != chc_num) {
-                insert(chc.srcRelations.size(), chc_num);
+    void addNode(int chc_num, Expr dstRelation, ExprVector &srcs) {
+        if (chc_num_to_node.find(chc_num) != chc_num_to_node.end()) {
+            // The node already exists, hence the dstRelation has already been processed
+            return;
+        }
+        auto newNode = std::make_shared<Node>(chc_num, srcs);
+        chc_num_to_node[chc_num] = newNode;
+        auto dstNode = dstRelation_to_node.find(dstRelation);
+        if (dstNode != dstRelation_to_node.end()) {
+            // A node with the same destination relation already exists
+            // Add the new node to the end of the linked list
+            auto lastNode = dstNode->second;
+            while (lastNode->next != nullptr) {
+                lastNode = lastNode->next;
             }
+            lastNode->next = newNode;
+        }
+        else {
+            // Create a new linked list with the new node
+            dstRelation_to_node[dstRelation] = newNode;
         }
     }
 
-    void insert(int arity, int index) {
-        m_queue.insert(std::make_pair(arity, index));
+    // Returns a specific node based on the CHC number
+    std::shared_ptr<Node> getNode(int chc_num) {
+        return chc_num_to_node.count(chc_num) ? chc_num_to_node[chc_num] : nullptr;
     }
 
-    std::pair<int, int> pop() {
-        if (m_queue.empty()) throw std::runtime_error("Queue is empty");
-        auto it = m_queue.begin();
-        std::pair<int, int> res = *it;
-        m_queue.erase(it);
-
-        update_queue(res.second);
-
-        return res;
+    // Returns a (linked) list of nodes that share the same destination relation
+    std::shared_ptr<Node> getNode(Expr dstRelation) {
+        return dstRelation_to_node.count(dstRelation) ? dstRelation_to_node[dstRelation] : nullptr;
     }
 
-    size_t size() {
-        return m_queue.size();
-    }
-
-    bool empty() {
-        return m_queue.empty();
-    }
-
-    void update_queue(int index) {
-        std::set<std::pair<int, int>> new_queue;
-        auto &chc_processed = chcs[index];
-        for (auto &p : m_queue) {
-            auto chc_num = p.second;
-            auto &chc = chcs[chc_num];
-            auto &srcs = chc.srcRelations;
-            if (find(srcs.begin(), srcs.end(), chc_processed.dstRelation) != srcs.end()) {
-                new_queue.insert({p.first - 1, p.second});
-            }
-            else {
-                new_queue.insert(p);
+    std::vector<std::shared_ptr<Node>> getSrcNodes(int chc_num) {
+        std::vector<std::shared_ptr<Node>> srcNodes;
+        auto node = getNode(chc_num);
+        if (node == nullptr) return srcNodes;
+        for (auto &src : node->srcs) {
+            auto srcNode = getNode(src);
+            if (srcNode != nullptr) {
+                srcNodes.push_back(srcNode);
             }
         }
-        m_queue = std::move(new_queue);
+        return srcNodes;
+    }
+
+    // Returns true if there is a path from any CHC that has srcExpr as a source,
+    // to a single CHC with dst as the destination
+    bool hasPath(Expr srcExpr, int dst) {
+        auto dstNode = getNode(dst);
+        auto srcNode = getNode(srcExpr);
+        if (dstNode == nullptr || srcNode == nullptr) return false;
+        for (auto &src : dstNode->srcs) {
+            if (hasPath(srcExpr, src)) return true;
+        }
+        return false;
+    }
+
+    // Returns true if there is a path from srcExpr to dstExpr
+    bool hasPath(Expr srcExpr, Expr dstExpr) {
+        ExprSet visited;
+        std::function<bool(Expr)> dfs = [&](Expr dst) {
+            if (dst == srcExpr) return true;
+            if (visited.find(dst) != visited.end()) return false;
+            visited.insert(dst);
+            auto node = getNode(dst);
+            while (node != nullptr) {
+                for (auto &src : node->srcs) {
+                    if (dfs(src)) return true;
+                }
+                node = node->next;
+            }
+            return false;
+        };
+        return dfs(dstExpr);
+    }
+
+    void print(std::ostream &os) {
+        for (auto &p : dstRelation_to_node) {
+            auto node = p.second;
+            os << "(" << p.first << ")\n";
+            while (node != nullptr) {
+                node->print(os);
+                node = node->next;
+            }
+            os << "\n";
+        }
     }
 };
 
@@ -165,11 +238,13 @@ private:
     // Indexes in each vector correspond to the index of the function predicate in fpreds_names
     std::vector<std::string> fpreds_names; // names for function predicates
     std::vector<int> fpreds_sinks; // CHC containing function predicates as head (sinks)
-    std::vector<int> fpreds_sources; // for each function predicate, the CHC that is fact (source)
-    std::vector<std::string> fpreds_trailing_preds; // predicates that are used to define the
-                                                    // control-flow of the functions
-    std::vector<std::unordered_set<int>> fpreds_chcs; // all CHCs that define the functionality of
-                                                      // a function represented by a func-predicate
+    // std::vector<int> fpreds_sources; // for each function predicate, the CHC that is fact (source)
+                                    // assuming a single source for each function predicate
+    ExprVector fpreds_trailing_preds; // predicates that are used to define the
+                                      // control-flow of the functions
+
+    CHCsGraph chc_graph;
+
 
     std::unordered_map<std::string, Expr> fpreds_to_expr; // function predicate to Expr mapping
                                                           // (only used for ease of access)
@@ -455,24 +530,6 @@ private:
     }
 
 
-    // paths between two predicates represent a function call
-    bool chc_trace_between(int start, std::string callee) {
-        HornRuleExt& hr = chcs[start];
-        Expr dst = hr.dstRelation;
-        if (hr.isFact) return false;
-        for (auto &src : hr.srcRelations) {
-            std::string src_str = lexical_cast<std::string>(src);
-            if (src_str.compare(callee) == 0) return true;
-        }
-        for (auto &src : hr.srcRelations) {
-            for (auto &incm : incms[src]) {
-                if (chc_trace_between(incm, callee)) return true;
-            }
-        }
-        return false;
-    }
-
-
     void compute_call_graph() {
         if (fpreds_names.size() < 2) return;
         for (int i = 0; i < fpreds_names.size(); i++) {
@@ -480,8 +537,8 @@ private:
                 // trailing predicates define the control-flow of the functions,
                 // however, we will start with the actual CHCs since we know the CHC numbers
                 // for them, then trace back (trailing predicates should be on the path)
-                bool found_trace1 = chc_trace_between(fpreds_sinks[i], fpreds_trailing_preds[j]);
-                bool found_trace2 = chc_trace_between(fpreds_sinks[j], fpreds_trailing_preds[i]);
+                bool found_trace1 = chc_graph.hasPath(fpreds_trailing_preds[j], fpreds_sinks[i]);
+                bool found_trace2 = chc_graph.hasPath(fpreds_trailing_preds[i], fpreds_sinks[j]);
                 if (found_trace1 && found_trace2) {
                     std::cout << "Both " << fpreds_trailing_preds[i] << " and "
                         << fpreds_trailing_preds[j] << " call each other\n";
@@ -510,19 +567,29 @@ private:
 
 
     void inlining_single_function(int index) {
-        InliningCandidates inline_chcs(chcs, fpreds_chcs[index], fpreds_sources[index]);
-        // prioritize the source
-        inline_chcs.insert(-1, fpreds_sources[index]);
-        while (!inline_chcs.empty()) {
-            auto entry = inline_chcs.pop();
-            auto &chc = chcs[entry.second];
-        }
+        /* WARNING: This function is incomplete */
+        int sink = fpreds_sinks[index];
+        auto node = chc_graph.getNode(sink);
+        if (node == nullptr) return;
     }
 
 
     void inlining() {
         for (auto &i : calls.get_topological_order()) {
             inlining_single_function(i);
+        }
+    }
+
+
+    void compute_chc_graph(Expr dstRelation, std::unordered_set<Expr> &processed) {
+        if (processed.find(dstRelation) != processed.end()) return;
+        processed.insert(dstRelation);
+        for (auto &incm : incms[dstRelation]) {
+            auto &chc = chcs[incm];
+            for (auto &src : chc.srcRelations) {
+                compute_chc_graph(src, processed);
+            }
+            chc_graph.addNode(incm, dstRelation, chc.srcRelations);
         }
     }
 
@@ -775,6 +842,8 @@ private:
 //        outs() << "Chc " << i << " :" << chcs[i].body  << "=>"  << chcs[i].head << "\n";
 //      }
 
+
+        // Keep the relevant CHCs
         std::set<std::string> processed;
         std::set<int> toKeep;
         std::vector<std::string> worklist = fpreds_names;
@@ -806,6 +875,8 @@ private:
         chcs = std::move(new_chcs);
         computeIncms();
 
+        // compute the graph of CHCs, and other related data structures
+        std::unordered_set<Expr> processedExprs;
         // fill in the data structures required to compare predicates (representing functions)
         fpreds_sinks.reserve(fpreds_names.size());
         fpreds_trailing_preds.reserve(fpreds_names.size());
@@ -817,57 +888,15 @@ private:
             for (auto &src : chcs[all_sinks[0]].srcRelations) {
                 std::string src_str = lexical_cast<std::string>(src);
                 if (src_str.find("summary") != std::string::npos) {
-                    fpreds_trailing_preds.push_back(src_str);
+                    fpreds_trailing_preds.push_back(src);
                     break;
                 }
             }
+            compute_chc_graph(e, processedExprs);
         }
-
+        chc_graph.print(std::cout);
         compute_call_graph();
 
-        std::set<int> processed_CHCs;
-        fpreds_chcs.resize(fpreds_names.size());
-        fpreds_sources.resize(fpreds_names.size());
-        for (auto i : calls.get_topological_order()) {
-            std::vector<int> worklist = {fpreds_sinks[i]};
-            for (int j = 0; j < worklist.size(); j++) {
-                int chc_num = worklist[j];
-                if (processed_CHCs.find(chc_num) != processed_CHCs.end()) continue;
-                processed_CHCs.insert(chc_num);
-                fpreds_chcs[i].insert(chc_num);
-                auto &chc = chcs[chc_num];
-                // identifying source (fact) for the function predicate
-                if (chc.isFact) {
-                    auto &dst_source = chc.dstRelation;
-                    ExprVector& srcs_sink = chcs[fpreds_sinks[i]].srcRelations;
-                    // we are only interested in the source that is not one of the src relations
-                    // in the sink of the function predicate
-                    if (find(srcs_sink.begin(), srcs_sink.end(), dst_source) == srcs_sink.end()) {
-                        fpreds_sources[i] = chc_num;
-                    }
-                }
-                else {
-                    // recursively add all the CHCs that are sources for the current CHC
-                    for (auto &src : chc.srcRelations) {
-                        auto& incms_for_src = incms[src];
-                        worklist.insert(worklist.end(), incms_for_src.begin(), incms_for_src.end());
-                    }
-                }
-            }
-            // AH: This is a hack to make sure CHCs are grouped correctly; revisit later
-            for (int j = 0; j < chcs.size(); j++) {
-                if (processed_CHCs.find(j) != processed_CHCs.end()) continue;
-                if (chcs[j].srcRelations.size() == 1) {
-                    std::string src_str = lexical_cast<std::string>(chcs[j].srcRelations[0]);
-                    if (src_str.compare(fpreds_trailing_preds[i]) == 0) {
-                        fpreds_chcs[i].insert(j);
-                        processed_CHCs.insert(j);
-                    }
-                }
-            }
-        }
-
-        print_grouped_chcs();
     /*
       index_fact_chc = -1;
       // find: index_cycle_chc
@@ -1116,16 +1145,6 @@ private:
         if (emptyIntersect(a, allVars)) newCnjs.insert(a);
       }
       return conjoin(newCnjs, m_efac);
-    }
-
-    void print_grouped_chcs(bool full = false) {
-        for (int i = 0; i < fpreds_names.size(); i++) {
-            std::cout << "Function: " << fpreds_names[i] << "\n";
-            for (auto &chc_num : fpreds_chcs[i]) {
-                print(chcs[chc_num], full);
-            }
-            std::cout << "\n\n";
-        }
     }
 
 
