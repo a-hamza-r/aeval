@@ -303,6 +303,50 @@ public:
             os << "\n";
         }
     }
+
+    void add_edge(std::ofstream &file, const ExprVector& srcs, Expr dst, int& counter) {
+        if (srcs.empty()) return;
+        std::string dst_str = lexical_cast<std::string>(dst);
+        if (srcs.size() == 1) {
+            std::string src_str = lexical_cast<std::string>(srcs[0]);
+            file << src_str << " -> " << dst_str << "\n";
+        }
+        else {
+            std::string dummy = "dummy" + std::to_string(counter++);
+            file << "    subgraph cluster_" << counter << " {\n";
+            file << "        style = invis;\n";
+            file << "        " << dummy << " [shape=point, width=0.05];\n";
+            for (auto &src : srcs) {
+                std::string src_str = lexical_cast<std::string>(src);
+                file << "        " << src_str << " -> " << dummy << " [style=dashed];\n";
+            }
+            file << "        " << dummy << " -> " << dst_str << ";\n";
+            file << "    }\n";
+        }
+    }
+
+    void to_dot_file(std::ofstream &file, Expr dst, int& counter, ExprSet &visited) {
+        if (visited.find(dst) != visited.end()) return;
+        auto node = getNode(dst);
+        visited.insert(dst);
+        while (node != nullptr) {
+            add_edge(file, node->srcs, dst, counter);
+            for (auto &src : node->srcs) {
+                to_dot_file(file, src, counter, visited);
+            }
+            node = node->next;
+        }
+    }
+
+    void to_dot_file(std::string filename, Expr dst) {
+        std::ofstream file(filename);
+        file << "digraph CHC_Graph {\n";
+        int counter = 0;
+        ExprSet visited;
+        to_dot_file(file, dst, counter, visited);
+        file << "}\n";
+        file.close();
+    }
 };
 
 
@@ -708,6 +752,9 @@ private:
         }
         chc_graph.print(std::cout);
         compute_call_graph();
+        int final_sink = funcsInfo.get_calling_order().back();
+        chc_graph.to_dot_file(std::string("../chc_graph") + varname + ".dot",
+                              names_to_rel[funcsInfo.get_functions()[final_sink].fpred_name]);
     }
 
 
