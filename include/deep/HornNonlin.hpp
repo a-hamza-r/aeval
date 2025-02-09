@@ -3,6 +3,7 @@
 
 #include "ae/AeValSolver.hpp"
 #include <memory>
+#include <regex>
 
 using namespace std;
 using namespace boost;
@@ -76,9 +77,115 @@ namespace ufo
   };
 
 
+struct function {
+    // Actual function signature/definition
+    ExprVector args;
+    ExprVector outputs;
+    Expr definition;
+
+    // Below variables used at the level of CHCs to represent the functions
+    // Each predicate represents a function e.g., a predicate like "summary_foo" represents a
+    // function "foo", we call these function predicates (or fpreds)
+    std::string fpred_name;
+    int fpred_sink; // CHC containing the function predicate as head (sink)
+    int fpred_source; // CHC that serves as source for the function predicate (fact CHC)
+    Expr fpred_trailing_pred; // predicate that is used to define the control-flow of the function
+
+    std::string name;
+
+    function(std::string _fpred_name) : fpred_name(_fpred_name) {}
+
+    void find_actual_name() {
+        // best effort to retrieve the actual function name from the function predicate
+        std::regex pattern(R"(summary_+\d+_+function_(.*)_+\d+_+\d+_+\d+)");
+        std::smatch match;
+
+        if (std::regex_search(fpred_name, match, pattern)) {
+            std::string funcname = match[1].str();
+
+            // Trim leading and trailing underscores
+            size_t start = funcname.find_first_not_of('_');
+            size_t end = funcname.find_last_not_of('_');
+
+            name = (start != std::string::npos) ? funcname.substr(start, end - start + 1) : "";
+        }
+    }
+
+    std::string get_name() {
+        return name == "" ? fpred_name : name;
+    }
+};
+
+
+// A class to represent information about functions and function calls
+class functionsInfo {
+    std::vector<function> m_functions; // a list of functions in the contract
+
+    // a map from caller to callees
+    std::unordered_map<int, std::vector<int>> m_caller_to_callee;
+    std::vector<int> m_calling_order;
+
+public:
+    functionsInfo(const std::vector<std::string>& preds) {
+        m_functions.reserve(preds.size());
+        for (auto &pred : preds) {
+            m_functions.push_back(function(pred));
+            m_functions.back().find_actual_name();
+        }
+        m_calling_order.reserve(preds.size());
+    }
+
+    int get_function_index(std::string name) {
+        for (int i = 0; i < m_functions.size(); i++) {
+            if (m_functions[i].fpred_name == name) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    std::vector<function>& get_functions() {
+        return m_functions;
+    }
+
+    void add_call(int from_predicate, int to_predicate) {
+        m_caller_to_callee[from_predicate].push_back(to_predicate);
+    }
+
+    // topological sort
+    void find_calling_order() {
+        std::unordered_set<int> visited;
+        std::function<void(int)> dfs = [&](int predicate) {
+            if (visited.find(predicate) != visited.end()) return;
+            visited.insert(predicate);
+            for (auto &callee : m_caller_to_callee[predicate]) {
+                dfs(callee);
+            }
+            m_calling_order.push_back(predicate);
+        };
+        for (auto &caller_callee : m_caller_to_callee) {
+            dfs(caller_callee.first);
+        }
+    }
+
+    std::vector<int> get_calling_order() {
+        return m_calling_order;
+    }
+
+    void print_calls() {
+        for (auto &caller_callee : m_caller_to_callee) {
+            for (auto &callee : caller_callee.second) {
+                std::cout << m_functions[caller_callee.first].fpred_name << " calls ";
+                std::cout << m_functions[callee].fpred_name << "\n";
+            }
+        }
+    }
+};
+
+
 // A class to represent a node in the CHC graph
 // A node is a CHC with a unique CHC number
-class Node {
+struct Node {
 public:
     int chc_num;
     std::shared_ptr<Node> next;
@@ -105,16 +212,19 @@ public:
 
 // A class to define non-linear CHCs
 class CHCsGraph {
-private:
     // Mapping from CHC number to the corresponding node
     std::unordered_map<int, std::shared_ptr<Node>> chc_num_to_node;
     // Mapping from destination relation to the corresponding node
     // This maintains a linked list of CHCs that share the same destination relation
     std::unordered_map<Expr, std::shared_ptr<Node>> dstRelation_to_node;
+    // CHCs as reference
+    //std::vector<HornRuleExt> &chcs;
 
     // TODO: define iterator for the linked list of nodes with the same destination relation
 
 public:
+    //CHCsGraph(std::vector<HornRuleExt> &_chcs) : chcs(_chcs) {}
+
     void addNode(int chc_num, Expr dstRelation, ExprVector &srcs) {
         if (chc_num_to_node.find(chc_num) != chc_num_to_node.end()) {
             // The node already exists, hence the dstRelation has already been processed
@@ -161,20 +271,10 @@ public:
         return srcNodes;
     }
 
-    // Returns true if there is a path from any CHC that has srcExpr as a source,
-    // to a single CHC with dst as the destination
-    bool hasPath(Expr srcExpr, int dst) {
-        auto dstNode = getNode(dst);
-        auto srcNode = getNode(srcExpr);
-        if (dstNode == nullptr || srcNode == nullptr) return false;
-        for (auto &src : dstNode->srcs) {
-            if (hasPath(srcExpr, src)) return true;
-        }
-        return false;
-    }
-
     // Returns true if there is a path from srcExpr to dstExpr
     bool hasPath(Expr srcExpr, Expr dstExpr) {
+        auto srcNode = getNode(srcExpr);
+        if (srcNode == nullptr) return false;
         ExprSet visited;
         std::function<bool(Expr)> dfs = [&](Expr dst) {
             if (dst == srcExpr) return true;
@@ -230,71 +330,20 @@ private:
     int total_var_cnt = 0;
     ExprVector constructors;
     std::string infile;
-    // Equivalence Checks related
 
-    // Below data-structures store data for each predicate that represents a function
-    // e.g., a predicate like "summary_foo" represents a function "foo", we call these
-    // function predicates (or fpreds)
-    // Indexes in each vector correspond to the index of the function predicate in fpreds_names
-    std::vector<std::string> fpreds_names; // names for function predicates
-    std::vector<int> fpreds_sinks; // CHC containing function predicates as head (sinks)
-    // std::vector<int> fpreds_sources; // for each function predicate, the CHC that is fact (source)
-                                    // assuming a single source for each function predicate
-    ExprVector fpreds_trailing_preds; // predicates that are used to define the
-                                      // control-flow of the functions
-
+    // Equivalence Check related
+    std::vector<std::string>& fpreds_names;
+    functionsInfo funcsInfo;
     CHCsGraph chc_graph;
-
-
-    std::unordered_map<std::string, Expr> fpreds_to_expr; // function predicate to Expr mapping
+    std::unordered_map<std::string, Expr> names_to_rel; // names to relation mapping
                                                           // (only used for ease of access)
 
-
-    struct call_graph {
-        // a map from caller to callees
-        std::unordered_map<int, std::vector<int>> m_caller_to_callee;
-        std::vector<int> m_topological_order;
-
-        void add(int from_predicate, int to_predicate) {
-            m_caller_to_callee[from_predicate].push_back(to_predicate);
-        }
-
-        // topological sort
-        void sort() {
-            std::unordered_set<int> visited;
-            std::function<void(int)> dfs = [&](int predicate) {
-                if (visited.find(predicate) != visited.end()) return;
-                visited.insert(predicate);
-                for (auto &callee : m_caller_to_callee[predicate]) {
-                    dfs(callee);
-                }
-                m_topological_order.push_back(predicate);
-            };
-            for (auto &caller_callee : m_caller_to_callee) {
-                dfs(caller_callee.first);
-            }
-        }
-
-        std::vector<int> get_topological_order() {
-            return m_topological_order;
-        }
-
-        void print(const std::vector<std::string>& preds) {
-            for (auto &caller_callee : m_caller_to_callee) {
-                for (auto &callee : caller_callee.second) {
-                    std::cout << preds[caller_callee.first] << " calls ";
-                    std::cout << preds[callee] << "\n";
-                }
-            }
-        }
-    };
-    call_graph calls;
 
       //ToDo: Remove or recheck later on; move from Horn.hpp
     int debug;
 
-    CHCs(ExprFactory &efac, EZ3 &z3, std::string name, std::vector<std::string> preds)
-        : m_efac(efac), m_z3(z3), varname(name), fpreds_names(std::move(preds)) {}
+    CHCs(ExprFactory &efac, EZ3 &z3, std::string name, std::vector<std::string>& preds)
+        : m_efac(efac), m_z3(z3), varname(name), fpreds_names(preds), funcsInfo(preds) {}
 
     bool isFapp (Expr e)
     {
@@ -530,67 +579,135 @@ private:
     }
 
 
-    void compute_call_graph() {
-        if (fpreds_names.size() < 2) return;
-        for (int i = 0; i < fpreds_names.size(); i++) {
-            for (int j = i+1; j < fpreds_names.size(); j++) {
-                // trailing predicates define the control-flow of the functions,
-                // however, we will start with the actual CHCs since we know the CHC numbers
-                // for them, then trace back (trailing predicates should be on the path)
-                bool found_trace1 = chc_graph.hasPath(fpreds_trailing_preds[j], fpreds_sinks[i]);
-                bool found_trace2 = chc_graph.hasPath(fpreds_trailing_preds[i], fpreds_sinks[j]);
-                if (found_trace1 && found_trace2) {
-                    std::cout << "Both " << fpreds_trailing_preds[i] << " and "
-                        << fpreds_trailing_preds[j] << " call each other\n";
-                    std::cout << "Cannot check equivalence\n";
-                    exit(0);
-                } else if (found_trace1) {
-                    calls.add(i, j);
-                }
-                else if (found_trace2) {
-                    calls.add(j, i);
-                }
+    /*
+    Expr find_inlined_definition(Expr rel) {
+        auto node = chc_graph.getNode(rel);
+        if (node == nullptr) return mk<TRUE>(m_efac);
+        if (preds_to_inlined_defs.find(rel) != preds_to_inlined_defs.end()) {
+            return preds_to_inlined_defs[rel];
+        }
+        auto current = node;
+        ExprVector inlined_defs;
+        while (current != nullptr) {
+            Expr def;
+            if (current->srcs.empty()) {
+                def = mk<TRUE>(m_efac);
             }
+            else {
+                ExprVector src_defs;
+                for (auto &src : current->srcs) {
+                    Expr definition = find_inlined_definition(src);
+                    src_defs.push_back(definition);
+                }
+                def = conjoin(src_defs, m_efac);
+                def = mk<AND>(def, chcs[current->chc_num].body);
+            }
+            inlined_defs.push_back(def);
+            current = current->next;
         }
-        calls.sort();
-        //calls.print(fpreds_names);
+        Expr inlined_def = disjoin(inlined_defs, m_efac);
+        preds_to_inlined_defs[rel] = inlined_def;
+        return inlined_def;
     }
+    */
 
 
-    int find_index_for_predicate(std::string fpred_name) {
-        auto it = std::find(fpreds_names.begin(), fpreds_names.end(), fpred_name);
-        if (it != fpreds_names.end()) {
-            return std::distance(fpreds_names.begin(), it);
-        }
-        return -1;
-    }
-
-
-    void inlining_single_function(int index) {
-        /* WARNING: This function is incomplete */
-        int sink = fpreds_sinks[index];
-        auto node = chc_graph.getNode(sink);
-        if (node == nullptr) return;
+    void inlining_single_function(function& func) {
+        // WARNING: This function is incomplete
+        Expr dst = names_to_rel[func.fpred_name];
+        int sink = func.fpred_sink;
+        // Expr definition = find_inlined_definition(dst);
+        // fpreds_to_functions[index] = function(ExprVector{}, chcs[sink].dstVars, definition);
     }
 
 
     void inlining() {
-        for (auto &i : calls.get_topological_order()) {
-            inlining_single_function(i);
+        for (auto &i : funcsInfo.get_calling_order()) {
+            auto &func = funcsInfo.get_functions()[i];
+            std::cout << "Inlining " << func.get_name() << "\n";
+            std::cout << "----------------------------------\n";
+            inlining_single_function(func);
+            std::cout << "----------------------------------\n\n";
         }
     }
 
 
-    void compute_chc_graph(Expr dstRelation, std::unordered_set<Expr> &processed) {
+    void compute_call_graph() {
+        auto &functions = funcsInfo.get_functions();
+        if (functions.size() < 2) return;
+        for (int i = 0; i < functions.size(); i++) {
+            for (int j = i+1; j < functions.size(); j++) {
+                auto &func1 = functions[i];
+                auto &func2 = functions[j];
+                // trailing predicates define the control-flow of the functions,
+                // however, we will start with the actual CHCs since we know the CHC numbers
+                // for them, then trace back (trailing predicates should be on the path)
+                bool found_trace1 = chc_graph.hasPath(func2.fpred_trailing_pred,
+                                                      names_to_rel[func1.fpred_name]);
+                bool found_trace2 = chc_graph.hasPath(func1.fpred_trailing_pred,
+                                                      names_to_rel[func2.fpred_name]);
+                if (found_trace1 && found_trace2) {
+                    std::cout << "Both " << func1.fpred_trailing_pred << " and "
+                        << func2.fpred_trailing_pred << " call each other\n";
+                    std::cout << "Cannot check equivalence\n";
+                    exit(0);
+                } else if (found_trace1) {
+                    funcsInfo.add_call(i, j);
+                }
+                else if (found_trace2) {
+                    funcsInfo.add_call(j, i);
+                }
+            }
+        }
+        funcsInfo.find_calling_order();
+        //funcsInfo.print_calls();
+    }
+
+
+    void compute_chc_graph(Expr dstRelation, function& func, std::unordered_set<Expr> &processed) {
         if (processed.find(dstRelation) != processed.end()) return;
         processed.insert(dstRelation);
         for (auto &incm : incms[dstRelation]) {
             auto &chc = chcs[incm];
-            for (auto &src : chc.srcRelations) {
-                compute_chc_graph(src, processed);
+            if (chc.isFact) {
+                // find the source CHC for the current function
+                auto &srcs_of_sink = chcs[func.fpred_sink].srcRelations;
+                Expr dst_of_chc = chc.dstRelation;
+                auto it = std::find(srcs_of_sink.begin(), srcs_of_sink.end(), dst_of_chc);
+                // We are only interested in the source CHC whose dstRelation is not included in
+                // the srcRelations of the sink CHC, which skips all the functionality
+                if (it != srcs_of_sink.end()) {
+                    func.fpred_source = incm;
+                }
+            }
+            else {
+                for (auto &src : chc.srcRelations) {
+                    compute_chc_graph(src, func, processed);
+                }
             }
             chc_graph.addNode(incm, dstRelation, chc.srcRelations);
         }
+    }
+
+    void init_functions_info() {
+        std::unordered_set<Expr> processedExprs;
+        for (auto &func : funcsInfo.get_functions()) {
+            Expr e = names_to_rel[func.fpred_name];
+            auto& all_sinks = incms[e];
+            assert(all_sinks.size() == 1); // only one CHC (sink) for a function predicate
+            func.fpred_sink = all_sinks[0];
+            for (auto &src : chcs[all_sinks[0]].srcRelations) {
+                std::string src_str = lexical_cast<std::string>(src);
+                if (src_str.find("summary") != std::string::npos) {
+                    func.fpred_trailing_pred = src;
+                    break;
+                }
+            }
+            // We compute chc_graph one function at a time, hence we call it here
+            compute_chc_graph(e, func, processedExprs);
+        }
+        chc_graph.print(std::cout);
+        compute_call_graph();
     }
 
 
@@ -853,8 +970,8 @@ private:
             processed.insert(p);
             for (auto &d : decls) {
                 if (lexical_cast<std::string>(d->left()).compare(p) == 0) {
-                    fpreds_to_expr[p] = d->left();
-                    auto incms_for_p = incms[fpreds_to_expr[p]];
+                    names_to_rel[p] = d->left();
+                    auto incms_for_p = incms[names_to_rel[p]];
                     toKeep.insert(incms_for_p.begin(), incms_for_p.end());
                     for (auto &incm : incms_for_p) {
                         for (auto &src : chcs[incm].srcRelations) {
@@ -875,27 +992,9 @@ private:
         chcs = std::move(new_chcs);
         computeIncms();
 
-        // compute the graph of CHCs, and other related data structures
-        std::unordered_set<Expr> processedExprs;
-        // fill in the data structures required to compare predicates (representing functions)
-        fpreds_sinks.reserve(fpreds_names.size());
-        fpreds_trailing_preds.reserve(fpreds_names.size());
-        for (auto &pred : fpreds_names) {
-            Expr e = fpreds_to_expr[pred];
-            auto& all_sinks = incms[e];
-            assert(all_sinks.size() == 1); // only one CHC (sink) for a function predicate
-            fpreds_sinks.push_back(all_sinks[0]);
-            for (auto &src : chcs[all_sinks[0]].srcRelations) {
-                std::string src_str = lexical_cast<std::string>(src);
-                if (src_str.find("summary") != std::string::npos) {
-                    fpreds_trailing_preds.push_back(src);
-                    break;
-                }
-            }
-            compute_chc_graph(e, processedExprs);
-        }
-        chc_graph.print(std::cout);
-        compute_call_graph();
+        // Initialize the functions and function calls info
+        init_functions_info();
+
 
     /*
       index_fact_chc = -1;

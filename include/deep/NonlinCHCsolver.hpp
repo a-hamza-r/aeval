@@ -1141,8 +1141,8 @@ class Equivalence {
         for (auto &pair : equivalences) {
             std::string pred1 = pair.first;
             std::string pred2 = pair.second;
-            int pos1 = m_contract1.find_index_for_predicate(pred1);
-            int pos2 = m_contract2.find_index_for_predicate(pred2);
+            int pos1 = m_contract1.funcsInfo.get_function_index(pred1);
+            int pos2 = m_contract2.funcsInfo.get_function_index(pred2);
             assert(pos1 != -1 && pos2 != -1);
             m_targetPredicatePairs.emplace_back(pos1, pos2);
         }
@@ -1152,8 +1152,9 @@ class Equivalence {
         for (int i = 0; i < m_targetPredicatePairs.size(); i++) {
             int pos1 = m_targetPredicatePairs[i].first;
             int pos2 = m_targetPredicatePairs[i].second;
-            std::cout << "Checking equivalence for " << m_contract1.fpreds_names[pos1] << " and " << m_contract2.fpreds_names[pos2] << "." << std::endl;
-            std::cout << "Corresponding trailing predicates: " << m_contract1.fpreds_trailing_preds[pos1] << " and " << m_contract2.fpreds_trailing_preds[pos2] << "." << std::endl;
+            std::cout << "Checking equivalence for " <<
+                m_contract1.funcsInfo.get_functions()[pos1].get_name() << " and " <<
+                m_contract2.funcsInfo.get_functions()[pos2].get_name() << "." << std::endl;
         }
     }
 };
@@ -1161,8 +1162,8 @@ class Equivalence {
 
 inline void check_equivalence(char* contract1, char* contract2,
                     const std::vector<std::pair<std::string, std::string>>& equivalences,
-                    std::vector<std::string>&& predicatesC1,
-                    std::vector<std::string>&& predicatesC2,
+                    std::vector<std::string>& predicatesC1,
+                    std::vector<std::string>& predicatesC2,
                     unsigned maxAttempts, unsigned to, bool freqs, bool aggp,
                     bool enableDataLearning, bool doElim,
                     bool doDisj, int doProp, bool dAllMbp, bool dAddProp, bool dAddDat,
@@ -1171,11 +1172,11 @@ inline void check_equivalence(char* contract1, char* contract2,
     ExprFactory m_efac;
     EZ3 z3(m_efac);
 
-    CHCs ruleManagerC1(m_efac, z3, "_v1_", std::move(predicatesC1));
+    CHCs ruleManagerC1(m_efac, z3, "_v1_", predicatesC1);
     ruleManagerC1.parse(contract1);
     //ruleManagerC1.print();
 
-    CHCs ruleManagerC2(m_efac, z3, "_v2_", std::move(predicatesC2));
+    CHCs ruleManagerC2(m_efac, z3, "_v2_", predicatesC2);
     ruleManagerC2.parse(contract2);
     //ruleManagerC2.print();
 
