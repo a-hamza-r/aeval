@@ -1141,8 +1141,8 @@ class Equivalence {
         for (auto &pair : equivalences) {
             std::string pred1 = pair.first;
             std::string pred2 = pair.second;
-            int pos1 = m_contract1.funcsInfo.get_function_index(pred1);
-            int pos2 = m_contract2.funcsInfo.get_function_index(pred2);
+            int pos1 = m_contract1.funcsInfo.getFunctionIndex(pred1);
+            int pos2 = m_contract2.funcsInfo.getFunctionIndex(pred2);
             assert(pos1 != -1 && pos2 != -1);
             m_targetPredicatePairs.emplace_back(pos1, pos2);
         }
@@ -1153,8 +1153,8 @@ class Equivalence {
             int pos1 = m_targetPredicatePairs[i].first;
             int pos2 = m_targetPredicatePairs[i].second;
             std::cout << "Checking equivalence for " <<
-                m_contract1.funcsInfo.get_functions()[pos1].get_name() << " and " <<
-                m_contract2.funcsInfo.get_functions()[pos2].get_name() << "." << std::endl;
+                m_contract1.funcsInfo.getFunctions()[pos1].getName() << " and " <<
+                m_contract2.funcsInfo.getFunctions()[pos2].getName() << "." << std::endl;
         }
     }
 };

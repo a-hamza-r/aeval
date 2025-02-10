@@ -95,7 +95,7 @@ struct function {
 
     function(std::string _fpred_name) : fpred_name(_fpred_name) {}
 
-    void find_actual_name() {
+    void findActualName() {
         // best effort to retrieve the actual function name from the function predicate
         std::regex pattern(R"(summary_+\d+_+function_(.*)_+\d+_+\d+_+\d+)");
         std::smatch match;
@@ -111,7 +111,7 @@ struct function {
         }
     }
 
-    std::string get_name() {
+    std::string getName() {
         return name == "" ? fpred_name : name;
     }
 };
@@ -130,12 +130,12 @@ public:
         m_functions.reserve(preds.size());
         for (auto &pred : preds) {
             m_functions.push_back(function(pred));
-            m_functions.back().find_actual_name();
+            m_functions.back().findActualName();
         }
         m_calling_order.reserve(preds.size());
     }
 
-    int get_function_index(std::string name) {
+    int getFunctionIndex(std::string name) {
         for (int i = 0; i < m_functions.size(); i++) {
             if (m_functions[i].fpred_name == name) {
                 return i;
@@ -144,16 +144,16 @@ public:
         return -1;
     }
 
-    std::vector<function>& get_functions() {
+    std::vector<function>& getFunctions() {
         return m_functions;
     }
 
-    void add_call(int from_predicate, int to_predicate) {
+    void addCall(int from_predicate, int to_predicate) {
         m_caller_to_callee[from_predicate].push_back(to_predicate);
     }
 
     // topological sort
-    void find_calling_order() {
+    void findCallingOrder() {
         std::unordered_set<int> visited;
         std::function<void(int)> dfs = [&](int predicate) {
             if (visited.find(predicate) != visited.end()) return;
@@ -168,11 +168,11 @@ public:
         }
     }
 
-    std::vector<int> get_calling_order() {
+    std::vector<int> getCallingOrder() {
         return m_calling_order;
     }
 
-    void print_calls() {
+    void printCalls() {
         for (auto &caller_callee : m_caller_to_callee) {
             for (auto &callee : caller_callee.second) {
                 std::cout << m_functions[caller_callee.first].fpred_name << " calls ";
@@ -217,14 +217,10 @@ class CHCsGraph {
     // Mapping from destination relation to the corresponding node
     // This maintains a linked list of CHCs that share the same destination relation
     std::unordered_map<Expr, std::shared_ptr<Node>> dstRelation_to_node;
-    // CHCs as reference
-    //std::vector<HornRuleExt> &chcs;
 
     // TODO: define iterator for the linked list of nodes with the same destination relation
 
 public:
-    //CHCsGraph(std::vector<HornRuleExt> &_chcs) : chcs(_chcs) {}
-
     void addNode(int chc_num, Expr dstRelation, ExprVector &srcs) {
         if (chc_num_to_node.find(chc_num) != chc_num_to_node.end()) {
             // The node already exists, hence the dstRelation has already been processed
@@ -256,19 +252,6 @@ public:
     // Returns a (linked) list of nodes that share the same destination relation
     std::shared_ptr<Node> getNode(Expr dstRelation) {
         return dstRelation_to_node.count(dstRelation) ? dstRelation_to_node[dstRelation] : nullptr;
-    }
-
-    std::vector<std::shared_ptr<Node>> getSrcNodes(int chc_num) {
-        std::vector<std::shared_ptr<Node>> srcNodes;
-        auto node = getNode(chc_num);
-        if (node == nullptr) return srcNodes;
-        for (auto &src : node->srcs) {
-            auto srcNode = getNode(src);
-            if (srcNode != nullptr) {
-                srcNodes.push_back(srcNode);
-            }
-        }
-        return srcNodes;
     }
 
     // Returns true if there is a path from srcExpr to dstExpr
@@ -304,7 +287,7 @@ public:
         }
     }
 
-    void add_edge(std::ofstream &file, const ExprVector& srcs, Expr dst, int& counter) {
+    void addEdge(std::ofstream &file, const ExprVector& srcs, Expr dst, int& counter) {
         if (srcs.empty()) return;
         std::string dst_str = lexical_cast<std::string>(dst);
         if (srcs.size() == 1) {
@@ -325,25 +308,25 @@ public:
         }
     }
 
-    void to_dot_file(std::ofstream &file, Expr dst, int& counter, ExprSet &visited) {
+    void toDotFile(std::ofstream &file, Expr dst, int& counter, ExprSet &visited) {
         if (visited.find(dst) != visited.end()) return;
         auto node = getNode(dst);
         visited.insert(dst);
         while (node != nullptr) {
-            add_edge(file, node->srcs, dst, counter);
+            addEdge(file, node->srcs, dst, counter);
             for (auto &src : node->srcs) {
-                to_dot_file(file, src, counter, visited);
+                toDotFile(file, src, counter, visited);
             }
             node = node->next;
         }
     }
 
-    void to_dot_file(std::string filename, Expr dst) {
+    void toDotFile(std::string filename, Expr dst) {
         std::ofstream file(filename);
         file << "digraph CHC_Graph {\n";
         int counter = 0;
         ExprSet visited;
-        to_dot_file(file, dst, counter, visited);
+        toDotFile(file, dst, counter, visited);
         file << "}\n";
         file.close();
     }
@@ -624,7 +607,7 @@ private:
 
 
     /*
-    Expr find_inlined_definition(Expr rel) {
+    Expr findInlinedDefinition(Expr rel) {
         auto node = chc_graph.getNode(rel);
         if (node == nullptr) return mk<TRUE>(m_efac);
         if (preds_to_inlined_defs.find(rel) != preds_to_inlined_defs.end()) {
@@ -640,7 +623,7 @@ private:
             else {
                 ExprVector src_defs;
                 for (auto &src : current->srcs) {
-                    Expr definition = find_inlined_definition(src);
+                    Expr definition = findInlinedDefinition(src);
                     src_defs.push_back(definition);
                 }
                 def = conjoin(src_defs, m_efac);
@@ -656,28 +639,28 @@ private:
     */
 
 
-    void inlining_single_function(function& func) {
+    void inliningSingleFunction(function& func) {
         // WARNING: This function is incomplete
         Expr dst = names_to_rel[func.fpred_name];
         int sink = func.fpred_sink;
-        // Expr definition = find_inlined_definition(dst);
+        // Expr definition = findInlinedDefinition(dst);
         // fpreds_to_functions[index] = function(ExprVector{}, chcs[sink].dstVars, definition);
     }
 
 
     void inlining() {
-        for (auto &i : funcsInfo.get_calling_order()) {
-            auto &func = funcsInfo.get_functions()[i];
-            std::cout << "Inlining " << func.get_name() << "\n";
+        for (auto &i : funcsInfo.getCallingOrder()) {
+            auto &func = funcsInfo.getFunctions()[i];
+            std::cout << "Inlining " << func.getName() << "\n";
             std::cout << "----------------------------------\n";
-            inlining_single_function(func);
+            inliningSingleFunction(func);
             std::cout << "----------------------------------\n\n";
         }
     }
 
 
-    void compute_call_graph() {
-        auto &functions = funcsInfo.get_functions();
+    void computeCallGraph() {
+        auto &functions = funcsInfo.getFunctions();
         if (functions.size() < 2) return;
         for (int i = 0; i < functions.size(); i++) {
             for (int j = i+1; j < functions.size(); j++) {
@@ -708,7 +691,7 @@ private:
     }
 
 
-    void compute_chc_graph(Expr dstRelation, function& func, std::unordered_set<Expr> &processed) {
+    void computeCHCsGraph(Expr dstRelation, function& func, std::unordered_set<Expr> &processed) {
         if (processed.find(dstRelation) != processed.end()) return;
         processed.insert(dstRelation);
         for (auto &incm : incms[dstRelation]) {
@@ -726,14 +709,14 @@ private:
             }
             else {
                 for (auto &src : chc.srcRelations) {
-                    compute_chc_graph(src, func, processed);
+                    computeCHCsGraph(src, func, processed);
                 }
             }
             chc_graph.addNode(incm, dstRelation, chc.srcRelations);
         }
     }
 
-    void init_functions_info() {
+    void initFunctionsInfo() {
         std::unordered_set<Expr> processedExprs;
         for (auto &func : funcsInfo.get_functions()) {
             Expr e = names_to_rel[func.fpred_name];
@@ -748,12 +731,11 @@ private:
                 }
             }
             // We compute chc_graph one function at a time, hence we call it here
-            compute_chc_graph(e, func, processedExprs);
+            computeCHCsGraph(e, func, processedExprs);
         }
-        chc_graph.print(std::cout);
-        compute_call_graph();
+        computeCallGraph();
         int final_sink = funcsInfo.get_calling_order().back();
-        chc_graph.to_dot_file(std::string("../chc_graph") + varname + ".dot",
+        chc_graph.toDotFile(std::string("../chc_graph") + varname + ".dot",
                               names_to_rel[funcsInfo.get_functions()[final_sink].fpred_name]);
     }
 
@@ -1040,7 +1022,7 @@ private:
         computeIncms();
 
         // Initialize the functions and function calls info
-        init_functions_info();
+        initFunctionsInfo();
 
 
     /*
