@@ -89,6 +89,7 @@ struct function {
     std::string fpred_name;
     int fpred_sink; // CHC containing the function predicate as head (sink)
     int fpred_source; // CHC that serves as source for the function predicate (fact CHC)
+    Expr fpred_expr; // the function predicate
     Expr fpred_trailing_pred; // predicate that is used to define the control-flow of the function
 
     std::string name;
@@ -148,6 +149,22 @@ public:
         return m_functions;
     }
 
+    std::unordered_set<int> getSinks() {
+        std::unordered_set<int> sinks;
+        for (auto &func : m_functions) {
+            sinks.insert(func.fpred_sink);
+        }
+        return sinks;
+    }
+
+    std::unordered_set<int> getSources() {
+        std::unordered_set<int> sources;
+        for (auto &func : m_functions) {
+            sources.insert(func.fpred_source);
+        }
+        return sources;
+    }
+
     void addCall(int from_predicate, int to_predicate) {
         m_caller_to_callee[from_predicate].push_back(to_predicate);
     }
@@ -175,10 +192,23 @@ public:
     void printCalls() {
         for (auto &caller_callee : m_caller_to_callee) {
             for (auto &callee : caller_callee.second) {
-                std::cout << m_functions[caller_callee.first].fpred_name << " calls ";
-                std::cout << m_functions[callee].fpred_name << "\n";
+                std::cout << m_functions[caller_callee.first].getName() << " calls ";
+                std::cout << m_functions[callee].getName() << "\n";
             }
         }
+    }
+
+    void callGraphToDotFile(std::string filename) {
+        std::ofstream file(filename);
+        file << "digraph CallGraph {\n";
+        for (auto &caller_callee : m_caller_to_callee) {
+            for (auto &callee : caller_callee.second) {
+                file << m_functions[caller_callee.first].getName() << " -> ";
+                file << m_functions[callee].getName() << ";\n";
+            }
+        }
+        file << "}\n";
+        file.close();
     }
 };
 
@@ -308,25 +338,35 @@ public:
         }
     }
 
-    void toDotFile(std::ofstream &file, Expr dst, int& counter, ExprSet &visited) {
+    void toDotFile(std::ofstream &file, Expr dst, int& counter, ExprSet &visited,
+                   const std::unordered_set<int> &sinks, const std::unordered_set<int> &sources) {
         if (visited.find(dst) != visited.end()) return;
         auto node = getNode(dst);
+        if (sinks.find(node->chc_num) != sinks.end()) {
+            file << dst << " [shape=box, style=filled, fillcolor=lightblue];\n";
+        }
+        if (sources.find(node->chc_num) != sources.end()) {
+            file << dst << " [shape=box, style=filled, fillcolor=lightgreen];\n";
+        }
         visited.insert(dst);
         while (node != nullptr) {
             addEdge(file, node->srcs, dst, counter);
             for (auto &src : node->srcs) {
-                toDotFile(file, src, counter, visited);
+                toDotFile(file, src, counter, visited, sinks, sources);
             }
             node = node->next;
         }
     }
 
-    void toDotFile(std::string filename, Expr dst) {
+    void toDotFile(std::string filename, const std::unordered_set<int>& sinks,
+                   const std::unordered_set<int>& sources) {
         std::ofstream file(filename);
         file << "digraph CHC_Graph {\n";
         int counter = 0;
         ExprSet visited;
-        toDotFile(file, dst, counter, visited);
+        for (auto &p : dstRelation_to_node) {
+            toDotFile(file, p.first, counter, visited, sinks, sources);
+        }
         file << "}\n";
         file.close();
     }
@@ -679,48 +719,60 @@ private:
                     std::cout << "Cannot check equivalence\n";
                     exit(0);
                 } else if (found_trace1) {
-                    funcsInfo.add_call(i, j);
+                    funcsInfo.addCall(i, j);
                 }
                 else if (found_trace2) {
-                    funcsInfo.add_call(j, i);
+                    funcsInfo.addCall(j, i);
                 }
             }
         }
-        funcsInfo.find_calling_order();
-        //funcsInfo.print_calls();
+        funcsInfo.findCallingOrder();
+        funcsInfo.callGraphToDotFile(std::string("../call_graph") + varname + ".dot");
     }
 
 
-    void computeCHCsGraph(Expr dstRelation, function& func, std::unordered_set<Expr> &processed) {
+    void computeCHCsGraph(Expr dstRelation, ExprSet &processed) {
         if (processed.find(dstRelation) != processed.end()) return;
         processed.insert(dstRelation);
         for (auto &incm : incms[dstRelation]) {
             auto &chc = chcs[incm];
-            if (chc.isFact) {
-                // find the source CHC for the current function
-                auto &srcs_of_sink = chcs[func.fpred_sink].srcRelations;
-                Expr dst_of_chc = chc.dstRelation;
-                auto it = std::find(srcs_of_sink.begin(), srcs_of_sink.end(), dst_of_chc);
-                // We are only interested in the source CHC whose dstRelation is not included in
-                // the srcRelations of the sink CHC, which skips all the functionality
-                if (it != srcs_of_sink.end()) {
-                    func.fpred_source = incm;
-                }
-            }
-            else {
-                for (auto &src : chc.srcRelations) {
-                    computeCHCsGraph(src, func, processed);
-                }
+            for (auto &src : chc.srcRelations) {
+                computeCHCsGraph(src, processed);
             }
             chc_graph.addNode(incm, dstRelation, chc.srcRelations);
         }
     }
 
+    bool findSource(Expr dstRelation, function& func, ExprSet &processed) {
+        if (processed.find(dstRelation) != processed.end()) return false;
+        processed.insert(dstRelation);
+        auto node = chc_graph.getNode(dstRelation);
+        while (node != nullptr) {
+            auto &chc = chcs[node->chc_num];
+            if (chc.isFact) {
+                auto &srcs_of_sink = chcs[func.fpred_sink].srcRelations;
+                Expr dst_of_chc = chc.dstRelation;
+                auto it = std::find(srcs_of_sink.begin(), srcs_of_sink.end(), dst_of_chc);
+                // We are only interested in the source CHC whose dstRelation is not included in
+                // the srcRelations of the sink CHC, which skips all the functionality
+                if (it == srcs_of_sink.end()) {
+                    func.fpred_source = node->chc_num;
+                    return true;
+                }
+            }
+            for (auto &src : node->srcs) {
+                if (findSource(src, func, processed)) return true;
+            }
+            node = node->next;
+        }
+        return false;
+    }
+
     void initFunctionsInfo() {
-        std::unordered_set<Expr> processedExprs;
-        for (auto &func : funcsInfo.get_functions()) {
-            Expr e = names_to_rel[func.fpred_name];
-            auto& all_sinks = incms[e];
+        ExprSet processedExprs;
+        for (auto &func : funcsInfo.getFunctions()) {
+            func.fpred_expr = names_to_rel[func.fpred_name];
+            auto& all_sinks = incms[func.fpred_expr];
             assert(all_sinks.size() == 1); // only one CHC (sink) for a function predicate
             func.fpred_sink = all_sinks[0];
             for (auto &src : chcs[all_sinks[0]].srcRelations) {
@@ -731,12 +783,17 @@ private:
                 }
             }
             // We compute chc_graph one function at a time, hence we call it here
-            computeCHCsGraph(e, func, processedExprs);
+            computeCHCsGraph(func.fpred_expr, processedExprs);
         }
         computeCallGraph();
-        int final_sink = funcsInfo.get_calling_order().back();
-        chc_graph.toDotFile(std::string("../chc_graph") + varname + ".dot",
-                              names_to_rel[funcsInfo.get_functions()[final_sink].fpred_name]);
+        processedExprs.clear();
+        // find the source CHC for each function, which needs the call graph is computed
+        for (auto &i : funcsInfo.getCallingOrder()) {
+            auto &func = funcsInfo.getFunctions()[i];
+            findSource(func.fpred_expr, func, processedExprs);
+        }
+        chc_graph.toDotFile(std::string("../chc_graph") + varname + ".dot", funcsInfo.getSinks(),
+                            funcsInfo.getSources());
     }
 
 
