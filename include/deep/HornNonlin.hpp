@@ -373,6 +373,22 @@ public:
 };
 
 
+static Expr renameVariables(Expr var, int unique_id, std::string suffix) {
+    std::string name = lexical_cast<std::string>(var);
+    Expr new_var = mkTerm<string>(suffix + to_string(unique_id) + "_" + name, var->getFactory());
+    return cloneVar(var, new_var);
+}
+
+
+static void updateVarsAndBody(ExprVector& vars, Expr& body, int unique_id, std::string suffix = "") {
+    ExprVector prev_vars = vars;
+    for (int i = 0; i < vars.size(); i++) {
+        vars[i] = renameVariables(vars[i], unique_id, suffix);
+    }
+    body = replaceAll(body, prev_vars, vars);
+}
+
+
 class CHCs
 {
 private:
@@ -797,6 +813,19 @@ private:
     }
 
 
+    void renameVars() {
+        for (int i = 0; i < chcs.size(); i++) {
+            auto &chc = chcs[i];
+            for (int j = 0; j < chc.srcRelations.size(); j++) {
+                auto &src_vars = chc.srcVars[j];
+                updateVarsAndBody(src_vars, chc.body, i);
+            }
+            updateVarsAndBody(chc.dstVars, chc.body, i);
+            updateVarsAndBody(chc.locVars, chc.body, i, varname);
+        }
+    }
+
+
     void parse(std::string smt /*, std::string contract*/)
     {
       // GF: this entry part is different from the original implementation
@@ -1077,6 +1106,8 @@ private:
         }
         chcs = std::move(new_chcs);
         computeIncms();
+        // might also need to update the decls
+        renameVars();
 
         // Initialize the functions and function calls info
         initFunctionsInfo();
@@ -1333,10 +1364,10 @@ private:
     }
 
 
-    void print()
+    void print(bool full = false)
     {
       outs() << "CHCs:\n";
-      for (auto &hr: chcs) print(hr);
+      for (auto &hr: chcs) print(hr, full);
     }
 
     void print(HornRuleExt& hr, bool full = false)
