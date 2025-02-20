@@ -395,6 +395,16 @@ public:
 };
 
 
+struct inlinedDefinition {
+    Expr definition;
+    ExprVector dsts;
+
+    inlinedDefinition() = default;
+    inlinedDefinition(Expr _definition, ExprVector _dsts)
+        : definition(_definition), dsts(std::move(_dsts)) {}
+};
+
+
 static Expr renameVariables(Expr var, int unique_id, std::string suffix) {
     std::string name = lexical_cast<std::string>(var);
     Expr new_var = mkTerm<string>(suffix + to_string(unique_id) + "_" + name, var->getFactory());
@@ -442,6 +452,9 @@ private:
     CHCsGraph chc_graph;
     std::unordered_map<std::string, Expr> names_to_rel; // names to relation mapping
                                                           // (only used for ease of access)
+    std::unordered_map<Expr, inlinedDefinition> preds_to_inlined_defs;
+                                                // predicate to inlined definition mapping
+    int variableCounter = 0;
 
 
       //ToDo: Remove or recheck later on; move from Horn.hpp
@@ -684,45 +697,91 @@ private:
     }
 
 
-    /*
-    Expr findInlinedDefinition(Expr rel) {
-        auto node = chc_graph.getNode(rel);
-        if (node == nullptr) return mk<TRUE>(m_efac);
+    Expr renamedClone(Expr origVar) {
+        Expr name = mkTerm<string>(varname + "var_" + std::to_string(variableCounter++), m_efac);
+        return cloneVar(origVar, name);
+    }
+
+    void matchVariables(Expr &definition, const ExprVector& srcVars,
+                              const ExprVector& dstVars, ExprVector& terms, function& func) {
+        // locVars might also need renaming
+        ExprVector new_vars;
+        for (int i = 0; i < srcVars.size(); i++) {
+            Expr v = srcVars[i];
+            Expr new_var = renamedClone(v);
+            new_vars.push_back(new_var);
+            // This might be too strict. We want to replace the function arguments too, whenever
+            // we are inlining the source of the function
+            // This should happen only once, but for now, there is no code to enforce that
+            // TODO: find a better way/place to handle this renaming
+            auto it = std::find(func.args.begin(), func.args.end(), v);
+            if (it != func.args.end()) {
+                *it = new_var;
+            }
+            terms.push_back(mk<EQ>(dstVars[i], new_var));
+            definition = replaceAll(definition, v, new_var);
+        }
+        definition = simplifyBool(definition);
+    }
+
+    inlinedDefinition findInlinedDefinition(Expr rel, function& func) {
+        // We have already computed the inlined definition for this predicate
         if (preds_to_inlined_defs.find(rel) != preds_to_inlined_defs.end()) {
             return preds_to_inlined_defs[rel];
         }
+        auto node = chc_graph.getNode(rel);
+        if (node == nullptr) return inlinedDefinition();
         auto current = node;
-        ExprVector inlined_defs;
+        // We will go through all the CHCs that have the destination relation as rel,
+        // and disjoin their definitions
+        ExprVector dsts;
+        // create a vector of destination variables for this definition,
+        // it is okay to use any node for creating the clones of variables
+        int chc_num = node->chc_num;
+        dsts.reserve(chcs[chc_num].dstVars.size());
+        for (auto &v : chcs[chc_num].dstVars) {
+            dsts.push_back(renamedClone(v));
+        }
+        auto inlined_def = new inlinedDefinition{mk<FALSE>(m_efac), dsts};
         while (current != nullptr) {
-            Expr def;
-            if (current->srcs.empty()) {
-                def = mk<TRUE>(m_efac);
+            chc_num = current->chc_num;
+            ExprVector src_exprs, dst_exprs;
+            // For each source relation, we will find the inlined definition
+            for (int i = 0; i < current->srcs.size(); i++) {
+                Expr src = current->srcs[i];
+                inlinedDefinition d = findInlinedDefinition(src, func);
+                auto& src_vars = chcs[chc_num].srcVars[i];
+                ExprVector eqs;
+                // Take care of different variables
+                matchVariables(d.definition, d.dsts, src_vars, eqs, func);
+                src_exprs.push_back(d.definition);
+                dst_exprs.insert(dst_exprs.end(), eqs.begin(), eqs.end());
             }
-            else {
-                ExprVector src_defs;
-                for (auto &src : current->srcs) {
-                    Expr definition = findInlinedDefinition(src);
-                    src_defs.push_back(definition);
-                }
-                def = conjoin(src_defs, m_efac);
-                def = mk<AND>(def, chcs[current->chc_num].body);
-            }
-            inlined_defs.push_back(def);
+            // Conjoin the definitions of the source relations, including extra formulas to match
+            // differently-named variables, with the body of the CHC
+            Expr def = mk<AND>(conjoin(src_exprs, m_efac), conjoin(dst_exprs, m_efac),
+                               chcs[chc_num].body);
+            // Take care of different variables for each CHC to be disjoined
+            ExprVector eqs;
+            matchVariables(def, chcs[chc_num].dstVars, dsts, eqs, func);
+            def = mk<AND>(def, conjoin(eqs, m_efac));
+            inlined_def->definition = mk<OR>(inlined_def->definition, def);
             current = current->next;
         }
-        Expr inlined_def = disjoin(inlined_defs, m_efac);
-        preds_to_inlined_defs[rel] = inlined_def;
-        return inlined_def;
+        preds_to_inlined_defs[rel] = std::move(*inlined_def);
+        free(inlined_def);
+        preds_to_inlined_defs[rel].definition = simplifyBool(preds_to_inlined_defs[rel].definition);
+        return preds_to_inlined_defs[rel];
     }
-    */
-
 
     void inliningSingleFunction(function& func) {
-        // WARNING: This function is incomplete
-        Expr dst = names_to_rel[func.fpred_name];
-        int sink = func.fpred_sink;
-        // Expr definition = findInlinedDefinition(dst);
-        // fpreds_to_functions[index] = function(ExprVector{}, chcs[sink].dstVars, definition);
+        auto &source = chcs[func.fpred_source];
+        auto &sink = chcs[func.fpred_sink];
+        func.args = source.dstVars;
+        inlinedDefinition d = findInlinedDefinition(func.fpred_expr, func);
+        func.definition = d.definition;
+        func.outputs = d.dsts;
+        func.print();
     }
 
 
