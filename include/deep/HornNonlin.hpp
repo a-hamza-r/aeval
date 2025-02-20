@@ -115,6 +115,22 @@ struct function {
     std::string getName() {
         return name == "" ? fpred_name : name;
     }
+
+    void print() {
+        std::cout << "Function: " << getName() << "\n";
+        std::cout << "Arguments: ";
+        for (auto &arg : args) {
+            std::cout << arg << " ";
+        }
+        std::cout << "\n";
+        std::cout << "Outputs: ";
+        for (auto &out : outputs) {
+            std::cout << out << " ";
+        }
+        std::cout << "\n";
+        std::cout << "Definition: " << definition << "\n";
+        std::cout << "\n";
+    }
 };
 
 
@@ -209,6 +225,12 @@ public:
         }
         file << "}\n";
         file.close();
+    }
+
+    void printFunctions() {
+        for (auto &func : m_functions) {
+            func.print();
+        }
     }
 };
 
