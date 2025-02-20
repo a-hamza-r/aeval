@@ -185,6 +185,10 @@ public:
         m_caller_to_callee[from_predicate].push_back(to_predicate);
     }
 
+    void addCallingOrder(int predicate) {
+        m_calling_order.push_back(predicate);
+    }
+
     // topological sort
     void findCallingOrder() {
         std::unordered_set<int> visited;
@@ -194,7 +198,7 @@ public:
             for (auto &callee : m_caller_to_callee[predicate]) {
                 dfs(callee);
             }
-            m_calling_order.push_back(predicate);
+            addCallingOrder(predicate);
         };
         for (auto &caller_callee : m_caller_to_callee) {
             dfs(caller_callee.first);
@@ -217,10 +221,17 @@ public:
     void callGraphToDotFile(std::string filename) {
         std::ofstream file(filename);
         file << "digraph CallGraph {\n";
-        for (auto &caller_callee : m_caller_to_callee) {
-            for (auto &callee : caller_callee.second) {
-                file << m_functions[caller_callee.first].getName() << " -> ";
-                file << m_functions[callee].getName() << ";\n";
+        if (m_caller_to_callee.empty()) {
+            for (auto &func : m_functions) {
+                file << func.getName() << ";\n";
+            }
+        }
+        else {
+            for (auto &caller_callee : m_caller_to_callee) {
+                for (auto &callee : caller_callee.second) {
+                    file << m_functions[caller_callee.first].getName() << " -> ";
+                    file << m_functions[callee].getName() << ";\n";
+                }
             }
         }
         file << "}\n";
@@ -798,32 +809,36 @@ private:
 
     void computeCallGraph() {
         auto &functions = funcsInfo.getFunctions();
-        if (functions.size() < 2) return;
-        for (int i = 0; i < functions.size(); i++) {
-            for (int j = i+1; j < functions.size(); j++) {
-                auto &func1 = functions[i];
-                auto &func2 = functions[j];
-                // trailing predicates define the control-flow of the functions,
-                // however, we will start with the actual CHCs since we know the CHC numbers
-                // for them, then trace back (trailing predicates should be on the path)
-                bool found_trace1 = chc_graph.hasPath(func2.fpred_trailing_pred,
-                                                      names_to_rel[func1.fpred_name]);
-                bool found_trace2 = chc_graph.hasPath(func1.fpred_trailing_pred,
-                                                      names_to_rel[func2.fpred_name]);
-                if (found_trace1 && found_trace2) {
-                    std::cout << "Both " << func1.fpred_trailing_pred << " and "
-                        << func2.fpred_trailing_pred << " call each other\n";
-                    std::cout << "Cannot check equivalence\n";
-                    exit(0);
-                } else if (found_trace1) {
-                    funcsInfo.addCall(i, j);
-                }
-                else if (found_trace2) {
-                    funcsInfo.addCall(j, i);
+        if (functions.size() <= 1) {
+            funcsInfo.addCallingOrder(0);
+        }
+        else {
+            for (int i = 0; i < functions.size(); i++) {
+                for (int j = i+1; j < functions.size(); j++) {
+                    auto &func1 = functions[i];
+                    auto &func2 = functions[j];
+                    // trailing predicates define the control-flow of the functions,
+                    // however, we will start with the actual CHCs since we know the CHC numbers
+                    // for them, then trace back (trailing predicates should be on the path)
+                    bool found_trace1 = chc_graph.hasPath(func2.fpred_trailing_pred,
+                                                          names_to_rel[func1.fpred_name]);
+                    bool found_trace2 = chc_graph.hasPath(func1.fpred_trailing_pred,
+                                                          names_to_rel[func2.fpred_name]);
+                    if (found_trace1 && found_trace2) {
+                        std::cout << "Both " << func1.fpred_trailing_pred << " and "
+                            << func2.fpred_trailing_pred << " call each other\n";
+                        std::cout << "Cannot check equivalence\n";
+                        exit(0);
+                    } else if (found_trace1) {
+                        funcsInfo.addCall(i, j);
+                    }
+                    else if (found_trace2) {
+                        funcsInfo.addCall(j, i);
+                    }
                 }
             }
+            funcsInfo.findCallingOrder();
         }
-        funcsInfo.findCallingOrder();
         funcsInfo.callGraphToDotFile(std::string("../call_graph") + varname + ".dot");
     }
 
