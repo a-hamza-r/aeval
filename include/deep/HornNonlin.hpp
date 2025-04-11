@@ -768,6 +768,10 @@ private:
                 src_exprs.push_back(d.definition);
                 dst_exprs.insert(dst_exprs.end(), eqs.begin(), eqs.end());
             }
+            // Experimental: eliminate extra/local variables
+            //chcs[chc_num].body = eliminateQuantifiers(chcs[chc_num].body, chcs[chc_num].locVars);
+            //chcs[chc_num].locVars.clear();
+
             // Conjoin the definitions of the source relations, including extra formulas to match
             // differently-named variables, with the body of the CHC
             Expr def = mk<AND>(conjoin(src_exprs, m_efac), conjoin(dst_exprs, m_efac),
@@ -792,17 +796,17 @@ private:
         inlinedDefinition d = findInlinedDefinition(func.fpred_expr, func);
         func.definition = d.definition;
         func.outputs = d.dsts;
-        func.print();
+        //func.print();
     }
 
 
     void inlining() {
         for (auto &i : funcsInfo.getCallingOrder()) {
             auto &func = funcsInfo.getFunctions()[i];
-            std::cout << "Inlining " << func.getName() << "\n";
-            std::cout << "----------------------------------\n";
+            //std::cout << "Inlining " << func.getName() << "\n";
+            //std::cout << "----------------------------------\n";
             inliningSingleFunction(func);
-            std::cout << "----------------------------------\n\n";
+            //std::cout << "----------------------------------\n\n";
         }
     }
 
@@ -1207,7 +1211,6 @@ private:
 
         // Initialize the functions and function calls info
         initFunctionsInfo();
-
 
     /*
       index_fact_chc = -1;

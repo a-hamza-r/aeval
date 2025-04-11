@@ -1126,6 +1126,15 @@ namespace ufo
   };
 
 
+enum class EquivCheckProcedure {
+    BASELINE,
+    INCREMENTAL,
+};
+
+std::string sat_result(boost::tribool result) {
+    return result ? "SAT" : !result ? "UNSAT" : "UNKNOWN";
+}
+
 
 class Equivalence {
   private:
@@ -1157,8 +1166,87 @@ class Equivalence {
                 m_contract2.funcsInfo.getFunctions()[pos2].getName() << "." << std::endl;
         }
     }
-};
 
+    void get_equivalence_result(EquivCheckProcedure proc) {
+        switch (proc) {
+            case EquivCheckProcedure::BASELINE: {
+                functionsInfo fInfo1 = m_contract1.funcsInfo;
+                functionsInfo fInfo2 = m_contract2.funcsInfo;
+                function& f1 = fInfo1.getFunctions()[fInfo1.getCallingOrder().back()];
+                function& f2 = fInfo2.getFunctions()[fInfo2.getCallingOrder().back()];
+                std::cout << "Checking equivalence for " << f1.getName() << " and " << f2.getName() << "." << std::endl;
+                assert(f1.args.size() == f2.args.size());
+                assert(f1.outputs.size() == f2.outputs.size());
+                int inputs_sz = f1.args.size();
+                int outputs_sz = f1.outputs.size();
+                auto& z3 = m_contract1.m_z3;
+                auto& efac = m_contract1.m_efac;
+                SMTUtils u(efac, z3.getAdtAccessors(), 100000, z3.adts, z3.adts_seen);
+
+                // Make two funds variables equivalent
+                auto finding_funds = [&](Expr f) {
+                    ExprSet vars;
+                    filter(f, bind::IsConst(), std::inserter(vars, vars.begin()));
+                    for (auto &v : vars) {
+                        std::string vname = lexical_cast<std::string>(v);
+                        if (vname.find("funds") != std::string::npos) {
+                            return v;
+                        }
+                    }
+                    return Expr();
+                };
+                Expr funds1 = finding_funds(f1.definition);
+                Expr funds2 = finding_funds(f2.definition);
+                Expr funds_eq = mk<EQ>(funds1, funds2);
+
+                ExprVector eqArgs = {funds_eq}, eqOuts;
+                // AH: Hacky way of constructing precondition and postcondition
+                for (int i = 0; i < inputs_sz; i++) {
+                    ExprVector accs1, accs2;
+                    u.unfold(accs1, f1.args[i]);
+                    u.unfold(accs2, f2.args[i]);
+                    size_t sz = accs1.size();
+                    for (size_t j = 0; j < sz; j++) {
+                        eqArgs.push_back(mk<EQ>(accs1[j], accs2[j]));
+                    }
+                }
+                for (int i = 0; i < outputs_sz; i++) {
+                    ExprVector accs1, accs2;
+                    u.unfold(accs1, f1.outputs[i]);
+                    u.unfold(accs2, f2.outputs[i]);
+                    size_t sz = accs1.size();
+                    for (size_t j = 0; j < sz; j++) {
+                        eqOuts.push_back(mk<EQ>(accs1[j], accs2[j]));
+                    }
+                }
+                Expr equalArgs = conjoin(eqArgs, efac);
+                Expr equalOuts = conjoin(eqOuts, efac);
+                Expr prec_and_bodies = mk<AND>(equalArgs, mk<AND>(f1.definition, f2.definition));
+                Expr equiv = mk<IMPL>(prec_and_bodies, equalOuts);
+                auto sys_sat = u.isSat(equiv);
+                std::cout << "check on equiv fla: " << sat_result(u.isSat(equiv)) << std::endl;
+                if (!bool(sys_sat)) {
+                    std::cout << "System is unsatisfiable." << std::endl;
+                    return;
+                }
+                Expr neg = mk<NEG>(equiv);
+                // std::cout << "negation of equiv fla: " << neg << std::endl;
+                auto neg_sat = u.isSat(neg);
+                std::cout << "check on negation of equiv fla: " << sat_result(neg_sat) << std::endl;
+                if (!bool(neg_sat)) {
+                    std::cout << "Programs are equivalent." << std::endl;
+                } else {
+                    std::cout << "Programs are not equivalent." << std::endl;
+                }
+                break;
+            }
+            case EquivCheckProcedure::INCREMENTAL: {
+                std::cout << "Incremental equivalence check is not implemented yet." << std::endl;
+                break;
+            }
+        }
+    }
+};
 
 inline void check_equivalence(char* contract1, char* contract2,
                     const std::vector<std::pair<std::string, std::string>>& equivalences,
@@ -1176,6 +1264,7 @@ inline void check_equivalence(char* contract1, char* contract2,
     ruleManagerC1.parse(contract1);
     //ruleManagerC1.print();
 
+
     CHCs ruleManagerC2(m_efac, z3, "_v2_", predicatesC2);
     ruleManagerC2.parse(contract2);
     //ruleManagerC2.print();
@@ -1184,7 +1273,7 @@ inline void check_equivalence(char* contract1, char* contract2,
     ruleManagerC2.inlining();
 
     auto equiv = Equivalence(ruleManagerC1, ruleManagerC2, equivalences);
-
+    equiv.get_equivalence_result(EquivCheckProcedure::BASELINE);
 }
 };
 

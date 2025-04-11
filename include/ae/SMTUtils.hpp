@@ -120,6 +120,22 @@ namespace ufo
       return getModel(var)->right();
     }
 
+    // AH: Temporary method
+    void unfold(ExprVector& sels, Expr v)
+    {
+      bool hasAccs = false;
+      for (auto & a : accessors)
+      {
+        assert(a->arity() == 3);
+        if (typeOf(v) != a->right()) continue;
+        ExprVector args = {a, v};
+        unfold(sels, mknary<FAPP>(args));
+        hasAccs = true;
+      }
+      if (!hasAccs)
+        sels.push_back(v);
+    }
+
     void unfold(ExprSet& sels, Expr v)
     {
       bool hasAccs = false;
