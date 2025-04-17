@@ -77,6 +77,8 @@ namespace ufo
   {
     private:
     set<int> indeces;
+
+    protected:
     string varname = "_FH_";
 
     public:
@@ -102,6 +104,8 @@ namespace ufo
     int debug;
 
     CHCs(ExprFactory &efac, EZ3 &z3) : m_efac(efac), m_z3(z3) {};
+    CHCs(ExprFactory &efac, EZ3 &z3, string name) : m_efac(efac), m_z3(z3),
+    varname(name) {};
 
     bool isFapp (Expr e)
     {
