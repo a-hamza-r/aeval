@@ -9,13 +9,13 @@ Installation
 
 Assumes preinstalled Boost (e.g., 1.75.0) and Gmp (e.g. 10.4.0) packages. 
 
-* `git clone https://github.com/izlatkin/aeval`
+* `git clone git@github.com:a-hamza-r/aeval.git`
 * `cd aeval`
 * `git checkout tg-nonlin`
 * `mkdir build ; cd build`
 * `cmake ../`
 * `cmake --build .  && cmake {PATH_TO_REPO}/aeval`
-* `make` (again) to build TG
+* `make tgnonlin` (again) to build TG
 
 The binary of TG-nonlin can be found at `build/tools/nonlin/tgnonlin`.
 Note that TG-nonlin comes with its own version of Z3
