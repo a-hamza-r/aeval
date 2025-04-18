@@ -79,9 +79,20 @@ namespace ufo
       else if (isOpX<AD_TY> (e)) {
         std::string name = lexical_cast<std::string>(e->left());
         Z3_symbol z3_name = Z3_mk_string_symbol(ctx, name.c_str());
-        Z3_sort typeDt = Z3_mk_datatype_sort(ctx, z3_name);
-        std::string name_DT = Z3_get_symbol_string(ctx, Z3_get_sort_name(ctx,typeDt));
-        res = reinterpret_cast<Z3_ast> (typeDt);
+        Z3_sort adt_sort = Z3_mk_datatype_sort(ctx, z3_name);
+        std::string name_sort = Z3_get_symbol_string(ctx, Z3_get_sort_name(ctx,adt_sort));
+        std::cout << "Name of datatype: " << name_sort << std::endl;
+        if (Z3_get_sort_kind(ctx, adt_sort) == Z3_DATATYPE_SORT)
+        {
+          unsigned num_ctors = Z3_get_datatype_sort_num_constructors(ctx, adt_sort);
+          std::cout << "Number of constructors: " << num_ctors << std::endl;
+          if (num_ctors == 1) {
+            Z3_func_decl ctor_decl = Z3_get_datatype_sort_constructor(ctx, adt_sort, 0);
+            Z3_symbol ctor_name = Z3_get_decl_name(ctx, ctor_decl);
+            std::cout << "Constructor: " << Z3_get_symbol_string(ctx, ctor_name) << std::endl;
+          }
+        }
+        res = reinterpret_cast<Z3_ast> (adt_sort);
       }
       else if (isOpX<ARRAY_TY> (e))
       {
