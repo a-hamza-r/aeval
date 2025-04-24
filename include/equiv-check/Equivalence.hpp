@@ -70,45 +70,33 @@ public:
                             return v;
                         }
                     }
-                    return Expr();
+                    return mkMPZ(0, efac);
                 };
                 Expr funds1 = finding_funds(f1.definition);
                 Expr funds2 = finding_funds(f2.definition);
                 Expr funds_eq = mk<EQ>(funds1, funds2);
 
                 ExprVector eqArgs = {funds_eq}, eqOuts;
-                // AH: Hacky way of constructing precondition and postcondition
                 for (int i = 0; i < inputs_sz; i++) {
-                    ExprVector accs1, accs2;
-                    u.unfold(accs1, f1.args[i]);
-                    u.unfold(accs2, f2.args[i]);
-                    size_t sz = accs1.size();
-                    for (size_t j = 0; j < sz; j++) {
-                        eqArgs.push_back(mk<EQ>(accs1[j], accs2[j]));
-                    }
+                    eqArgs.push_back(mk<EQ>(f1.args[i], f2.args[i]));
                 }
                 for (int i = 0; i < outputs_sz; i++) {
-                    ExprVector accs1, accs2;
-                    u.unfold(accs1, f1.outputs[i]);
-                    u.unfold(accs2, f2.outputs[i]);
-                    size_t sz = accs1.size();
-                    for (size_t j = 0; j < sz; j++) {
-                        eqOuts.push_back(mk<EQ>(accs1[j], accs2[j]));
-                    }
+                    eqOuts.push_back(mk<EQ>(f1.outputs[i], f2.outputs[i]));
                 }
                 Expr equalArgs = conjoin(eqArgs, efac);
                 Expr equalOuts = conjoin(eqOuts, efac);
                 Expr prec_and_bodies = mk<AND>(equalArgs, mk<AND>(f1.definition, f2.definition));
                 Expr equiv = mk<IMPL>(prec_and_bodies, equalOuts);
                 auto sys_sat = u.isSat(equiv);
-                std::cout << "check on equiv fla: " << sat_result(u.isSat(equiv)) << std::endl;
                 if (!bool(sys_sat)) {
                     std::cout << "System is unsatisfiable." << std::endl;
                     return;
                 }
                 Expr neg = mk<NEG>(equiv);
-                // std::cout << "negation of equiv fla: " << neg << std::endl;
                 auto neg_sat = u.isSat(neg);
+                ExprSet exprs;
+                getConj(neg, exprs);
+                u.dumpToFile(exprs);
                 std::cout << "check on negation of equiv fla: " << sat_result(neg_sat) << std::endl;
                 if (!bool(neg_sat)) {
                     std::cout << "Programs are equivalent." << std::endl;
