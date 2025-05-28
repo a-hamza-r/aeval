@@ -17,36 +17,86 @@ class Equivalence {
 private:
     ContractsCHCs m_contract1; // contract1
     ContractsCHCs m_contract2; // contract2
-    std::vector<std::pair<int, int>> m_targetPredicatePairs;
+    std::vector<std::pair<int, int>> m_checkOrder;
+    EquivCheckProcedure m_proc;
 
 public:
     Equivalence(ContractsCHCs& contract1, ContractsCHCs& contract2,
-                const std::vector<std::pair<std::string, std::string>>& equivalences)
-    : m_contract1(contract1), m_contract2(contract2) {
-        m_targetPredicatePairs.reserve(equivalences.size());
+                const std::vector<std::pair<std::string, std::string>>& equivalences,
+                EquivCheckProcedure proc)
+    : m_contract1(contract1), m_contract2(contract2), m_proc(proc) {
+        // TODO: remove targetPredicatePairs, if possible; use funcs1 and funcs2 instead
+        std::set<std::pair<int, int>> targetPredicatePairs;
+        std::unordered_set<int> funcs1, funcs2;
         for (auto &pair : equivalences) {
             std::string pred1 = pair.first;
             std::string pred2 = pair.second;
             int pos1 = m_contract1.funcsInfo.getFunctionIndex(pred1);
             int pos2 = m_contract2.funcsInfo.getFunctionIndex(pred2);
             assert(pos1 != -1 && pos2 != -1);
-            m_targetPredicatePairs.emplace_back(pos1, pos2);
+            targetPredicatePairs.insert({pos1, pos2});
+            funcs1.insert(pos1);
+            funcs2.insert(pos2);
         }
+        auto& callOrder1 = m_contract1.funcsInfo.getCallingOrder();
+        auto& callOrder2 = m_contract2.funcsInfo.getCallingOrder();
+        int ptr1 = callOrder1.size() - 1;
+        int ptr2 = callOrder2.size() - 1;
+        int numPairs = 0;
+        while (ptr1 >= 0 && ptr2 >= 0) {
+            int pos1 = callOrder1[ptr1];
+            int pos2 = callOrder2[ptr2];
+            if (targetPredicatePairs.find({pos1, pos2}) != targetPredicatePairs.end()) {
+                // check if this has overhead
+                m_checkOrder.insert(m_checkOrder.begin(), {pos1, pos2});
+                ptr1--;
+                ptr2--;
+                numPairs++;
+            }
+            else if (funcs1.find(pos1) == funcs1.end()) {
+                m_checkOrder.insert(m_checkOrder.begin(), {pos1, -1});
+                ptr1--;
+            }
+            else {
+                m_checkOrder.insert(m_checkOrder.begin(), {-1, pos2});
+                ptr2--;
+            }
+        }
+        if (numPairs != targetPredicatePairs.size() &&
+            m_proc == EquivCheckProcedure::INCREMENTAL) {
+            std::cout << "Cannot check equivalence using incremental approach\n";
+            m_proc = EquivCheckProcedure::BASELINE;
+        }
+        print_info();
     }
 
     void print_info() {
-        for (int i = 0; i < m_targetPredicatePairs.size(); i++) {
-            int pos1 = m_targetPredicatePairs[i].first;
-            int pos2 = m_targetPredicatePairs[i].second;
-            std::cout << "Checking equivalence for " <<
-                m_contract1.funcsInfo.getFunctions()[pos1].getName() << " and " <<
-                m_contract2.funcsInfo.getFunctions()[pos2].getName() << "." << std::endl;
+        for (int i = 0; i < m_checkOrder.size(); i++) {
+            int pos1 = m_checkOrder[i].first;
+            int pos2 = m_checkOrder[i].second;
+            if (pos1 != -1 && pos2 != -1) {
+                std::cout << "Checking equivalence for " <<
+                    m_contract1.funcsInfo.getFunctions()[pos1].getName() << " and " <<
+                    m_contract2.funcsInfo.getFunctions()[pos2].getName() << "." << std::endl;
+            }
+            else if (pos1 == -1) {
+                std::cout << "Only inlining " <<
+                    m_contract2.funcsInfo.getFunctions()[pos2].getName() << "." << std::endl;
+            }
+            else {
+                std::cout << "Only inlining " <<
+                    m_contract1.funcsInfo.getFunctions()[pos1].getName() << "." << std::endl;
+            }
         }
     }
 
-    void get_equivalence_result(EquivCheckProcedure proc) {
-        switch (proc) {
+    void get_equivalence_result() {
+        switch (m_proc) {
             case EquivCheckProcedure::BASELINE: {
+                // Inline everything
+                m_contract1.inlining();
+                m_contract2.inlining();
+
                 functionsInfo fInfo1 = m_contract1.funcsInfo;
                 functionsInfo fInfo2 = m_contract2.funcsInfo;
                 function& f1 = fInfo1.getFunctions()[fInfo1.getCallingOrder().back()];
@@ -106,7 +156,23 @@ public:
                 break;
             }
             case EquivCheckProcedure::INCREMENTAL: {
-                std::cout << "Incremental equivalence check is not implemented yet." << std::endl;
+                std::cout << "WARNING: Incremental equivalence check is not implemented yet." << std::endl;
+                auto& funcsInfo1 = m_contract1.funcsInfo;
+                auto& funcsInfo2 = m_contract2.funcsInfo;
+                for (auto& pair : m_checkOrder) {
+                    int pos1 = pair.first;
+                    int pos2 = pair.second;
+                    if (pos1 != -1) {
+                        function& f1 = funcsInfo1.getFunctions()[pos1];
+                        m_contract1.inliningSingleFunction(f1);
+                        f1.print();
+                    }
+                    if (pos2 != -1) {
+                        function& f2 = funcsInfo2.getFunctions()[pos2];
+                        m_contract2.inliningSingleFunction(f2);
+                        f2.print();
+                    }
+                }
                 break;
             }
         }
@@ -134,11 +200,10 @@ inline void check_equivalence(char* contract1, char* contract2,
     ruleManagerC2.parse(contract2);
     //ruleManagerC2.print();
 
-    ruleManagerC1.inlining();
-    ruleManagerC2.inlining();
-
-    auto equiv = Equivalence(ruleManagerC1, ruleManagerC2, equivalences);
-    equiv.get_equivalence_result(EquivCheckProcedure::BASELINE);
+    EquivCheckProcedure proc = EquivCheckProcedure::INCREMENTAL;
+    // EquivCheckProcedure proc = EquivCheckProcedure::BASELINE;
+    auto equiv = Equivalence(ruleManagerC1, ruleManagerC2, equivalences, proc);
+    equiv.get_equivalence_result();
 }
 
 }

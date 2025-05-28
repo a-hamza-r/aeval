@@ -88,6 +88,7 @@ public:
         return -1;
     }
 
+    // TODO: also add indexing for functions, getFunction[i]
     std::vector<function>& getFunctions() {
         return m_functions;
     }
@@ -132,7 +133,7 @@ public:
         }
     }
 
-    std::vector<int> getCallingOrder() {
+    std::vector<int>& getCallingOrder() {
         return m_calling_order;
     }
 
