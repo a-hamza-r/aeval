@@ -18,6 +18,7 @@ struct function {
     int fpred_source; // CHC that serves as source for the function predicate (fact CHC)
     Expr fpred_expr; // the function predicate
     Expr fpred_trailing_pred; // predicate that is used to define the control-flow of the function
+    std::vector<int> chc_nums; // CHC numbers that are used to define the function
 
     std::string name;
 
@@ -39,11 +40,11 @@ struct function {
         }
     }
 
-    std::string getName() {
+    std::string getName() const {
         return name == "" ? fpred_name : name;
     }
 
-    void print() {
+    void print() const {
         std::cout << "Function: " << getName() << "\n";
         std::cout << "Arguments: ";
         for (auto &arg : args) {
@@ -181,13 +182,14 @@ public:
     int chc_num;
     std::shared_ptr<Node> next;
     ExprVector& srcs;
+    Expr dstRelation;
 
-    explicit Node(int _chc_num, ExprVector& _srcs)
-    : chc_num(_chc_num), next(nullptr), srcs(_srcs) {}
+    explicit Node(int _chc_num, ExprVector& _srcs, Expr _dstRelation)
+    : chc_num(_chc_num), next(nullptr), srcs(_srcs), dstRelation(_dstRelation) {}
 
 
-    void print(std::ostream &os) {
-        os << chc_num << " <- ";
+    void print(std::ostream &os) const {
+        os << chc_num << ": " << dstRelation << " <- ";
         if (srcs.empty()) {
             os << "\u22A4"; // print top symbol
             os << "\n";
@@ -217,7 +219,7 @@ public:
             // The node already exists, hence the dstRelation has already been processed
             return;
         }
-        auto newNode = std::make_shared<Node>(chc_num, srcs);
+        auto newNode = std::make_shared<Node>(chc_num, srcs, dstRelation);
         chc_num_to_node[chc_num] = newNode;
         auto dstNode = dstRelation_to_node.find(dstRelation);
         if (dstNode != dstRelation_to_node.end()) {
@@ -376,6 +378,15 @@ public:
     ContractsCHCs(ExprFactory &efac, EZ3 &z3, std::string name, std::vector<std::string>& preds)
     : CHCs(efac, z3, name), fpreds_names(preds), funcsInfo(preds) {}
 
+    void printFunctionInfo(const function& func) {
+        func.print();
+        std::cout << "Relevant CHCs:\n";
+        for (auto &chc_num : func.chc_nums) {
+            chc_graph.getNode(chc_num)->print(std::cout);
+        }
+        std::cout << "\n";
+    }
+
     Expr renamedClone(Expr origVar) {
         Expr name = mkTerm<string>(varname + "var_" + std::to_string(variableCounter++), m_efac);
         return cloneVar(origVar, name);
@@ -533,6 +544,7 @@ public:
         auto node = chc_graph.getNode(dstRelation);
         while (node != nullptr) {
             auto &chc = chcs[node->chc_num];
+            func.chc_nums.push_back(node->chc_num);
             if (chc.isFact) {
                 auto &srcs_of_sink = chcs[func.fpred_sink].srcRelations;
                 Expr dst_of_chc = chc.dstRelation;
