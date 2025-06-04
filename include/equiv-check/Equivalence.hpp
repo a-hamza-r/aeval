@@ -164,13 +164,13 @@ public:
                     int pos2 = pair.second;
                     if (pos1 != -1) {
                         function& f1 = funcsInfo1.getFunctions()[pos1];
-                        m_contract1.printFunctionInfo(f1);
                         m_contract1.inliningSingleFunction(f1);
+                        m_contract1.printFunctionInfo(f1);
                     }
                     if (pos2 != -1) {
                         function& f2 = funcsInfo2.getFunctions()[pos2];
-                        m_contract2.printFunctionInfo(f2);
                         m_contract2.inliningSingleFunction(f2);
+                        m_contract2.printFunctionInfo(f2);
                     }
                 }
                 break;
