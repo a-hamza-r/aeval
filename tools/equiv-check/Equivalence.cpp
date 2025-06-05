@@ -152,6 +152,7 @@ int main (int argc, char ** argv)
     // getSignature(signature, getStrValue("--keys", NULL, argc, argv));
 
     // AH: (Possibly) temporarily hardcoding the predicates
+    std::string contract1, contract2;
     std::vector<std::pair<std::string, std::string>> equivalences;
     std::vector<std::string> predicatesC1, predicatesC2;
     if (char* predicateFile = getStrValue(OPT_PREDS, nullptr, argc, argv))
@@ -163,9 +164,19 @@ int main (int argc, char ** argv)
             return 1;
         }
         std::string line;
+        getline(in, line);
+        size_t pos = line.find(' ');
+        if (pos == string::npos)
+        {
+            errs() << "ERROR: invalid first line in predicates file: " << line << "\n";
+            return 1;
+        }
+        contract1 = line.substr(0, pos);
+        contract2 = line.substr(pos+1);
+        getline(in, line); // skip the second line containing '%'
         while (getline(in, line) && line != "%")
         {
-            size_t pos = line.find(' ');
+            pos = line.find(' ');
             if (pos == string::npos)
             {
                 errs() << "ERROR: invalid line in predicates file: " << line << "\n";
@@ -230,9 +241,9 @@ int main (int argc, char ** argv)
     if (d_m || d_p || d_d || d_s) do_disj = true;
     if (do_disj) do_dl = true;
 
-    check_equivalence(argv[argc-2], argv[argc-1], equivalences, predicatesC1, predicatesC2,
-                      /*signature, */max_attempts, to, densecode, aggressivepruning, do_dl, do_elim,
-                      do_disj, do_prop, d_m, d_p, d_d,  d_s, to_skip, invMode, lookahead, lb, lmax,
-                      prio, debug);
+    check_equivalence(argv[argc-2], argv[argc-1], equivalences, contract1, contract2,
+                      predicatesC1, predicatesC2, max_attempts, to, densecode, aggressivepruning,
+                      do_dl, do_elim, do_disj, do_prop, d_m, d_p, d_d,  d_s, to_skip, invMode,
+                      lookahead, lb, lmax, prio, debug);
     return 0;
 }

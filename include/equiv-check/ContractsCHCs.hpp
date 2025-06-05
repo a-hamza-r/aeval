@@ -22,9 +22,7 @@ struct function {
 
     std::string name;
 
-    function(std::string _fpred_name) : fpred_name(_fpred_name) {}
-
-    void findActualName() {
+    function(std::string _fpred_name) : fpred_name(_fpred_name) {
         // best effort to retrieve the actual function name from the function predicate
         std::regex pattern(R"(summary_+\d+_+function_(.*)_+\d+_+\d+_+\d+)");
         std::smatch match;
@@ -36,16 +34,12 @@ struct function {
             size_t start = funcname.find_first_not_of('_');
             size_t end = funcname.find_last_not_of('_');
 
-            name = (start != std::string::npos) ? funcname.substr(start, end - start + 1) : "";
+            name = (start != std::string::npos) ? funcname.substr(start, end - start + 1) : fpred_name;
         }
     }
 
-    std::string getName() const {
-        return name == "" ? fpred_name : name;
-    }
-
     void print() const {
-        std::cout << "Function: " << getName() << "\n";
+        std::cout << "Function: " << name << "\n";
         std::cout << "Arguments: ";
         for (auto &arg : args) {
             std::cout << arg << " ";
@@ -64,6 +58,9 @@ struct function {
 
 // A class to represent information about functions and function calls
 class functionsInfo {
+    const std::vector<std::string>& m_fpreds_names;
+    // TODO: currently not used; either remove or use it
+    std::set<int> m_function_relevant_chcs; // CHC numbers that are relevant for the functions
     std::vector<function> m_functions; // a list of functions in the contract
 
     // a map from caller to callees
@@ -71,13 +68,13 @@ class functionsInfo {
     std::vector<int> m_calling_order;
 
 public:
-    functionsInfo(const std::vector<std::string>& preds) {
-        m_functions.reserve(preds.size());
-        for (auto &pred : preds) {
+    functionsInfo(const std::vector<std::string>& preds)
+    : m_fpreds_names(preds) {
+        m_functions.reserve(m_fpreds_names.size());
+        for (auto &pred : m_fpreds_names) {
             m_functions.push_back(function(pred));
-            m_functions.back().findActualName();
         }
-        m_calling_order.reserve(preds.size());
+        m_calling_order.reserve(m_fpreds_names.size());
     }
 
     int getFunctionIndex(std::string name) {
@@ -87,6 +84,10 @@ public:
             }
         }
         return -1;
+    }
+
+    const std::vector<std::string>& getPredicateNames() const {
+        return m_fpreds_names;
     }
 
     // TODO: also add indexing for functions, getFunction[i]
@@ -108,6 +109,10 @@ public:
             sources.insert(func.fpred_source);
         }
         return sources;
+    }
+
+    void addRelevantCHCs(const std::vector<int>& chc_nums) {
+        m_function_relevant_chcs.insert(chc_nums.begin(), chc_nums.end());
     }
 
     void addCall(int from_predicate, int to_predicate) {
@@ -141,8 +146,8 @@ public:
     void printCalls() {
         for (auto &caller_callee : m_caller_to_callee) {
             for (auto &callee : caller_callee.second) {
-                std::cout << m_functions[caller_callee.first].getName() << " calls ";
-                std::cout << m_functions[callee].getName() << "\n";
+                std::cout << m_functions[caller_callee.first].name << " calls ";
+                std::cout << m_functions[callee].name << "\n";
             }
         }
     }
@@ -152,14 +157,14 @@ public:
         file << "digraph CallGraph {\n";
         if (m_caller_to_callee.empty()) {
             for (auto &func : m_functions) {
-                file << func.getName() << ";\n";
+                file << func.name << ";\n";
             }
         }
         else {
             for (auto &caller_callee : m_caller_to_callee) {
                 for (auto &callee : caller_callee.second) {
-                    file << m_functions[caller_callee.first].getName() << " -> ";
-                    file << m_functions[callee].getName() << ";\n";
+                    file << m_functions[caller_callee.first].name << " -> ";
+                    file << m_functions[callee].name << ";\n";
                 }
             }
         }
@@ -346,37 +351,19 @@ struct inlinedDefinition {
 };
 
 
-static Expr renameVariables(Expr var, int unique_id, std::string suffix) {
-    std::string name = lexical_cast<std::string>(var);
-    Expr new_var = mkTerm<string>(suffix + to_string(unique_id) + "_" + name, var->getFactory());
-    return cloneVar(var, new_var);
-}
-
-
-static void updateVarsAndBody(ExprVector& vars, Expr& body, int unique_id, std::string suffix = "") {
-    ExprVector prev_vars = vars;
-    for (int i = 0; i < vars.size(); i++) {
-        vars[i] = renameVariables(vars[i], unique_id, suffix);
-    }
-    body = replaceAll(body, prev_vars, vars);
-}
-
-
-
-
 class ContractsCHCs : public CHCs {
 public:
-    std::vector<std::string>& fpreds_names;
-    functionsInfo funcsInfo;
+    functionsInfo funcs_info;
     CHCsGraph chc_graph;
-    std::unordered_map<std::string, Expr> names_to_rel; // names to relation mapping
-    // (only used for ease of access)
-    std::unordered_map<Expr, inlinedDefinition> preds_to_inlined_defs;
+    // names to relation mapping (only used for ease of access)
+    std::unordered_map<std::string, Expr> names_to_rel;
     // predicate to inlined definition mapping
+    // TODO: move this to functionsInfo?
+    std::unordered_map<Expr, inlinedDefinition> preds_to_inlined_defs;
     int variableCounter = 0;
 
     ContractsCHCs(ExprFactory &efac, EZ3 &z3, std::string name, std::vector<std::string>& preds)
-    : CHCs(efac, z3, name), fpreds_names(preds), funcsInfo(preds) {}
+    : CHCs(efac, z3, name), funcs_info(preds) {}
 
     void printFunctionInfo(const function& func) {
         func.print();
@@ -392,6 +379,7 @@ public:
         return cloneVar(origVar, name);
     }
 
+    // TODO: this needs to be checked for correctness, along with renaming of variables
     void matchVariables(Expr &definition, const ExprVector& srcVars,
                         const ExprVector& dstVars, ExprVector& terms, function& func) {
         // locVars might also need renaming
@@ -480,9 +468,9 @@ public:
 
 
     void inlining() {
-        for (auto &i : funcsInfo.getCallingOrder()) {
-            auto &func = funcsInfo.getFunctions()[i];
-            //std::cout << "Inlining " << func.getName() << "\n";
+        for (auto &i : funcs_info.getCallingOrder()) {
+            auto &func = funcs_info.getFunctions()[i];
+            //std::cout << "Inlining " << func.name << "\n";
             //std::cout << "----------------------------------\n";
             inliningSingleFunction(func);
             //std::cout << "----------------------------------\n\n";
@@ -491,9 +479,9 @@ public:
 
 
     void computeCallGraph() {
-        auto &functions = funcsInfo.getFunctions();
+        auto &functions = funcs_info.getFunctions();
         if (functions.size() <= 1) {
-            funcsInfo.addCallingOrder(0);
+            funcs_info.addCallingOrder(0);
         }
         else {
             for (int i = 0; i < functions.size(); i++) {
@@ -513,16 +501,16 @@ public:
                         std::cout << "Cannot check equivalence\n";
                         exit(0);
                     } else if (found_trace1) {
-                        funcsInfo.addCall(i, j);
+                        funcs_info.addCall(i, j);
                     }
                     else if (found_trace2) {
-                        funcsInfo.addCall(j, i);
+                        funcs_info.addCall(j, i);
                     }
                 }
             }
-            funcsInfo.findCallingOrder();
+            funcs_info.findCallingOrder();
         }
-        funcsInfo.callGraphToDotFile(std::string("../call_graph") + varname + ".dot");
+        funcs_info.callGraphToDotFile(std::string("../call_graph") + varname + ".dot");
     }
 
 
@@ -564,9 +552,36 @@ public:
         return false;
     }
 
+    void findRelevantCHCs() {
+        // Keep track of the CHCs relevant to the contract functions
+        std::set<std::string> processed;
+        std::vector<std::string> worklist = funcs_info.getPredicateNames();
+        for (size_t i = 0; i < worklist.size(); i++) {
+            std::string p = worklist[i];
+            if (processed.find(p) != processed.end()) continue;
+            processed.insert(p);
+            for (auto &d : decls) {
+                if (lexical_cast<std::string>(d->left()).compare(p) == 0) {
+                    names_to_rel[p] = d->left();
+                    auto incms_for_p = incms[names_to_rel[p]];
+                    funcs_info.addRelevantCHCs(incms_for_p);
+                    for (auto &incm : incms_for_p) {
+                        for (auto &src : chcs[incm].srcRelations) {
+                            std::string src_str = lexical_cast<std::string>(src);
+                            if (src_str.find("interface") == std::string::npos) {
+                                worklist.push_back(src_str);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     void initFunctionsInfo() {
+        findRelevantCHCs();
         ExprSet processedExprs;
-        for (auto &func : funcsInfo.getFunctions()) {
+        for (auto &func : funcs_info.getFunctions()) {
             func.fpred_expr = names_to_rel[func.fpred_name];
             auto& all_sinks = incms[func.fpred_expr];
             assert(all_sinks.size() == 1); // only one CHC (sink) for a function predicate
@@ -584,28 +599,17 @@ public:
         computeCallGraph();
         processedExprs.clear();
         // find the source CHC for each function, which needs the call graph is computed
-        for (auto &i : funcsInfo.getCallingOrder()) {
-            auto &func = funcsInfo.getFunctions()[i];
+        auto &funcs = funcs_info.getFunctions();
+        for (auto &i : funcs_info.getCallingOrder()) {
+            auto &func = funcs[i];
             findSource(func.fpred_expr, func, processedExprs);
         }
-        chc_graph.toDotFile(std::string("../chc_graph") + varname + ".dot", funcsInfo.getSinks(),
-                            funcsInfo.getSources());
+        chc_graph.toDotFile(std::string("../chc_graph") + varname + ".dot", funcs_info.getSinks(),
+                            funcs_info.getSources());
     }
 
 
-    void renameVars() {
-        for (int i = 0; i < chcs.size(); i++) {
-            auto &chc = chcs[i];
-            for (int j = 0; j < chc.srcRelations.size(); j++) {
-                auto &src_vars = chc.srcVars[j];
-                updateVarsAndBody(src_vars, chc.body, i);
-            }
-            updateVarsAndBody(chc.dstVars, chc.body, i);
-            updateVarsAndBody(chc.locVars, chc.body, i, varname);
-        }
-    }
-
-    void parse(std::string smt)
+    void parse(std::string smt, std::string contract)
     {
         if (debug > 0) outs () << "\nPARSING" << "\n=======\n";
         std::unique_ptr<ufo::ZFixedPoint <EZ3> > m_fp;
@@ -789,39 +793,36 @@ public:
 
         prune();
 
-        // Keep the relevant CHCs
-        std::set<std::string> processed;
-        std::set<int> toKeep;
-        std::vector<std::string> worklist = fpreds_names;
-        for (size_t i = 0; i < worklist.size(); i++) {
-            std::string p = worklist[i];
-            if (processed.find(p) != processed.end()) continue;
-            processed.insert(p);
-            for (auto &d : decls) {
-                if (lexical_cast<std::string>(d->left()).compare(p) == 0) {
-                    names_to_rel[p] = d->left();
-                    auto incms_for_p = incms[names_to_rel[p]];
-                    toKeep.insert(incms_for_p.begin(), incms_for_p.end());
-                    for (auto &incm : incms_for_p) {
-                        for (auto &src : chcs[incm].srcRelations) {
-                            std::string src_str = lexical_cast<std::string>(src);
-                            if (src_str.find("interface") == std::string::npos) {
-                                worklist.push_back(src_str);
-                            }
-                        }
-                    }
-                }
+        index_fact_chc = -1;
+        // find: index_cycle_chc
+        for (int i = 0; i < chcs.size(); i++)
+        {
+            string name = lexical_cast<string>(chcs[i].dstRelation);
+            if (name.find("nondet_interface") == std::string::npos &&
+                find (chcs[i].srcRelations.begin(), chcs[i].srcRelations.end(),
+                      chcs[i].dstRelation) != chcs[i].srcRelations.end() &&
+                name.find(contract) != std::string::npos)
+            {
+                index_cycle_chc.push_back(i);
+                //outs () << "cycle found (#" << i << "):\n";
+                //print(chcs[i]);
             }
         }
-        std::vector<HornRuleExt> new_chcs;
-        new_chcs.reserve(toKeep.size());
-        for (auto &i : toKeep) {
-            new_chcs.push_back(chcs[i]);
+
+        assert(!index_cycle_chc.empty());
+
+        // find fact now:
+        for (int i = 0; i < chcs.size(); i++) {
+            if (find(index_cycle_chc.begin(), index_cycle_chc.end(), i) !=
+                index_cycle_chc.end())
+                continue;
+            if (chcs[i].dstRelation == chcs[index_cycle_chc[0]].dstRelation) {
+                index_fact_chc = i;
+                //outs() << "fact found (#" << i << "):\n";
+                //print(chcs[i]);
+                break;
+            }
         }
-        chcs = std::move(new_chcs);
-        computeIncms();
-        // might also need to update the decls
-        renameVars();
 
         // Initialize the functions and function calls info
         initFunctionsInfo();
