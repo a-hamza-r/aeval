@@ -353,6 +353,7 @@ struct inlinedDefinition {
 
 class ContractsCHCs : public CHCs {
 public:
+    SMTUtils u;
     functionsInfo funcs_info;
     CHCsGraph chc_graph;
     // names to relation mapping (only used for ease of access)
@@ -360,10 +361,11 @@ public:
     // predicate to inlined definition mapping
     // TODO: move this to functionsInfo?
     std::unordered_map<Expr, inlinedDefinition> preds_to_inlined_defs;
+    std::unordered_map<Expr, inlinedDefinition> preds_to_summaries;
     int variableCounter = 0;
 
     ContractsCHCs(ExprFactory &efac, EZ3 &z3, std::string name, std::vector<std::string>& preds)
-    : CHCs(efac, z3, name), funcs_info(preds) {}
+    : CHCs(efac, z3, name), u(efac, z3), funcs_info(preds) {}
 
     void printFunctionInfo(const function& func) {
         func.print();
@@ -374,9 +376,32 @@ public:
         std::cout << "\n";
     }
 
-    Expr renamedClone(Expr origVar) {
-        Expr name = mkTerm<string>(varname + "var_" + std::to_string(variableCounter++), m_efac);
+    Expr renamedClone(Expr origVar, bool isFundsVar=false) {
+        // a way of identifying funds variables is needed with current logic
+        std::string append = isFundsVar ? "fnd_" : "var_";
+        Expr name = mkTerm<string>(varname + append + std::to_string(variableCounter++), m_efac);
         return cloneVar(origVar, name);
+    }
+
+    // This function readjusts the variables in the definition
+    // The definition computed for a predicate may have different variables than one where we
+    // are inlining that definition. Since target CHC can have its own set of variables, and
+    // simply making equality between the two sets isn't sufficient (as names may clash), we
+    // create new variables for the definition being inlined, and add equalities
+    // toInlineIntoVars here are the variables in the target CHC where we are inlining the
+    // definition
+    void readjustVariables(const inlinedDefinition& inlinedDef,
+                           const ExprVector& toInlineIntoVars, ExprVector& terms) {
+        ExprVector new_vars;
+        Expr definition = inlinedDef.definition;
+        for (int i = 0; i < inlinedDef.dsts.size(); i++) {
+            Expr v = inlinedDef.dsts[i];
+            Expr new_var = renamedClone(v);
+            new_vars.push_back(new_var);
+            terms.push_back(mk<EQ>(toInlineIntoVars[i], new_var));
+            definition = replaceAll(definition, v, new_var);
+        }
+        terms.push_back(simplifyBool(definition));
     }
 
     // TODO: this needs to be checked for correctness, along with renaming of variables
@@ -402,9 +427,366 @@ public:
         definition = simplifyBool(definition);
     }
 
+    void declareLogicAndDataTypes(std::ofstream& file) {
+        file << "(set-logic ALL)\n\n";
+        // declare datatypes used
+        file << "(declare-datatypes ((|state_type| 0)) (((|state_type| (|balances| (Array Int Int))))))" << "\n";
+        file << "(declare-datatypes ((|bytes_tuple| 0)) (((|bytes_tuple| (|bytes_tuple_accessor_array| (Array Int Int)) (|bytes_tuple_accessor_length| Int)))))" << "\n";
+        file << "(declare-datatypes ((|tx_type| 0)) (((|tx_type| (|block.basefee| Int) (|block.chainid| Int) (|block.coinbase| Int) (|block.difficulty| Int) (|block.gaslimit| Int) (|block.number| Int) (|block.timestamp| Int) (|blockhash| (Array Int Int)) (|msg.data| |bytes_tuple|) (|msg.sender| Int) (|msg.sig| Int) (|msg.value| Int) (|tx.gasprice| Int) (|tx.origin| Int)))))" << "\n";
+        file << "(declare-datatypes ((|ecrecover_input_type| 0)) (((|ecrecover_input_type| (|hash| Int) (|v| Int) (|r| Int) (|s| Int)))))" << "\n";
+        file << "(declare-datatypes ((|crypto_type| 0)) (((|crypto_type| (|ecrecover| (Array |ecrecover_input_type| Int)) (|keccak256| (Array |bytes_tuple| Int)) (|ripemd160| (Array |bytes_tuple| Int)) (|sha256| (Array |bytes_tuple| Int))))))" << "\n";
+        file << "(declare-datatypes ((|abi_type| 0)) (((|abi_type|))))" << "\n\n";
+    }
+
+    void constructTypedVariables(string prefix, string name, const ExprVector& vars, std::ostream& file, Expr definition=nullptr) {
+        file << "(" << prefix << " " << name << " (";
+        for (int i = 0; i < vars.size(); i++)
+        {
+            file << "(";
+            u.print(vars[i], file);
+            file << " " ;
+            u.print(typeOf(vars[i]), file);
+            file << ")";
+            if (i < vars.size()-1) file << " ";
+        }
+        file << ") Bool\n";
+        if (definition != nullptr) {
+            u.print(definition, file);
+        }
+        file << ")\n\n";
+    }
+
+    Expr sygusEngine(const ExprVector& disjuncts, ExprVector& dsts, Expr rel,
+                     std::string equivalence_file="", bool version2=false) {
+        // create a file named {rel}_sygus.smt2
+        std::string dir_name = "sygus_files/";
+        std::string rel_name = lexical_cast<string>(rel);
+        std::string file_name = dir_name + rel_name + "_sygus.smt2";
+        {
+            std::ofstream file(file_name, std::ios::trunc);
+        }
+        std::ofstream file(file_name, std::ios::app);
+
+        // set logic and declare datatypes used
+        declareLogicAndDataTypes(file);
+
+        // declare variables; keep them common for all disjuncts rather than per disjunct
+        // can improve this later, but not necessary
+        ExprVector vars;
+        Expr disj;
+        if (disjuncts.size() == 1) disj = disjuncts[0];
+        else disj = mknary<OR>(disjuncts);
+        filter(disj, bind::IsConst(), std::inserter(vars, vars.begin()));
+        // compute set difference vars - dsts
+        ExprVector extra_vars;
+        ExprMap replacements;
+        for (size_t i = 0; i < vars.size(); ) {
+            Expr v = vars[i];
+            // check if a variable starts with "funds"
+            // handle this more elegantly later
+            if (lexical_cast<string>(v).find("funds") != string::npos) {
+                // add a renamed clone of funds variable to dsts
+                Expr new_v = renamedClone(v, true); // true indicates funds variable
+                replacements[v] = new_v;
+                dsts.push_back(new_v);
+                vars[i] = new_v;
+                continue;
+            }
+            if (std::find(dsts.begin(), dsts.end(), v) == dsts.end()) {
+                extra_vars.push_back(v);
+            }
+            i++;
+        }
+        // make arg and return types for the function definition (same for all disjuncts)
+        ExprVector def_arg_types;
+        for (auto &v : vars) {
+            def_arg_types.push_back(typeOf(v));
+        }
+        def_arg_types.push_back(mk<BOOL_TY>(m_efac));
+
+        // make arg and return types for the function summary (same for all disjuncts)
+        ExprVector summ_arg_types;
+        for (auto &v : dsts) {
+            summ_arg_types.push_back(typeOf(v));
+        }
+        summ_arg_types.push_back(mk<BOOL_TY>(m_efac));
+
+        // construct the exists quantifier arguments 
+        ExprVector exists_args;
+        for (auto & v : extra_vars) exists_args.push_back(v->left());
+
+        // construct the forall quantifier arguments
+        ExprVector forall_args;
+        for (auto & v : dsts) forall_args.push_back(v->left());
+
+        std::vector<std::string> summ_names;
+        ExprVector summ_apps;
+
+        // simpler/naive solution: for each disjunct, we compute summary separately
+        // then combine them using OR
+        // TODO: (possibly) better solution: construct a single sygus query and try to find
+        // solutions like (ite cond1 summary1 (ite cond2 summary2 ...)), but sygus is not good
+        // with finding such solutions currently
+        for (int i = 0; i < disjuncts.size(); i++) {
+            Expr disj = disjuncts[i];
+            // replace variables in disjunct with renamed clones if needed
+            for (auto &p : replacements) {
+                disj = replaceAll(disj, p.first, p.second);
+            }
+            std::string summ_name = rel_name + "_summary" + std::to_string(i);
+            summ_names.push_back(summ_name);
+            constructTypedVariables("synth-fun", summ_name, dsts, file);
+
+            // construct a function definition
+            std::string def_name = rel_name + "_definition" + std::to_string(i);
+            constructTypedVariables("define-fun", def_name, vars, file, disj);
+
+            Expr def_decl = bind::fdecl(mkTerm<string> (def_name, m_efac), def_arg_types);
+            Expr def_app = bind::fapp(def_decl, vars);
+
+            Expr summ_decl = bind::fdecl(mkTerm<string>(summ_name, m_efac), summ_arg_types);
+            Expr summ_app = bind::fapp(summ_decl, dsts);
+            summ_apps.push_back(summ_app);
+
+            Expr exists_fla;
+            if (exists_args.empty()) exists_fla = def_app;
+            else {
+                exists_args.push_back(def_app);
+                exists_fla = mknary<EXISTS>(exists_args);
+            }
+            exists_args.pop_back(); // remove app for next iteration
+
+            // implication 1
+            Expr impl1 = mk<IMPL>(exists_fla, summ_app);
+
+            Expr forall_fla1;
+            if (forall_args.empty()) forall_fla1 = impl1;
+            else {
+                forall_args.push_back(impl1);
+                forall_fla1 = mknary<FORALL>(forall_args);
+            }
+            forall_args.pop_back(); // remove impl1 for next iteration/formula
+
+            // implication 2
+            Expr impl2 = mk<IMPL>(summ_app, exists_fla);
+
+            Expr forall_fla2;
+            if (forall_args.empty()) forall_fla2 = impl2;
+            else {
+                forall_args.push_back(impl2);
+                forall_fla2 = mknary<FORALL>(forall_args);
+            }
+            forall_args.pop_back(); // remove impl2 for next iteration/formula
+
+            file << "(constraint \n";
+            u.print(forall_fla1, file);
+            file << "\n)\n\n";
+
+            file << "(constraint \n";
+            u.print(forall_fla2, file);
+            file << "\n)\n\n";
+        }
+        file << "\n(check-synth)\n";
+        file.close();
+
+        // call sygus engine on the file
+        std::string output_file = dir_name + rel_name + "_sygus_output.smt2";
+        std::string command = "cvc5 --lang=sygus2 " + file_name + " > " + output_file;
+        system(command.c_str());
+        
+        // check if all summaries were found in the output file
+        std::ifstream ifs(output_file);
+        if (!ifs) {
+            std::cout << "Error: Could not open sygus output file." << std::endl;
+            return mk<FALSE>(m_efac);
+        }
+        std::string content((std::istreambuf_iterator<char>(ifs)),
+                            std::istreambuf_iterator<char>());
+
+        for (const auto& s : summ_names) {
+            if (content.find(s) == std::string::npos) {
+                std::cout << "Sygus engine did not return a definition for the summary function: " << s << "\n";
+                return mk<FALSE>(m_efac);
+            }
+        }
+        ifs.close();
+
+        // extract the function definition from the output file
+        std::ifstream infile(output_file);
+
+        std::string line;
+        size_t line_count = 0;
+        while (std::getline(infile, line)) {
+            line_count++;
+        }
+        infile.clear();
+        infile.seekg(0, std::ios::beg);
+        size_t current_line = 0;
+        std::string func_def;
+        while (std::getline(infile, line)) {
+            if (current_line != 0 && current_line != line_count - 1) {
+                // some hack to deal with mod_total and div_total functions
+                if (line.find("mod_total") != std::string::npos ||
+                    line.find("div_total") != std::string::npos) {
+                    // remove _total from the line
+                    line = std::regex_replace(line, std::regex("_total"), "");
+                }
+                func_def += line + "\n";
+            }
+            current_line++;
+        }
+        infile.close();
+
+        std::string output_file2 = dir_name + rel_name + "_sygus_output2.smt2";
+        std::ofstream outfile(output_file2);
+
+        // set logic and declare datatypes used
+        declareLogicAndDataTypes(outfile);
+
+        outfile << func_def << "\n";
+
+        for (auto &v : dsts) {
+            outfile << "(declare-var ";
+            u.print(v, outfile);
+            outfile << " ";
+            u.print(typeOf(v), outfile);
+            outfile << ")\n";
+        }
+
+        // construct a disjunction of all summary applications
+        std::string summ_name = rel_name + "_summary_final";
+        Expr disjoined_summ_apps;
+        if (summ_apps.size() == 1) disjoined_summ_apps = summ_apps[0];
+        else disjoined_summ_apps = mknary<OR>(summ_apps);
+        constructTypedVariables("define-fun", summ_name, dsts, outfile, disjoined_summ_apps);
+
+        // construct the summary application
+        Expr summ_decl = bind::fdecl(mkTerm<string>(summ_name, m_efac), summ_arg_types);
+        Expr summ_app = bind::fapp(summ_decl, dsts);
+
+        outfile << "\n\n(assert ";
+        u.print(summ_app, outfile);
+        outfile << ")\n";
+        outfile << "(check-sat)\n";
+
+        outfile.close();
+
+        if (equivalence_file != "") {
+            // construct the equivalence check
+            std::ofstream eq_file;
+            if (version2) {
+                eq_file.open(equivalence_file, std::ios_base::app);
+            }
+            else {
+                eq_file.open(equivalence_file);
+                declareLogicAndDataTypes(eq_file);
+            }
+            eq_file << func_def << "\n";
+            constructTypedVariables("define-fun", summ_name, dsts, eq_file, disjoined_summ_apps);
+
+            for (auto &v : dsts) {
+                eq_file << "(declare-var ";
+                u.print(v, eq_file);
+                eq_file << " ";
+                u.print(typeOf(v), eq_file);
+                eq_file << ")\n";
+            }
+            eq_file << "\n\n(assert ";
+            u.print(summ_app, eq_file);
+            eq_file << ")\n";
+        }
+
+        // parse the function definition using z3
+        return z3_from_smtlib_file(m_z3, output_file2.c_str());
+    }
+
+    inlinedDefinition findSummary(Expr rel, function& func, std::string equivalenceFile="",
+                                  bool version2=false) {
+        if (preds_to_summaries.find(rel) != preds_to_summaries.end()) {
+            // We have already computed the summary for this predicate
+            return preds_to_summaries[rel];
+        }
+        auto node = chc_graph.getNode(rel);
+        if (node == nullptr) {
+            return inlinedDefinition();
+        }
+        ExprVector disjuncts;
+        int chc_num = node->chc_num;
+        ExprVector dsts;
+        // create a vector of destination variables for this definition,
+        // it is okay to use any node for creating the clones of variables
+        dsts.reserve(chcs[chc_num].dstVars.size());
+        for (auto &v : chcs[chc_num].dstVars) {
+            dsts.push_back(renamedClone(v));
+        }
+        auto inlined_def = new inlinedDefinition{mk<FALSE>(m_efac), dsts};
+        auto current = node;
+        while (current != nullptr) {
+            int chc_num = current->chc_num;
+            ExprVector exprs;
+            for (int i = 0; i < current->srcs.size(); i++) {
+                Expr src = current->srcs[i];
+                // For now, use inlined definition class but change later
+                inlinedDefinition d = findSummary(src, func);
+                auto& src_vars = chcs[chc_num].srcVars[i];
+                // Take care of different variables, and inserts adjusted expressions into exprs
+                readjustVariables(d, src_vars, exprs);
+            }
+            // to unify dst variables of all CHCs, add equalities to generated dst variables
+            // later, we only use these dst variables for the final summary
+            for (int i = 0; i < dsts.size(); i++) {
+                exprs.push_back(mk<EQ>(dsts[i], chcs[chc_num].dstVars[i]));
+            }
+            // Conjoin the summaries of the source relations, including extra formulas to match
+            Expr def = mk<AND>(conjoin(exprs, m_efac), chcs[chc_num].body);
+            // some cleaning up, might need better solutions later
+            ExprSet cnjs;
+            getConj(def, cnjs);
+            for (auto it = cnjs.begin(); it != cnjs.end(); ) {
+                std::string cnj_str = lexical_cast<std::string>(*it);
+                if (cnj_str.find("msg.data") != string::npos ||
+                    cnj_str.find("msg.sig") != string::npos) {
+                    it = cnjs.erase(it);
+                }
+                else {
+                    ++it;
+                }
+            }
+            def = conjoin(cnjs, m_efac);
+            disjuncts.push_back(def);
+            current = current->next;
+        }
+        // take all the definitions and pass to the sygus engine
+        Expr summary = sygusEngine(disjuncts, dsts, rel, equivalenceFile, version2);
+        std::cout << "Summary for " << rel << ": " << summary << "\n\n";
+        preds_to_summaries[rel] = {summary, dsts};
+        return preds_to_summaries[rel];
+    }
+
+    void partitionInputsOutputs(const ExprVector& vars, ExprVector& inputs, ExprVector& outputs) {
+        // heuristic-based: given two state variables, everything before second state variable
+        // is input, everything after is output; except for the funds variable, which is input
+        int state_var_count = 0;
+        for (auto &v : vars) {
+            if (lexical_cast<string>(typeOf(v)).find("state_type") != string::npos) {
+                state_var_count++;
+            }
+            if (lexical_cast<string>(v).find("fnd_") != string::npos) {
+                inputs.push_back(v);
+                continue;
+            }
+            if (state_var_count >= 2) {
+                outputs.push_back(v);
+            }
+            else {
+                inputs.push_back(v);
+            }
+        }
+    }
+
     inlinedDefinition findInlinedDefinition(Expr rel, function& func) {
-        // We have already computed the inlined definition for this predicate
         if (preds_to_inlined_defs.find(rel) != preds_to_inlined_defs.end()) {
+            // We have already computed the inlined definition for this predicate
             return preds_to_inlined_defs[rel];
         }
         auto node = chc_graph.getNode(rel);

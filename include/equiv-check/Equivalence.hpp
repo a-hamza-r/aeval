@@ -162,18 +162,60 @@ public:
                 for (auto& pair : m_checkOrder) {
                     int pos1 = pair.first;
                     int pos2 = pair.second;
+                    ExprVector args1, args2, outs1, outs2;
+                    std::string equivalence_file = (pos1 != -1 && pos2 != -1) ?
+                        "sygus_files/" + funcs_info1.getFunctions()[pos1].name + "_" +
+                        funcs_info2.getFunctions()[pos2].name + "_equiv.smt2" : ""; 
+                    {
+                        std::ofstream equiv_file(equivalence_file, std::ios_base::trunc);
+                    }
                     if (pos1 != -1) {
                         function& f1 = funcs_info1.getFunctions()[pos1];
-                        m_contract1.inliningSingleFunction(f1);
-                        m_contract1.printFunctionInfo(f1);
+                        // m_contract1.inliningSingleFunction(f1);
+                        m_contract1.findSummary(f1.fpred_expr, f1, equivalence_file);
+                        inlinedDefinition& d1 = m_contract1.preds_to_summaries[f1.fpred_expr];
+                        m_contract1.partitionInputsOutputs(d1.dsts, args1, outs1);
+                        // m_contract1.printFunctionInfo(f1);
                     }
                     if (pos2 != -1) {
                         function& f2 = funcs_info2.getFunctions()[pos2];
-                        m_contract2.inliningSingleFunction(f2);
-                        m_contract2.printFunctionInfo(f2);
+                        // m_contract2.inliningSingleFunction(f2);
+                        m_contract2.findSummary(f2.fpred_expr, f2, equivalence_file, true);
+                        inlinedDefinition& d2 = m_contract2.preds_to_summaries[f2.fpred_expr];
+                        m_contract2.partitionInputsOutputs(d2.dsts, args2, outs2);
+                        // m_contract2.printFunctionInfo(f2);
+                    }
+                    if (pos1 != -1 && pos2 != -1) {
+                        std::cout << "Checking equivalence for " <<
+                            funcs_info1.getFunctions()[pos1].name << " and " <<
+                            funcs_info2.getFunctions()[pos2].name << "." << std::endl;
+                        assert(args1.size() == args2.size());
+                        assert(outs1.size() == outs2.size());
+                        int inputs_sz = args1.size();
+                        int outputs_sz = outs1.size();
+                        std::ofstream equiv_file(equivalence_file, std::ios_base::app);
+                        equiv_file << "(assert (and\n";
+                        for (int i = 0; i < inputs_sz; i++) {
+                            equiv_file << " (= ";
+                            m_contract1.u.print(args1[i], equiv_file);
+                            equiv_file << " ";
+                            m_contract2.u.print(args2[i], equiv_file);
+                            equiv_file << ")\n";
+                        }
+                        equiv_file << "))\n";
+                        equiv_file << "(assert (not (and\n";
+                        for (int i = 0; i < outputs_sz; i++) {
+                            equiv_file << " (= ";
+                            m_contract1.u.print(outs1[i], equiv_file);
+                            equiv_file << " ";
+                            m_contract2.u.print(outs2[i], equiv_file);
+                            equiv_file << ")\n";
+                        }
+                        equiv_file << ")))\n";
+                        equiv_file << "(check-sat)\n";
+                        equiv_file.close();
                     }
                 }
-                break;
             }
         }
     }
