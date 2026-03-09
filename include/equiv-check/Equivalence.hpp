@@ -19,6 +19,7 @@ private:
     ContractsCHCs m_contract2; // contract2
     std::vector<std::pair<int, int>> m_checkOrder;
     EquivCheckProcedure m_proc;
+    std::vector<std::pair<Expr, Expr>> m_equivalences; // pairs of equivalent predicates (pred1, pred2) where pred1 is from contract1 and pred2 is from contract2
 
 public:
     Equivalence(ContractsCHCs& contract1, ContractsCHCs& contract2,
@@ -162,58 +163,121 @@ public:
                 for (auto& pair : m_checkOrder) {
                     int pos1 = pair.first;
                     int pos2 = pair.second;
-                    ExprVector args1, args2, outs1, outs2;
-                    std::string equivalence_file = (pos1 != -1 && pos2 != -1) ?
-                        "sygus_files/" + funcs_info1.getFunctions()[pos1].name + "_" +
-                        funcs_info2.getFunctions()[pos2].name + "_equiv.smt2" : ""; 
-                    {
-                        std::ofstream equiv_file(equivalence_file, std::ios_base::trunc);
+
+                    EquivalenceCands equivCands;
+                    if (pos1 != -1 && pos2 != -1) {
+                        function& f1 = funcs_info1.getFunctions()[pos1];
+                        function& f2 = funcs_info2.getFunctions()[pos2];
+                        equivCands.populate(f1.name, f2.name,
+                                {f1.fpred_expr, f1.fpred_trailing_pred},
+                                {f2.fpred_expr, f2.fpred_trailing_pred});
+                        std::string equivFilePrefix = "sygus_files/" + f1.name + "_" + f2.name + "_equiv";
+                        {
+                            std::ofstream eq1(equivFilePrefix + "_1.smt2", std::ios_base::trunc);
+                            std::ofstream eq2(equivFilePrefix + "_2.smt2", std::ios_base::trunc);
+                        }
                     }
                     if (pos1 != -1) {
                         function& f1 = funcs_info1.getFunctions()[pos1];
                         // m_contract1.inliningSingleFunction(f1);
-                        m_contract1.findSummary(f1.fpred_expr, f1, equivalence_file);
-                        inlinedDefinition& d1 = m_contract1.preds_to_summaries[f1.fpred_expr];
-                        m_contract1.partitionInputsOutputs(d1.dsts, args1, outs1);
+                        std::cout << "Generating summary for " << f1.name << "...\n\n";
+                        bool retry = false;
+                        do {
+                            retry = m_contract1.findSummary(f1.fpred_expr, f1, equivCands, false);
+                            if (m_contract1.summaryGen.isSummaryAvailable(f1.fpred_expr) &&
+                                !retry) {
+                                break;
+                            }
+                        } while (retry);
                         // m_contract1.printFunctionInfo(f1);
                     }
                     if (pos2 != -1) {
                         function& f2 = funcs_info2.getFunctions()[pos2];
                         // m_contract2.inliningSingleFunction(f2);
-                        m_contract2.findSummary(f2.fpred_expr, f2, equivalence_file, true);
-                        inlinedDefinition& d2 = m_contract2.preds_to_summaries[f2.fpred_expr];
-                        m_contract2.partitionInputsOutputs(d2.dsts, args2, outs2);
+                        std::cout << "Generating summary for " << f2.name << "...\n\n";
+                        bool retry = false;
+                        do {
+                            retry = m_contract2.findSummary(f2.fpred_expr, f2, equivCands, true);
+                            if (m_contract2.summaryGen.isSummaryAvailable(f2.fpred_expr) &&
+                                !retry) {
+                                break;
+                            }
+                        } while (retry);
                         // m_contract2.printFunctionInfo(f2);
                     }
                     if (pos1 != -1 && pos2 != -1) {
-                        std::cout << "Checking equivalence for " <<
-                            funcs_info1.getFunctions()[pos1].name << " and " <<
-                            funcs_info2.getFunctions()[pos2].name << "." << std::endl;
-                        assert(args1.size() == args2.size());
-                        assert(outs1.size() == outs2.size());
-                        int inputs_sz = args1.size();
-                        int outputs_sz = outs1.size();
-                        std::ofstream equiv_file(equivalence_file, std::ios_base::app);
-                        equiv_file << "(assert (and\n";
-                        for (int i = 0; i < inputs_sz; i++) {
-                            equiv_file << " (= ";
-                            m_contract1.u.print(args1[i], equiv_file);
-                            equiv_file << " ";
-                            m_contract2.u.print(args2[i], equiv_file);
-                            equiv_file << ")\n";
+                        function& f1 = funcs_info1.getFunctions()[pos1];
+                        function& f2 = funcs_info2.getFunctions()[pos2];
+
+                        auto equivalenceCheck = [&](std::string fileName, Expr rel1, Expr rel2) {
+                            std::string pred1Name = lexical_cast<std::string>(rel1);
+                            std::string pred2Name = lexical_cast<std::string>(rel2);
+                            std::cout << "Checking equivalence for " <<
+                                pred1Name << " and " << pred2Name << "." << std::endl;
+
+                            // partition inputs and outputs for the two summaries
+                            ExprVector args1, args2, outs1, outs2;
+                            inlinedDefinition d1 = m_contract1.summaryGen.getSummary(rel1);
+                            m_contract1.partitionInputsOutputs(d1.dsts, args1, outs1);
+                            inlinedDefinition d2 = m_contract2.summaryGen.getSummary(rel2);
+                            m_contract2.partitionInputsOutputs(d2.dsts, args2, outs2);
+
+                            assert(args1.size() == args2.size());
+                            assert(outs1.size() == outs2.size());
+                            int inputs_sz = args1.size();
+                            int outputs_sz = outs1.size();
+
+                            std::ofstream equiv_file(fileName, std::ios_base::app);
+                            equiv_file << "(assert (and\n";
+                            for (int i = 0; i < inputs_sz; i++) {
+                                equiv_file << " (= ";
+                                m_contract1.u.print(args1[i], equiv_file);
+                                equiv_file << " ";
+                                m_contract2.u.print(args2[i], equiv_file);
+                                equiv_file << ")\n";
+                            }
+                            equiv_file << "))\n";
+                            equiv_file << "(assert (not (and\n";
+                            for (int i = 0; i < outputs_sz; i++) {
+                                equiv_file << " (= ";
+                                m_contract1.u.print(outs1[i], equiv_file);
+                                equiv_file << " ";
+                                m_contract2.u.print(outs2[i], equiv_file);
+                                equiv_file << ")\n";
+                            }
+                            equiv_file << ")))\n";
+                            equiv_file << "(check-sat)\n";
+                            equiv_file.close();
+                            Expr eq_fla = z3_from_smtlib_file(m_contract1.m_z3, fileName.c_str());
+                            auto sat = m_contract1.u.isSat(eq_fla);
+                            if (!bool(sat)) {
+                                std::cout << pred1Name << " and " << pred2Name <<
+                                    " are equivalent." << std::endl;
+                                m_equivalences.push_back({rel1, rel2});
+                                m_contract1.checkedEquivalent.insert(rel1);
+                                m_contract2.checkedEquivalent.insert(rel2);
+                                return true;
+                            } else {
+                                std::cout << pred1Name << " and " << pred2Name <<
+                                    " are not equivalent." << std::endl;
+                                return false;
+                            }
+                        };
+
+                        std::string equivFilePrefix = "sygus_files/" + f1.name + "_" + f2.name + "_equiv";
+                        // check for trailing preds
+                        bool equiv = equivalenceCheck(equivFilePrefix + "_2.smt2",
+                                         equivCands.func1Preds[1], equivCands.func2Preds[1]);
+                        // check for fpreds
+                        equiv &= equivalenceCheck(equivFilePrefix + "_1.smt2",
+                                         equivCands.func1Preds[0], equivCands.func2Preds[0]);
+                        
+                        if (!equiv) {
+                            std::cout << "Programs are not equivalent." << std::endl;
+                            return;
+                        } else {
+                            std::cout << f1.name << " and " << f2.name << " are equivalent.\n\n";
                         }
-                        equiv_file << "))\n";
-                        equiv_file << "(assert (not (and\n";
-                        for (int i = 0; i < outputs_sz; i++) {
-                            equiv_file << " (= ";
-                            m_contract1.u.print(outs1[i], equiv_file);
-                            equiv_file << " ";
-                            m_contract2.u.print(outs2[i], equiv_file);
-                            equiv_file << ")\n";
-                        }
-                        equiv_file << ")))\n";
-                        equiv_file << "(check-sat)\n";
-                        equiv_file.close();
                     }
                 }
             }
@@ -233,6 +297,12 @@ inline void check_equivalence(char* contract1File, char* contract2File,
                               bool lb, bool lmax, bool prio, int debug) {
     ExprFactory m_efac;
     EZ3 z3(m_efac);
+
+    /*
+    Expr fla = z3_from_smtlib_file(z3, "test2.smt2");
+    SMTUtils u(m_efac, z3, z3.getAdtAccessors(), to);
+    u.print(fla);
+    */
 
     ContractsCHCs ruleManagerC1(m_efac, z3, "_v1_", predicatesC1);
     ruleManagerC1.parse(contract1File, contract1Name);

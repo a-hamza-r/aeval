@@ -351,6 +351,858 @@ struct inlinedDefinition {
 };
 
 
+struct SummaryInfo {
+    // we use the following criteria to identify which kind of summary to use:
+        // index=-2 -> No disjunctions/basic summary
+        // index=-1 -> OR-ed summary (with disjuncts)
+        // index=0..n-1 = ITE-based summary (with disjuncts) where n is the number of
+            // permutations of disjuncts
+    int summaryIndex = -2;
+    std::vector<Expr> disjuncts;
+    size_t numDisjuncts = 0;
+    std::vector<std::vector<int>> disjunctsIndicesPermutations;
+    ExprVector summaries;
+    bool invalidSummary = false;
+    Expr rel; // relation/predicate for which this summary is being generated
+    std::string prefix; // prefix for sygus files
+    // variable sets for constructing summaries
+    ExprVector v; // all variables
+    ExprVector u; // interface variables
+    ExprVector l; // local variables
+    ExprVector v_types; // types of all variables
+    ExprVector u_types; // types of interface variables
+    ExprVector forall_u_args; // forall quantifier arguments for interface variables
+    ExprVector forall_v_args; // forall quantifier arguments for all variables
+    ExprVector exists_l_args; // exists quantifier arguments for local variables
+
+    SummaryInfo() = default;
+    SummaryInfo(Expr _rel, ExprVector&& _disjuncts, int _summaryIndex,
+                ExprVector&& _u, std::vector<ExprVector>&& _keepIntactPreds,
+                std::vector<std::vector<ExprVector>>&& _keepIntactPredsVars, ExprFactory& _efac)
+    : rel(_rel), disjuncts(std::move(_disjuncts)), numDisjuncts(disjuncts.size()),
+        summaryIndex(_summaryIndex), u(std::move(_u)),
+        prefix("sygus_files/" + lexical_cast<string>(rel) + "_summary") {
+        constructVariableSets(_efac);
+        insertIntactPreds(std::move(_keepIntactPreds), std::move(_keepIntactPredsVars), _efac);
+    }
+
+    void insertIntactPreds(std::vector<ExprVector>&& keepIntactPreds,
+                          std::vector<std::vector<ExprVector>>&& keepIntactPredsVars,
+                           ExprFactory& efac) {
+        for (int i = 0; i < numDisjuncts; i++) {
+            Expr& disjunct = disjuncts[i];
+            ExprVector& intactPreds = keepIntactPreds[i];
+            std::vector<ExprVector>& intactPredsVars = keepIntactPredsVars[i];
+            for (int j = 0; j < intactPreds.size(); j++) {
+                Expr& intactPred = intactPreds[j];
+                ExprVector& intactPredVars = intactPredsVars[j];
+                ExprVector types;
+                for (auto& var : intactPredVars) {
+                    types.push_back(typeOf(var));
+                }
+                Expr decl = bind::fdecl(mkTerm<string>(lexical_cast<string>(intactPred), efac),
+                                        types);
+                Expr app = bind::fapp(decl, intactPredVars);
+                disjunct = mk<AND>(disjunct, app);
+            }
+        }
+    }
+
+    void constructVariableSets(ExprFactory& efac) {
+        // declare variables; keep them common for all disjuncts rather than per disjunct
+        // can improve this later, but not necessary
+        // these variables are used for all candidates to be synthesized
+        filter(mknary<OR>(disjuncts), bind::IsConst(), std::inserter(v, v.begin()));
+        // compute set difference v - u
+        for (auto &var : v) {
+            if (std::find(u.begin(), u.end(), var) == u.end()) {
+                l.push_back(var);
+            }
+        }
+        // compute signature for the function definition (same for all disjuncts)
+        for (auto &var : v) {
+            v_types.push_back(typeOf(var));
+        }
+        v_types.push_back(mk<BOOL_TY>(efac));
+
+        // compute signature for the function summary (same for all disjuncts)
+        for (auto &var : u) {
+            u_types.push_back(typeOf(var));
+        }
+        u_types.push_back(mk<BOOL_TY>(efac));
+
+        // construct the exists quantifier arguments 
+        for (auto& var : l) exists_l_args.push_back(var->left());
+
+        // construct the forall quantifier arguments
+        for (auto& var : u) forall_u_args.push_back(var->left());
+
+        // construct the forall quantifier for all variables (u + l)
+        for (auto& var : v) forall_v_args.push_back(var->left());
+    }
+
+    std::string stringifySummaryKind() {
+        if (isBasicSummary()) {
+            return "_basic";
+        }
+        else if (isOrSummary()) {
+            return "_or";
+        }
+        else {
+            return "_ite_" + std::to_string(summaryIndex);
+        }
+    }
+
+    bool isBasicSummary() {
+        return summaryIndex == -2;
+    }
+
+    bool isOrSummary() {
+        return summaryIndex == -1;
+    }
+
+    bool isITESummary() {
+        return summaryIndex >= 0;
+    }
+
+    void computePermutations() {
+        disjunctsIndicesPermutations.clear();
+        std::vector<int> indices(numDisjuncts);
+        for (size_t i = 0; i < numDisjuncts; i++) {
+            indices[i] = i;
+        }
+        do {
+            disjunctsIndicesPermutations.push_back(indices);
+        } while (std::next_permutation(indices.begin(), indices.end()));
+    }
+
+    void findNextSummaryKind() {
+        assert(summaryIndex > -2);
+        if (disjunctsIndicesPermutations.empty()) {
+            computePermutations();
+        }
+        if (summaryIndex < (int)disjunctsIndicesPermutations.size() - 1) {
+            summaryIndex++;
+        }
+    }
+
+    std::vector<int> getITEPermutation() {
+        assert(summaryIndex >= 0);
+        if (summaryIndex < disjunctsIndicesPermutations.size()) {
+            return disjunctsIndicesPermutations[summaryIndex];
+        }
+    }
+
+    void computePredicateSets(std::string name, ExprVector& predicates,
+                              std::vector<std::string>& predicateNames, ExprFactory& efac) {
+        // TODO: fix this
+        int inputVariableIndex = 6;
+        ExprVector inputVariables, inputVariablesTypes;
+        inputVariables.push_back(u[inputVariableIndex]);
+        inputVariablesTypes.push_back(u_types[inputVariableIndex]);
+        inputVariablesTypes.push_back(mk<BOOL_TY>(efac));
+        size_t numPreds = [&]() {
+            return name == "G" ? numDisjuncts - 1 : numDisjuncts;
+        }();
+
+        std::string relName = lexical_cast<string>(rel);
+        for (int i = 0; i < numPreds; i++) {
+            std::string predName = relName + "_" + name + "_" + std::to_string(i);
+            Expr decl = bind::fdecl(mkTerm<string> (predName, efac),
+                                        name == "definition" ? v_types :
+                                        name == "G" ? inputVariablesTypes :
+                                        u_types);
+            Expr app = bind::fapp(decl, name == "definition" ? v :
+                                        name == "G" ? inputVariables :
+                                        u);
+            predicates.push_back(app);
+            predicateNames.push_back(predName);
+        }
+    }
+};
+
+// Keeping track of which candidates in a certain function to chekc equivalence for
+struct EquivalenceCands {
+    bool checkEq;
+    std::string func1Name;
+    std::string func2Name;
+    ExprVector func1Preds; // fpred and fpred_trailing_pred for func1
+    ExprVector func2Preds; // fpred and fpred_trailing_pred for func2
+
+    EquivalenceCands() : checkEq(false), func1Name(""), func2Name("") {}
+    void populate(std::string f1Name, std::string f2Name, const ExprVector& f1Preds,
+                  const ExprVector& f2Preds) {
+        checkEq = true;
+        func1Name = f1Name;
+        func2Name = f2Name;
+        func1Preds = f1Preds;
+        func2Preds = f2Preds;
+    }
+};
+
+
+struct SummaryGenerator {
+    std::unordered_map<Expr, SummaryInfo> summaries;
+    SMTUtils &m_u;
+    EZ3 &m_z3;
+    ExprFactory &m_efac;
+    // keep one map for all extra decls, and declare them all when needed;
+    // this can be improved later
+    ExprMap m_extraDecls;
+    SummaryGenerator(SMTUtils& _u, EZ3& z3, ExprFactory& efac) : m_u(_u), m_z3(z3), m_efac(efac)
+    {}
+
+    void addInfo(Expr rel, ExprVector &&disjuncts, ExprVector &&dsts,
+                 std::vector<ExprVector> &&keepIntactPreds,
+                 std::vector<std::vector<ExprVector>> &&keepIntactPredsVars) {
+        int summaryIndex = disjuncts.size() > 1 ? -1 : -2;
+        for (int i = 0; i < keepIntactPreds.size(); i++) {
+            auto& intactPreds = keepIntactPreds[i];
+            auto& intactPredsVars = keepIntactPredsVars[i];
+            for (int j = 0; j < intactPreds.size(); j++) {
+                auto& intactPred = intactPreds[j];
+                auto& intactPredVars = intactPredsVars[j];
+                ExprVector types;
+                for (auto& var : intactPredVars) {
+                    types.push_back(typeOf(var));
+                }
+                Expr decl = bind::fdecl(mkTerm<string>(lexical_cast<string>(intactPred), m_efac),
+                                        types);
+                m_extraDecls[intactPred] = decl;
+            }
+        }
+        summaries[rel] = SummaryInfo(rel, std::move(disjuncts), summaryIndex, std::move(dsts),
+                                     std::move(keepIntactPreds), std::move(keepIntactPredsVars),
+                                     m_efac);
+    }
+
+    void addSummary(Expr rel, Expr summary) {
+        summaries[rel].summaries.push_back(summary);
+    }
+
+    bool isSummaryAvailable(Expr rel) {
+        return !summaries[rel].invalidSummary && !summaries[rel].summaries.empty();
+    }
+
+    inlinedDefinition getSummary(Expr rel) {
+        assert(isSummaryAvailable(rel));
+        return inlinedDefinition(summaries[rel].summaries.back(),
+                                 summaries[rel].u);
+    }
+
+    void declareLogicAndDataTypes(std::ofstream& file, bool declareDivMod=false) {
+        file << "(set-logic ALL)\n\n";
+        // declare datatypes used
+        file << "(declare-datatypes ((|state_type| 0)) (((|state_type| (|balances| (Array Int Int))))))" << "\n";
+        file << "(declare-datatypes ((|bytes_tuple| 0)) (((|bytes_tuple| (|bytes_tuple_accessor_array| (Array Int Int)) (|bytes_tuple_accessor_length| Int)))))" << "\n";
+        file << "(declare-datatypes ((|tx_type| 0)) (((|tx_type| (|block.basefee| Int) (|block.chainid| Int) (|block.coinbase| Int) (|block.difficulty| Int) (|block.gaslimit| Int) (|block.number| Int) (|block.timestamp| Int) (|blockhash| (Array Int Int)) (|msg.data| |bytes_tuple|) (|msg.sender| Int) (|msg.sig| Int) (|msg.value| Int) (|tx.gasprice| Int) (|tx.origin| Int)))))" << "\n";
+        file << "(declare-datatypes ((|ecrecover_input_type| 0)) (((|ecrecover_input_type| (|hash| Int) (|v| Int) (|r| Int) (|s| Int)))))" << "\n";
+        file << "(declare-datatypes ((|crypto_type| 0)) (((|crypto_type| (|ecrecover| (Array |ecrecover_input_type| Int)) (|keccak256| (Array |bytes_tuple| Int)) (|ripemd160| (Array |bytes_tuple| Int)) (|sha256| (Array |bytes_tuple| Int))))))" << "\n";
+        file << "(declare-datatypes ((|abi_type| 0)) (((|abi_type|))))" << "\n\n";
+
+        if (declareDivMod) {
+            file << "(define-fun div_total ((x Int) (y Int)) Int\n";
+            file << "  (ite (= y 0) x (div x y))\n";
+            file << ")\n\n";
+            file << "(define-fun mod_total ((x Int) (y Int)) Int\n";
+            file << "  (ite (= y 0) x (mod x y))\n";
+            file << ")\n\n";
+        }
+    }
+
+    // specialized print function
+    void print(Expr e, std::ostream& out = outs()) {
+        if (isOpX<FAPP>(e) && e->arity() > 1) {
+            Expr name = e->left()->left();
+            if (m_extraDecls.find(name) != m_extraDecls.end()) {
+                out << "(";
+                out << lexical_cast<std::string>(e->left()->left()) << " ";
+                for (int i = 1; i < e->arity(); i++)
+                {
+                    out << m_z3.toSmtLib(e->arg(i));
+                    if (i < e->arity() - 1) out << " ";
+                }
+                out << ")";
+            }
+            else {
+                out << m_z3.toSmtLib(e);
+            }
+        }
+        else if (isOpX<FORALL>(e) || isOpX<EXISTS>(e))
+        {
+            if (isOpX<FORALL>(e)) out << "(forall (";
+            else out << "(exists (";
+
+            for (int i = 0; i < e->arity() - 1; i++)
+            {
+                Expr var = bind::fapp(e->arg(i));
+                out << "(" << m_z3.toSmtLib(var) << " " << m_z3.toSmtLib(typeOf(var)) << ")";
+                if (i != e->arity() - 2) out << " ";
+            }
+            out << ") ";
+            print (e->last(), out);
+            out << ")";
+        }
+        else if (isOpX<NEG>(e))
+        {
+            out << "(not ";
+            print(e->left(), out);
+            out << ")";
+        }
+        else if (isOpX<AND>(e))
+        {
+            out << "(and ";
+            ExprSet cnjs;
+            getConj(e, cnjs);
+            int i = 0;
+            for (auto & c : cnjs)
+            {
+                i++;
+                print(c, out);
+                if (i != cnjs.size()) out << " ";
+            }
+            out << ")";
+        }
+        else if (isOpX<OR>(e))
+        {
+            out << "(or ";
+            ExprSet dsjs;
+            getDisj(e, dsjs);
+            int i = 0;
+            for (auto & d : dsjs)
+            {
+                i++;
+                print(d, out);
+                if (i != dsjs.size()) out << " ";
+            }
+            out << ")";
+        }
+        else if (isOpX<IMPL>(e) || isOp<ComparissonOp>(e))
+        {
+            if (isOpX<IMPL>(e)) out << "(=> ";
+            if (isOpX<EQ>(e)) out << "(= ";
+            if (isOpX<GEQ>(e)) out << "(>= ";
+            if (isOpX<LEQ>(e)) out << "(<= ";
+            if (isOpX<LT>(e)) out << "(< ";
+            if (isOpX<GT>(e)) out << "(> ";
+            if (isOpX<NEQ>(e)) out << "(distinct ";
+            print(e->left(), out);
+            out << " ";
+            print(e->right(), out);
+            out << ")";
+        }
+        else if (isOpX<ITE>(e))
+        {
+            out << "(ite ";
+            print(e->left(), out);
+            out << " ";
+            print(e->right(), out);
+            out << " ";
+            print(e->last(), out);
+            out << ")";
+        }
+        else out << m_z3.toSmtLib (e);
+    }
+
+    void constructDeclareFun(string name, Expr decl, std::ostream& file) {
+        file << "(declare-fun " << name << " (";
+        for (int i = 1; i < decl->arity(); i++)
+        {
+            m_u.print(decl->arg(i), file);
+            if (i < decl->arity()-1) file << " ";
+        }
+        file << ") Bool\n";
+        file << ")\n\n";
+    }
+
+    void constructTypedVariables(string prefix, string name, const ExprVector& vars, std::ostream& file, Expr definition=nullptr) {
+        file << "(" << prefix << " " << name << " (";
+        for (int i = 0; i < vars.size(); i++)
+        {
+            file << "(";
+            m_u.print(vars[i], file);
+            file << " " ;
+            m_u.print(typeOf(vars[i]), file);
+            file << ")";
+            if (i < vars.size()-1) file << " ";
+        }
+        file << ") Bool\n";
+        if (definition != nullptr) {
+            print(definition, file);
+        }
+        file << ")\n\n";
+    }
+
+    bool readSygusOutput(std::string filename, const std::vector<std::string>& names,
+                         std::string& func_def) {
+        // check if all synthesis candidates were found in the file
+        std::ifstream ifs(filename);
+        if (!ifs) {
+            std::cout << "Error: Could not open sygus output file." << std::endl;
+            return false;
+        }
+        std::string content((std::istreambuf_iterator<char>(ifs)),
+                            std::istreambuf_iterator<char>());
+
+        for (const auto& s : names) {
+            if (content.find(s) == std::string::npos) {
+                std::cout << s << " not synthesized." << std::endl;
+                return false;
+            }
+        }
+        ifs.close();
+
+        // extract the definitions from the file
+        std::ifstream infile(filename);
+
+        // TODO: use --sygus-out=status-and-def option of cvc5 to simplify parsing
+        std::string line;
+        size_t line_count = 0;
+        while (std::getline(infile, line)) {
+            line_count++;
+        }
+        infile.clear();
+        infile.seekg(0, std::ios::beg);
+        size_t current_line = 0;
+        while (std::getline(infile, line)) {
+            if (current_line != 0 && current_line != line_count - 1) {
+                /*
+                // some hack to deal with mod_total and div_total functions
+                if (line.find("mod_total") != std::string::npos ||
+                    line.find("div_total") != std::string::npos) {
+                    // remove _total from the line
+                    line = std::regex_replace(line, std::regex("_total"), "");
+                }
+                */
+                func_def += line + "\n";
+            }
+            current_line++;
+        }
+        infile.close();
+        return true;
+    }
+
+    /* Generic function to handle all kind of sygus queries required for summary generation.
+     * Variables are:
+     *  v = all variables
+     *  u = interface variables
+     *  l = local variables
+     *  v = u ∪ l
+     * Summaries that are being supported:
+     * 1. Definition <=> Summary
+     *   the queries will be:
+     *    a. ∀ v . D(v) => S(u)
+     *    b. ∀ u . S(u) => ∃ l . D(v)
+     * 2. Summary => Guard
+     *  the query will be:
+     *    a. ∀ u . S(u) => G(u)
+     * 3. Summary <=> Guard /\ Branch
+     *  the queries will be:
+     *    a. ∀ u . S(u) <=> G(u) /\ B(u)
+     */
+    void constructSygusQuery(Expr rel, std::string sygusFile,
+                             // definitions (case 1), summaries (case 2 and 3)
+                             const ExprVector& fapps1,
+                             // summaries (case 1), guards (case 2), branches (case 3)
+                             const ExprVector& synthCandidates,
+                             const std::vector<std::string>& synthCandidateNames,
+                             // guards (case 3), empty for case 1 and 2
+                             const ExprVector& fapps2,
+                             const std::vector<std::string>& fapp2Names,
+                             const ExprVector& fapp1_defs,
+                             const ExprVector& fapp2_defs,
+                             // when using dealing with definitions with local variables
+                             bool constructingSummaries, // case 1
+                             bool constructingBranches // case 3
+                             ) {
+        assert(fapps1.size() == synthCandidates.size());
+        assert(!constructingBranches || (fapps1.size() == fapps2.size()));
+
+        SummaryInfo& info = summaries[rel];
+        // TODO: fix this
+        int inputVariableIndex = 6;
+        ExprVector inputVariables;
+        inputVariables.push_back(info.u[inputVariableIndex]);
+        {
+            std::ofstream file(sygusFile, std::ios::trunc);
+        }
+        std::ofstream file(sygusFile, std::ios::app);
+
+        // set logic and declare datatypes used
+        declareLogicAndDataTypes(file);
+
+        // if there are any uninterpreted predicates, declare them
+        for (auto &declPair : m_extraDecls) {
+            Expr decl = declPair.second;
+            std::string predName = lexical_cast<string>(declPair.first);
+            constructDeclareFun(predName, decl, file);
+        }
+
+        // synthesis candidates
+        for (auto &name : synthCandidateNames) {
+            constructTypedVariables("synth-fun", name,
+                    (constructingSummaries || constructingBranches) ? info.u : inputVariables,
+                    file);
+        }
+
+        if (constructingBranches) {
+            for (int i = 0; i < fapp2Names.size(); i++) {
+                constructTypedVariables("define-fun", fapp2Names[i], 
+                                        inputVariables, // generally, info.u, 
+                                        file, fapp2_defs[i]);
+            }
+        }
+
+        bool isTwoWayImpl = (constructingSummaries || constructingBranches);
+        for (int i = 0; i < fapps1.size(); i++) {
+            Expr fapp1 = fapps1[i];
+            Expr synthCandidate = synthCandidates[i];
+            std::string fapp1_name = lexical_cast<string>(fapp1->left()->left());
+
+            Expr e = rewriteOrAnd(simplifyArithm(simplifyBool(fapp1_defs[i]))); // simplify the definitions to make it easier for the synthesizer to solve
+            //e = propagateEqualities(e);
+            e = simplifyArithmConjunctions(e);
+            e = simplifyArithmDisjunctions(e);
+            // definitions of any predicates
+            constructTypedVariables("define-fun", fapp1_name,
+                                    constructingSummaries ? info.v : info.u, file,
+                                    e);
+            // constructing right direction (=>) implication
+            Expr impl1 = mk<IMPL>(fapp1, constructingBranches ?
+                                            mk<AND>(synthCandidate, fapps2[i]) :
+                                            synthCandidate);
+
+            // forall vars . impl1
+            Expr forall_fla1;
+            ExprVector vars = constructingSummaries ? info.forall_v_args : info.forall_u_args;
+            if (vars.empty()) forall_fla1 = impl1;
+            else {
+                vars.push_back(impl1);
+                forall_fla1 = mknary<FORALL>(vars);
+            }
+
+            file << "(constraint \n";
+            m_u.print(forall_fla1, file);
+            file << "\n)\n\n";
+
+            if (isTwoWayImpl) {
+                if (constructingSummaries) {
+                    if (!info.exists_l_args.empty()) {
+                        info.exists_l_args.push_back(fapp1);
+                        fapp1 = mknary<EXISTS>(info.exists_l_args);
+                        info.exists_l_args.pop_back(); // to reuse the variables vector
+                    }
+                }
+
+                // constructing left direction (<=) implication
+                Expr impl2 = mk<IMPL>(constructingBranches ? mk<AND>(synthCandidate, fapps2[i]) :
+                                            synthCandidate, fapp1);
+
+                // forall u . impl2
+                Expr forall_fla2;
+                if (info.forall_u_args.empty()) forall_fla2 = impl2;
+                else {
+                    info.forall_u_args.push_back(impl2);
+                    forall_fla2 = mknary<FORALL>(info.forall_u_args);
+                    info.forall_u_args.pop_back(); // to reuse the variables vector
+                }
+
+                file << "(constraint \n";
+                m_u.print(forall_fla2, file);
+                file << "\n)\n\n";
+            }
+        }
+        file << "\n(check-synth)\n";
+        file.close();
+    }
+
+    ExprVector parseDefinitionsFromString(std::string& definitions,
+                                    const std::vector<Expr>& predApps,
+                                    const ExprVector& vars) {
+        ExprVector definitionSet;
+        std::string output_file2 = "sygus_files/output.smt2";
+        // TODO: currently, for each summary, we dump all synthesized summary definitions,
+        // and then parse each definition one by one. This can be improved
+        for (int i = 0; i < predApps.size(); i++) {
+            Expr app = predApps[i];
+            std::ofstream outfile(output_file2);
+
+            // set logic and declare datatypes used
+            declareLogicAndDataTypes(outfile, true);
+
+            outfile << definitions << "\n";
+
+            for (auto &var : vars) {
+                outfile << "(declare-var ";
+                m_u.print(var, outfile);
+                outfile << " ";
+                m_u.print(typeOf(var), outfile);
+                outfile << ")\n";
+            }
+
+            outfile << "\n\n(assert ";
+            m_u.print(app, outfile);
+            outfile << ")\n";
+            outfile << "(check-sat)\n";
+
+            outfile.close();
+
+            definitionSet.push_back(z3_from_smtlib_file(m_z3, output_file2.c_str()));
+        }
+        return definitionSet;
+    }
+
+    // computes guards from guard predicates G0, G1, ..., Gn
+    // guards are computed as:
+    // guard0 = G0
+    // guard1 = ¬G0 ∧ G1
+    // guard2 = ¬G0 ∧ ¬G1 ∧ G2
+    // ...
+    // guardn = ¬G0 ∧ ¬G1 ∧ ... ∧ ¬Gn-1
+    ExprVector computeGuards(ExprVector& guardPreds) {
+        Expr prev = mk<TRUE>(m_efac);
+        ExprVector guards;
+        for (auto &pred : guardPreds) {
+            guards.push_back(mk<AND>(prev, pred));
+            prev = mk<AND>(prev, mkNeg(pred));
+        }
+        guards.push_back(simplifyBool(prev)); // last guard
+        return guards;
+    }
+
+    bool sygusEngine(Expr rel, EquivalenceCands &equiv, bool version2) {
+        SummaryInfo& info = summaries[rel];
+        ExprVector& disjuncts = info.disjuncts;
+        /*
+        if (!info.isBasicSummary()) {
+            // only enforcing for now
+            std::cout << "forcing ITE-based summary generation..." << std::endl;
+            info.findNextSummaryKind();
+        }
+        */
+
+        ExprVector defApps, summApps;
+        std::vector<std::string> defNames, summNames;
+        // definition0, definition1, ..., definitionn
+        info.computePredicateSets("definition", defApps, defNames, m_efac);
+        // summary0, summary1, ..., summaryn
+        info.computePredicateSets("summary", summApps, summNames, m_efac);
+
+        std::string fileName = info.prefix + info.stringifySummaryKind() + ".smt2";
+        // sygus query for constructing summaries
+        constructSygusQuery(rel, fileName, defApps, summApps, summNames, {}, {}, disjuncts, {},
+                            true, false);
+
+        auto runCommand = [&](const std::string& cmd) {
+            int ret = system(cmd.c_str());
+            if (ret != 0) {
+                std::cout << "Error: Sygus engine failed to run." << std::endl;
+                return false;
+            }
+            return true;
+        };
+
+        // call sygus engine on the file
+        std::string outputFile = info.prefix + "_output.smt2";
+        std::string command = "timeout -s SIGTERM 5s cvc5 --lang=sygus2 " + fileName + " > " +
+            outputFile;
+        if (!runCommand(command)) {
+            if (info.isBasicSummary()) {
+                return false; // no retry
+            }
+            info.findNextSummaryKind();
+            return true; // retry
+        }
+
+        std::string funcDef;
+        // read the sygus output file and extract the function definitions
+        if (!readSygusOutput(outputFile, summNames, funcDef)) {
+            return false;
+        }
+
+        if (info.isBasicSummary() || info.isOrSummary()) {
+            std::cout << "constructing "
+                      << (info.isBasicSummary() ? "basic" : "OR-based")
+                      << " summary..." << std::endl;
+            std::string outputFile2 = info.prefix + "_output2.smt2";
+            std::ofstream outfile(outputFile2);
+
+            // set logic and declare datatypes used
+            declareLogicAndDataTypes(outfile, true);
+
+            for (auto &declPair : m_extraDecls) {
+                Expr decl = declPair.second;
+                std::string predName = lexical_cast<string>(declPair.first);
+                constructDeclareFun(predName, decl, outfile);
+            }
+
+            outfile << funcDef << "\n";
+
+            for (auto &var : info.u) {
+                outfile << "(declare-var ";
+                m_u.print(var, outfile);
+                outfile << " ";
+                m_u.print(typeOf(var), outfile);
+                outfile << ")\n";
+            }
+
+            // construct a disjunction of all summary applications
+            std::string summName = lexical_cast<string>(rel) + "_summary_final";
+            Expr disjoinedSummApps;
+            if (summApps.size() == 1) disjoinedSummApps = summApps[0];
+            else disjoinedSummApps = mknary<OR>(summApps);
+            constructTypedVariables("define-fun", summName, info.u, outfile, disjoinedSummApps);
+
+            // construct the summary application
+            Expr summDecl = bind::fdecl(mkTerm<string>(summName, m_efac), info.u_types);
+            Expr summApp = bind::fapp(summDecl, info.u);
+
+            outfile << "\n\n(assert ";
+            m_u.print(summApp, outfile);
+            outfile << ")\n";
+            outfile << "(check-sat)\n";
+
+            outfile.close();
+
+            // parse the function definition using z3
+            // TODO: something can go wrong here, need to add error handling
+            Expr final_summary = z3_from_smtlib_file(m_z3, outputFile2.c_str());
+            final_summary = simplifyBool(final_summary);
+            final_summary = simplifyArithm(final_summary);
+            /*
+            final_summary = unfoldITE(final_summary);
+            final_summary = liftITEs(final_summary);
+            final_summary = rewriteOrAnd(final_summary);
+            final_summary = normalize(final_summary);
+            final_summary = moveInsideITE(final_summary);
+            */
+            final_summary = simplifyArithmConjunctions(final_summary);
+            final_summary = simplifyArithmDisjunctions(final_summary);
+            //final_summary = propagateEqualities(final_summary);
+            final_summary = rewriteOrAnd(simplifyArithm(simplifyBool(final_summary)));
+            addSummary(rel, final_summary);
+
+            if (!equiv.checkEq) {
+                return false; // no equivalence check needed and no retry
+            }
+
+            // fill in the equivalence check info in the files
+            std::string fileNumber = "";
+            if (version2) {
+                fileNumber = rel == equiv.func2Preds[0] ? "1" :
+                    rel == equiv.func2Preds[1] ? "2" : "";
+            }
+            else {
+                fileNumber = rel == equiv.func1Preds[0] ? "1" :
+                    rel == equiv.func1Preds[1] ? "2" : "";
+            }
+            if (fileNumber != "") {
+                // construct the equivalence check
+                std::string equivalence_file = "sygus_files/" + equiv.func1Name + "_" + equiv.func2Name + "_equiv_" + fileNumber + ".smt2";
+                std::ofstream eq_file;
+                if (version2) {
+                    eq_file.open(equivalence_file, std::ios_base::app);
+                }
+                else {
+                    eq_file.open(equivalence_file);
+                    declareLogicAndDataTypes(eq_file, true);
+                }
+                eq_file << funcDef << "\n";
+                constructTypedVariables("define-fun", summName, info.u, eq_file, disjoinedSummApps);
+
+                for (auto &v : info.u) {
+                    eq_file << "(declare-var ";
+                    m_u.print(v, eq_file);
+                    eq_file << " ";
+                    m_u.print(typeOf(v), eq_file);
+                    eq_file << ")\n";
+                }
+                eq_file << "\n\n(assert ";
+                m_u.print(summApp, eq_file);
+                eq_file << ")\n";
+            }
+        }
+        else {
+            std::cout << "constructing ITE-based summary..." << std::endl;
+            ExprVector summDefs = parseDefinitionsFromString(funcDef, summApps, info.u);
+
+            // sygus query for constructing guards
+            ExprVector guardApps, branchApps;
+            std::vector<std::string> guardNames, branchNames;
+            // G0, G1, ..., Gn-1
+            info.computePredicateSets("G", guardApps, guardNames, m_efac);
+            ExprVector guards = computeGuards(guardApps);
+            // branch0, branch1, ..., branchn
+            info.computePredicateSets("branch", branchApps, branchNames, m_efac);
+
+            auto findPermutations = [](std::vector<int>& perm, ExprVector& predicates) {
+                ExprVector permuted;
+                for (auto &idx : perm) {
+                    permuted.push_back(predicates[idx]);
+                }
+                return permuted;
+            };
+
+            for (; info.summaryIndex < info.disjunctsIndicesPermutations.size();
+                info.summaryIndex++) {
+                std::vector<int>& perm = info.disjunctsIndicesPermutations[info.summaryIndex];
+                std::string guardFile = info.prefix + info.stringifySummaryKind() + "_guards_" +
+                    std::to_string(info.summaryIndex) + ".smt2";
+                ExprVector permutedSummApps = findPermutations(perm, summApps);
+                ExprVector permutedSummDefs = findPermutations(perm, summDefs);
+
+                constructSygusQuery(rel, guardFile, permutedSummApps, guards, guardNames,
+                                    {}, {}, permutedSummDefs, {}, false, false);
+
+                // call sygus engine on the file
+                std::string command = "timeout -s SIGTERM 5s cvc5 --lang=sygus2 " + guardFile +
+                    " > " + outputFile;
+                system(command.c_str());
+
+                std::string guardsDef;
+                // read the sygus output file and extract the function definitions
+                if (!readSygusOutput(outputFile, guardNames, guardsDef)) {
+                    continue;
+                }
+
+                ExprVector guardDefs = parseDefinitionsFromString(guardsDef, guardApps, info.u);
+
+                // sygus query for constructing branches
+                std::string branchFile = info.prefix + info.stringifySummaryKind() +
+                    "_branches_" + std::to_string(info.summaryIndex) + ".smt2";
+                constructSygusQuery(rel, branchFile, permutedSummApps, branchApps, branchNames,
+                                    guards, guardNames, permutedSummDefs, guardDefs, false,
+                                    true);
+                // call sygus engine on the file
+                command = "timeout -s SIGTERM 5s cvc5 --lang=sygus2 " + branchFile + " > " +
+                    outputFile;
+                system(command.c_str());
+                // read the sygus output file and extract the function definitions
+                if (!readSygusOutput(outputFile, branchNames, guardsDef)) {
+                    continue;
+                }
+                ExprVector branchDefs = parseDefinitionsFromString(guardsDef, branchApps,
+                                                                   info.u);
+                // construct the final summary using guards and branches
+                // ite(G0, branch0, ite(G1, branch1, ... ite(Gn-1, branchn-1, branchn)...))
+                Expr final_summary = branchDefs.back();
+                for (int j = guardDefs.size() - 1; j >= 0; j--) {
+                    final_summary = mk<ITE>(guardDefs[j], branchDefs[j], final_summary);
+                }
+                 std::cout << "Final summary constructed: ";
+                    m_u.print(final_summary, std::cout);
+                    std::cout << "\n";
+                // TODO: verification of the final summary should be done here
+                addSummary(rel, final_summary);
+                break;
+            }
+        }
+
+        return true;
+    }
+};
+
+
 class ContractsCHCs : public CHCs {
 public:
     SMTUtils u;
@@ -361,11 +1213,14 @@ public:
     // predicate to inlined definition mapping
     // TODO: move this to functionsInfo?
     std::unordered_map<Expr, inlinedDefinition> preds_to_inlined_defs;
-    std::unordered_map<Expr, inlinedDefinition> preds_to_summaries;
+    // std::unordered_map<Expr, inlinedDefinition> preds_to_summaries;
     int variableCounter = 0;
+    ExprSet checkedEquivalent;
+
+    SummaryGenerator summaryGen;
 
     ContractsCHCs(ExprFactory &efac, EZ3 &z3, std::string name, std::vector<std::string>& preds)
-    : CHCs(efac, z3, name), u(efac, z3), funcs_info(preds) {}
+    : CHCs(efac, z3, name), u(efac, z3), summaryGen(u, z3, efac), funcs_info(preds) {}
 
     void printFunctionInfo(const function& func) {
         func.print();
@@ -427,288 +1282,14 @@ public:
         definition = simplifyBool(definition);
     }
 
-    void declareLogicAndDataTypes(std::ofstream& file) {
-        file << "(set-logic ALL)\n\n";
-        // declare datatypes used
-        file << "(declare-datatypes ((|state_type| 0)) (((|state_type| (|balances| (Array Int Int))))))" << "\n";
-        file << "(declare-datatypes ((|bytes_tuple| 0)) (((|bytes_tuple| (|bytes_tuple_accessor_array| (Array Int Int)) (|bytes_tuple_accessor_length| Int)))))" << "\n";
-        file << "(declare-datatypes ((|tx_type| 0)) (((|tx_type| (|block.basefee| Int) (|block.chainid| Int) (|block.coinbase| Int) (|block.difficulty| Int) (|block.gaslimit| Int) (|block.number| Int) (|block.timestamp| Int) (|blockhash| (Array Int Int)) (|msg.data| |bytes_tuple|) (|msg.sender| Int) (|msg.sig| Int) (|msg.value| Int) (|tx.gasprice| Int) (|tx.origin| Int)))))" << "\n";
-        file << "(declare-datatypes ((|ecrecover_input_type| 0)) (((|ecrecover_input_type| (|hash| Int) (|v| Int) (|r| Int) (|s| Int)))))" << "\n";
-        file << "(declare-datatypes ((|crypto_type| 0)) (((|crypto_type| (|ecrecover| (Array |ecrecover_input_type| Int)) (|keccak256| (Array |bytes_tuple| Int)) (|ripemd160| (Array |bytes_tuple| Int)) (|sha256| (Array |bytes_tuple| Int))))))" << "\n";
-        file << "(declare-datatypes ((|abi_type| 0)) (((|abi_type|))))" << "\n\n";
-    }
-
-    void constructTypedVariables(string prefix, string name, const ExprVector& vars, std::ostream& file, Expr definition=nullptr) {
-        file << "(" << prefix << " " << name << " (";
-        for (int i = 0; i < vars.size(); i++)
-        {
-            file << "(";
-            u.print(vars[i], file);
-            file << " " ;
-            u.print(typeOf(vars[i]), file);
-            file << ")";
-            if (i < vars.size()-1) file << " ";
-        }
-        file << ") Bool\n";
-        if (definition != nullptr) {
-            u.print(definition, file);
-        }
-        file << ")\n\n";
-    }
-
-    Expr sygusEngine(const ExprVector& disjuncts, ExprVector& dsts, Expr rel,
-                     std::string equivalence_file="", bool version2=false) {
-        // create a file named {rel}_sygus.smt2
-        std::string dir_name = "sygus_files/";
-        std::string rel_name = lexical_cast<string>(rel);
-        std::string file_name = dir_name + rel_name + "_sygus.smt2";
-        {
-            std::ofstream file(file_name, std::ios::trunc);
-        }
-        std::ofstream file(file_name, std::ios::app);
-
-        // set logic and declare datatypes used
-        declareLogicAndDataTypes(file);
-
-        // declare variables; keep them common for all disjuncts rather than per disjunct
-        // can improve this later, but not necessary
-        ExprVector vars;
-        Expr disj;
-        if (disjuncts.size() == 1) disj = disjuncts[0];
-        else disj = mknary<OR>(disjuncts);
-        filter(disj, bind::IsConst(), std::inserter(vars, vars.begin()));
-        // compute set difference vars - dsts
-        ExprVector extra_vars;
-        ExprMap replacements;
-        for (size_t i = 0; i < vars.size(); ) {
-            Expr v = vars[i];
-            // check if a variable starts with "funds"
-            // handle this more elegantly later
-            if (lexical_cast<string>(v).find("funds") != string::npos) {
-                // add a renamed clone of funds variable to dsts
-                Expr new_v = renamedClone(v, true); // true indicates funds variable
-                replacements[v] = new_v;
-                dsts.push_back(new_v);
-                vars[i] = new_v;
-                continue;
-            }
-            if (std::find(dsts.begin(), dsts.end(), v) == dsts.end()) {
-                extra_vars.push_back(v);
-            }
-            i++;
-        }
-        // make arg and return types for the function definition (same for all disjuncts)
-        ExprVector def_arg_types;
-        for (auto &v : vars) {
-            def_arg_types.push_back(typeOf(v));
-        }
-        def_arg_types.push_back(mk<BOOL_TY>(m_efac));
-
-        // make arg and return types for the function summary (same for all disjuncts)
-        ExprVector summ_arg_types;
-        for (auto &v : dsts) {
-            summ_arg_types.push_back(typeOf(v));
-        }
-        summ_arg_types.push_back(mk<BOOL_TY>(m_efac));
-
-        // construct the exists quantifier arguments 
-        ExprVector exists_args;
-        for (auto & v : extra_vars) exists_args.push_back(v->left());
-
-        // construct the forall quantifier arguments
-        ExprVector forall_args;
-        for (auto & v : dsts) forall_args.push_back(v->left());
-
-        std::vector<std::string> summ_names;
-        ExprVector summ_apps;
-
-        // simpler/naive solution: for each disjunct, we compute summary separately
-        // then combine them using OR
-        // TODO: (possibly) better solution: construct a single sygus query and try to find
-        // solutions like (ite cond1 summary1 (ite cond2 summary2 ...)), but sygus is not good
-        // with finding such solutions currently
-        for (int i = 0; i < disjuncts.size(); i++) {
-            Expr disj = disjuncts[i];
-            // replace variables in disjunct with renamed clones if needed
-            for (auto &p : replacements) {
-                disj = replaceAll(disj, p.first, p.second);
-            }
-            std::string summ_name = rel_name + "_summary" + std::to_string(i);
-            summ_names.push_back(summ_name);
-            constructTypedVariables("synth-fun", summ_name, dsts, file);
-
-            // construct a function definition
-            std::string def_name = rel_name + "_definition" + std::to_string(i);
-            constructTypedVariables("define-fun", def_name, vars, file, disj);
-
-            Expr def_decl = bind::fdecl(mkTerm<string> (def_name, m_efac), def_arg_types);
-            Expr def_app = bind::fapp(def_decl, vars);
-
-            Expr summ_decl = bind::fdecl(mkTerm<string>(summ_name, m_efac), summ_arg_types);
-            Expr summ_app = bind::fapp(summ_decl, dsts);
-            summ_apps.push_back(summ_app);
-
-            Expr exists_fla;
-            if (exists_args.empty()) exists_fla = def_app;
-            else {
-                exists_args.push_back(def_app);
-                exists_fla = mknary<EXISTS>(exists_args);
-            }
-            exists_args.pop_back(); // remove app for next iteration
-
-            // implication 1
-            Expr impl1 = mk<IMPL>(exists_fla, summ_app);
-
-            Expr forall_fla1;
-            if (forall_args.empty()) forall_fla1 = impl1;
-            else {
-                forall_args.push_back(impl1);
-                forall_fla1 = mknary<FORALL>(forall_args);
-            }
-            forall_args.pop_back(); // remove impl1 for next iteration/formula
-
-            // implication 2
-            Expr impl2 = mk<IMPL>(summ_app, exists_fla);
-
-            Expr forall_fla2;
-            if (forall_args.empty()) forall_fla2 = impl2;
-            else {
-                forall_args.push_back(impl2);
-                forall_fla2 = mknary<FORALL>(forall_args);
-            }
-            forall_args.pop_back(); // remove impl2 for next iteration/formula
-
-            file << "(constraint \n";
-            u.print(forall_fla1, file);
-            file << "\n)\n\n";
-
-            file << "(constraint \n";
-            u.print(forall_fla2, file);
-            file << "\n)\n\n";
-        }
-        file << "\n(check-synth)\n";
-        file.close();
-
-        // call sygus engine on the file
-        std::string output_file = dir_name + rel_name + "_sygus_output.smt2";
-        std::string command = "cvc5 --lang=sygus2 " + file_name + " > " + output_file;
-        system(command.c_str());
-        
-        // check if all summaries were found in the output file
-        std::ifstream ifs(output_file);
-        if (!ifs) {
-            std::cout << "Error: Could not open sygus output file." << std::endl;
-            return mk<FALSE>(m_efac);
-        }
-        std::string content((std::istreambuf_iterator<char>(ifs)),
-                            std::istreambuf_iterator<char>());
-
-        for (const auto& s : summ_names) {
-            if (content.find(s) == std::string::npos) {
-                std::cout << "Sygus engine did not return a definition for the summary function: " << s << "\n";
-                return mk<FALSE>(m_efac);
-            }
-        }
-        ifs.close();
-
-        // extract the function definition from the output file
-        std::ifstream infile(output_file);
-
-        std::string line;
-        size_t line_count = 0;
-        while (std::getline(infile, line)) {
-            line_count++;
-        }
-        infile.clear();
-        infile.seekg(0, std::ios::beg);
-        size_t current_line = 0;
-        std::string func_def;
-        while (std::getline(infile, line)) {
-            if (current_line != 0 && current_line != line_count - 1) {
-                // some hack to deal with mod_total and div_total functions
-                if (line.find("mod_total") != std::string::npos ||
-                    line.find("div_total") != std::string::npos) {
-                    // remove _total from the line
-                    line = std::regex_replace(line, std::regex("_total"), "");
-                }
-                func_def += line + "\n";
-            }
-            current_line++;
-        }
-        infile.close();
-
-        std::string output_file2 = dir_name + rel_name + "_sygus_output2.smt2";
-        std::ofstream outfile(output_file2);
-
-        // set logic and declare datatypes used
-        declareLogicAndDataTypes(outfile);
-
-        outfile << func_def << "\n";
-
-        for (auto &v : dsts) {
-            outfile << "(declare-var ";
-            u.print(v, outfile);
-            outfile << " ";
-            u.print(typeOf(v), outfile);
-            outfile << ")\n";
-        }
-
-        // construct a disjunction of all summary applications
-        std::string summ_name = rel_name + "_summary_final";
-        Expr disjoined_summ_apps;
-        if (summ_apps.size() == 1) disjoined_summ_apps = summ_apps[0];
-        else disjoined_summ_apps = mknary<OR>(summ_apps);
-        constructTypedVariables("define-fun", summ_name, dsts, outfile, disjoined_summ_apps);
-
-        // construct the summary application
-        Expr summ_decl = bind::fdecl(mkTerm<string>(summ_name, m_efac), summ_arg_types);
-        Expr summ_app = bind::fapp(summ_decl, dsts);
-
-        outfile << "\n\n(assert ";
-        u.print(summ_app, outfile);
-        outfile << ")\n";
-        outfile << "(check-sat)\n";
-
-        outfile.close();
-
-        if (equivalence_file != "") {
-            // construct the equivalence check
-            std::ofstream eq_file;
-            if (version2) {
-                eq_file.open(equivalence_file, std::ios_base::app);
-            }
-            else {
-                eq_file.open(equivalence_file);
-                declareLogicAndDataTypes(eq_file);
-            }
-            eq_file << func_def << "\n";
-            constructTypedVariables("define-fun", summ_name, dsts, eq_file, disjoined_summ_apps);
-
-            for (auto &v : dsts) {
-                eq_file << "(declare-var ";
-                u.print(v, eq_file);
-                eq_file << " ";
-                u.print(typeOf(v), eq_file);
-                eq_file << ")\n";
-            }
-            eq_file << "\n\n(assert ";
-            u.print(summ_app, eq_file);
-            eq_file << ")\n";
-        }
-
-        // parse the function definition using z3
-        return z3_from_smtlib_file(m_z3, output_file2.c_str());
-    }
-
-    inlinedDefinition findSummary(Expr rel, function& func, std::string equivalenceFile="",
-                                  bool version2=false) {
-        if (preds_to_summaries.find(rel) != preds_to_summaries.end()) {
+    bool findSummary(Expr rel, function& func, EquivalenceCands &equiv, bool version2) {
+        if (summaryGen.isSummaryAvailable(rel)) {
             // We have already computed the summary for this predicate
-            return preds_to_summaries[rel];
+            return false;
         }
         auto node = chc_graph.getNode(rel);
         if (node == nullptr) {
-            return inlinedDefinition();
+            return false;
         }
         ExprVector disjuncts;
         int chc_num = node->chc_num;
@@ -721,17 +1302,36 @@ public:
         }
         auto inlined_def = new inlinedDefinition{mk<FALSE>(m_efac), dsts};
         auto current = node;
+        // keep the preds intact without inlining their summaries, for all disjuncts
+        std::vector<ExprVector> keepIntactPreds;
+        // keep variables of the preds being kept intact, for all disjuncts
+        std::vector<std::vector<ExprVector>> keepIntactPredsVars;
         while (current != nullptr) {
             int chc_num = current->chc_num;
             ExprVector exprs;
+            ExprVector intactPreds;
+            std::vector<ExprVector> intactVars;
             for (int i = 0; i < current->srcs.size(); i++) {
                 Expr src = current->srcs[i];
-                // For now, use inlined definition class but change later
-                inlinedDefinition d = findSummary(src, func);
                 auto& src_vars = chcs[chc_num].srcVars[i];
+                /*
+                if (checkedEquivalent.find(src) != checkedEquivalent.end()) {
+                    intactPreds.push_back(src);
+                    intactVars.push_back(src_vars);
+                    continue;
+                }
+                */
+                // For now, use inlined definition class but change later
+                bool retry = findSummary(src, func, equiv, version2);
+                if (retry) {
+                    return retry;
+                }
+                inlinedDefinition d = summaryGen.getSummary(src);
                 // Take care of different variables, and inserts adjusted expressions into exprs
                 readjustVariables(d, src_vars, exprs);
             }
+            keepIntactPreds.push_back(intactPreds);
+            keepIntactPredsVars.push_back(intactVars);
             // to unify dst variables of all CHCs, add equalities to generated dst variables
             // later, we only use these dst variables for the final summary
             for (int i = 0; i < dsts.size(); i++) {
@@ -753,14 +1353,33 @@ public:
                 }
             }
             def = conjoin(cnjs, m_efac);
+
+            // check if a variable starts with "funds"
+            // TODO: handle this more elegantly later
+            ExprVector vars;
+            filter(def, bind::IsConst(), std::inserter(vars, vars.begin()));
+            for (auto &v : vars) {
+                if (lexical_cast<string>(v).find("funds") != string::npos) {
+                    // add a renamed clone of funds variable to dsts
+                    Expr new_v = renamedClone(v, true); // true indicates funds variable
+                    dsts.push_back(new_v);
+                    def = replaceAll(def, v, new_v);
+                }
+            }
+
             disjuncts.push_back(def);
             current = current->next;
         }
+        std::cout << "invoking sygus engine for " << rel << " with " << disjuncts.size() << " disjuncts...\n";
         // take all the definitions and pass to the sygus engine
-        Expr summary = sygusEngine(disjuncts, dsts, rel, equivalenceFile, version2);
-        std::cout << "Summary for " << rel << ": " << summary << "\n\n";
-        preds_to_summaries[rel] = {summary, dsts};
-        return preds_to_summaries[rel];
+        summaryGen.addInfo(rel, std::move(disjuncts), std::move(dsts),
+                           std::move(keepIntactPreds), std::move(keepIntactPredsVars));
+        summaryGen.sygusEngine(rel, equiv, version2);
+        // AH: if something fails in sygusEngine, we should return true to retry
+        auto summary = summaryGen.getSummary(rel);
+        std::cout << "Summary for " << rel << ": " << summary.definition << "\n\n";
+        // preds_to_summaries[rel] = {summary, dsts};
+        return false;
     }
 
     void partitionInputsOutputs(const ExprVector& vars, ExprVector& inputs, ExprVector& outputs) {
@@ -1191,8 +1810,9 @@ public:
             }
         }
 
-        assert(!index_cycle_chc.empty());
+        //assert(!index_cycle_chc.empty());
 
+        /*
         // find fact now:
         for (int i = 0; i < chcs.size(); i++) {
             if (find(index_cycle_chc.begin(), index_cycle_chc.end(), i) !=
@@ -1205,6 +1825,7 @@ public:
                 break;
             }
         }
+    */
 
         // Initialize the functions and function calls info
         initFunctionsInfo();
